@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto"
 import { createAdminClient } from "@/lib/supabase/server"
+import { finishedStatuses } from "@/lib/os-workflow"
 
 type AdminClient = ReturnType<typeof createAdminClient>
 const BUSINESS_TIME_ZONE = "America/Sao_Paulo"
@@ -72,7 +73,7 @@ export async function ensureReceivableForFinishedOrder(admin: AdminClient, order
   if (orderError) throw new Error(`service_orders: ${orderError.message}`)
   if (!order?.id) throw new Error("OS nao encontrada para gerar a conta a receber.")
 
-  if (order.status !== "Finalizada") {
+  if (!finishedStatuses.has(order.status)) {
     const { error } = await admin
       .from("accounts_receivable")
       .delete()
@@ -102,7 +103,7 @@ export async function syncReceivablesForServiceOrders(admin: AdminClient, orders
   const validOrders = orders.filter((order) => order?.id)
   if (!validOrders.length) return { created: 0 }
 
-  const nonFinishedIds = validOrders.filter((order) => order.status !== "Finalizada").map((order) => order.id)
+  const nonFinishedIds = validOrders.filter((order) => !finishedStatuses.has(order.status)).map((order) => order.id)
   if (nonFinishedIds.length) {
     const { error } = await admin
       .from("accounts_receivable")
@@ -113,7 +114,7 @@ export async function syncReceivablesForServiceOrders(admin: AdminClient, orders
     if (error) throw new Error(`accounts_receivable cleanup: ${error.message}`)
   }
 
-  const finishedIds = validOrders.filter((order) => order.status === "Finalizada").map((order) => order.id)
+  const finishedIds = validOrders.filter((order) => finishedStatuses.has(order.status)).map((order) => order.id)
   if (!finishedIds.length) return { created: 0 }
 
   const { data: persistedOrders, error: orderLookupError } = await admin

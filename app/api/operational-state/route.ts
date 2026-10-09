@@ -796,7 +796,9 @@ export async function PUT(request: Request) {
     }
     const namesToSave = publicOrderWrite
       ? ["service_orders", "service_order_events", "service_order_checklist_items", "service_order_materials", "service_order_files", "service_order_signatures", "vehicle_checklists", "vehicle_usage"] as const
-      : ["clients", "client_contacts", "client_environments", "client_equipment", "suppliers", "works", "work_floors", "service_types", "service_type_checklist_items", "service_type_materials", "work_environments", "environment_photos", "work_points", "point_photos", "providers", "provider_documents", "vehicles", "materials", "stock_kits", "stock_kit_items", "pmoc_plans", "pmoc_sectors", "pmoc_equipment", "pmoc_equipment_services", "service_orders", "pmoc_schedules", "service_order_events", "service_order_checklist_items", "service_order_materials", "service_order_files", "service_order_signatures", "vehicle_checklists", "vehicle_usage", "vehicle_maintenance", "operational_statuses", "execution_steps", "audit_logs"] as const
+      // OS são gravadas só pelas rotas de OS (/api/os), para um estado antigo da tela não
+      // desfazer mudanças de situação, peças ou valores feitas em outra aba/usuário.
+      : ["clients", "client_contacts", "client_environments", "client_equipment", "suppliers", "works", "work_floors", "service_types", "service_type_checklist_items", "service_type_materials", "work_environments", "environment_photos", "work_points", "point_photos", "providers", "provider_documents", "vehicles", "materials", "stock_kits", "stock_kit_items", "pmoc_plans", "pmoc_sectors", "pmoc_equipment", "pmoc_equipment_services", "pmoc_schedules", "vehicle_checklists", "vehicle_usage", "vehicle_maintenance", "operational_statuses", "execution_steps", "audit_logs"] as const
     const stockSyncIds = await serviceOrdersNeedingStockSync(supabase, rows.service_orders)
     for (const name of namesToSave) {
       await upsertRows(supabase, name, rows[name])

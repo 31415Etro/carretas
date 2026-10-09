@@ -24,9 +24,11 @@ export type DetailTable = { title: string; columns: string[]; rows: Array<Array<
 export type SeriesPoint = Record<string, string | number>
 export type SectionResult = { indicators: Indicator[]; charts: Array<{ key: string; title: string; series: SeriesPoint[]; bars: Array<{ key: string; label: string }> }>; notes: string[] }
 
-const finalOrderStatuses = new Set(["Finalizada", "Finalizada parcialmente", "Cancelada"])
-const openOrderStatuses = new Set(["Criada", "Agendada"])
-const runningOrderStatuses = new Set(["A caminho", "Em execucao", "Em execução", "Pausada", "Aguardando material", "Aguardando retorno"])
+// Fluxo da OS das carretas + situações do sistema anterior.
+const doneOrderStatuses = new Set(["Concluída", "Entregue", "Finalizada", "Finalizada parcialmente"])
+const finalOrderStatuses = new Set([...doneOrderStatuses, "Cancelada"])
+const openOrderStatuses = new Set(["Aberta", "Em análise", "Aguardando orçamento", "Aguardando aprovação", "Criada", "Agendada"])
+const runningOrderStatuses = new Set(["Aguardando peças", "Em execução", "Em conferência", "Suspensa", "A caminho", "Em execucao", "Pausada", "Aguardando material", "Aguardando retorno"])
 const consumptionTypes = new Set(["Consumo em OS", "Consumo em kit", "Saida por venda", "Consumo em producao"])
 const cogsTypes = new Set(["Consumo em OS", "Saida por venda"])
 const leadStages = ["prospeccao", "contato", "qualificacao", "proposta", "negociacao", "ganho", "perdido"]
@@ -173,7 +175,7 @@ export function buildDashboard(raw: DashboardData, filters: DashboardFilters) {
     const open = orders.filter((row) => openOrderStatuses.has(row.status))
     const running = orders.filter((row) => runningOrderStatuses.has(row.status))
     const late = orders.filter((row) => !finalOrderStatuses.has(row.status) && day(row.scheduled_date) && day(row.scheduled_date) < filters.today)
-    const done = orders.filter((row) => (row.status === "Finalizada" || row.status === "Finalizada parcialmente") && inPeriod(row.finished_at, filters))
+    const done = orders.filter((row) => doneOrderStatuses.has(row.status) && inPeriod(row.finished_at, filters))
     const durations = done.map((row) => {
       const start = data.orderStarts[row.id] || row.created_at
       const hours = (new Date(row.finished_at).getTime() - new Date(start).getTime()) / 3_600_000
@@ -181,8 +183,8 @@ export function buildDashboard(raw: DashboardData, filters: DashboardFilters) {
     }).filter((value): value is number => value !== null)
     const orderRow = (row: any) => [row.order_number, br(row.scheduled_date), client(row.client_id), data.names.providers[row.main_provider_id] || "-", row.status, money(row.total_amount)]
     const columns = ["OS", "Agendada", "Cliente", "Responsável", "Situação", "Valor"]
-    details["os.abertas"] = { title: "OS abertas (criadas ou agendadas)", href: "/ordens-servico", columns, rows: open.map(orderRow) }
-    details["os.execucao"] = { title: "OS em execução", href: "/ordens-servico", columns, rows: running.map(orderRow) }
+    details["os.abertas"] = { title: "OS abertas (abertas, em análise ou aguardando orçamento/aprovação)", href: "/ordens-servico", columns, rows: open.map(orderRow) }
+    details["os.execucao"] = { title: "OS em andamento (aguardando peças, em execução, em conferência ou suspensas)", href: "/ordens-servico", columns, rows: running.map(orderRow) }
     details["os.atrasadas"] = { title: "OS atrasadas (agendamento vencido)", href: "/ordens-servico", columns, rows: late.map(orderRow) }
     details["os.concluidas"] = { title: "OS concluídas no período", href: "/ordens-servico", columns: [...columns, "Finalizada em"], rows: done.map((row) => [...orderRow(row), br(row.finished_at)]) }
     details["os.ticket"] = details["os.concluidas"]

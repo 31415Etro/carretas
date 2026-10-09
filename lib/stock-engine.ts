@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { readAllPages } from "@/lib/supabase-pagination"
+import { finishedStatuses } from "@/lib/os-workflow"
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
@@ -112,7 +113,7 @@ const round3 = (value: number) => Math.round(value * 1000) / 1000
 /**
  * Mantém o estoque coerente com a OS:
  * - OS aberta/em andamento: reserva as peças previstas (quantidade prevista dos materiais da OS);
- * - OS finalizada: dá baixa ("Consumo em OS") do que foi utilizado e encerra as reservas;
+ * - OS concluída/entregue (ou finalizada no sistema antigo): dá baixa ("Consumo em OS") do que foi utilizado e encerra as reservas;
  * - OS cancelada: libera as reservas.
  * É idempotente: compara com reservas e consumos já registrados e só aplica a diferença.
  */
@@ -153,7 +154,7 @@ export async function syncStockForServiceOrder(admin: AdminClient, orderId: stri
   if (consumedError) throw new Error(`stock_movements: ${consumedError.message}`)
   const consumed = sumBy<any>(consumedRows || [], (row) => row.material_id, (row) => (row.movement_type === "Devolucao" ? -1 : 1) * Number(row.quantity || 0))
 
-  if (order.status !== "Finalizada") {
+  if (!finishedStatuses.has(order.status)) {
     const expected = sumBy(linked, (row) => row.material_id || "", (row) => Number(row.expected_quantity || row.used_quantity || 0))
     const reserved = sumBy<any>(activeReservations, (row) => row.material_id, (row) => Number(row.quantity || 0))
     const materialIds = new Set([...expected.keys(), ...reserved.keys()])

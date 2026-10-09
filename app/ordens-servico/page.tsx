@@ -1,5 +1,5 @@
-import { ServiceOrdersPage } from "@/components/operations/operations-pages"
+import { OsListPage } from "@/components/os/os-list-page"
 
 export default function Page() {
-  return <ServiceOrdersPage />
+  return <OsListPage />
 }

@@ -1,7 +1,6 @@
-import { OrderDetailPage } from "@/components/operations/operations-pages"
+import { OsDetailPage } from "@/components/os/os-detail-page"
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  return <OrderDetailPage id={id} />
+  return <OsDetailPage id={id} />
 }
-

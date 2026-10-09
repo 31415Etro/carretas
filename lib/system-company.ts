@@ -50,6 +50,8 @@ export const sharedMasterTables = new Set([
   "stock_balances",
   "stock_movements",
   "stock_reservations",
+  // Carretas/veículos dos clientes (scripts/206).
+  "customer_assets",
 ])
 
 export const tenantScopedTables = new Set([
@@ -72,6 +74,7 @@ export const tenantScopedTables = new Set([
   // Financeiro e compras por CNPJ (scripts/201 e 203).
   "bank_accounts", "payment_conditions",
   "purchase_orders", "purchase_order_items", "purchase_receipts", "purchase_receipt_items",
+  "service_order_services", "service_order_time_entries", "service_order_status_history",
 ])
 
 export function mapSystemCompany(row: any): SystemCompany {
