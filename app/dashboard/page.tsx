@@ -1,5 +1,5 @@
-import { OperationsDashboardBackendPage } from "@/components/operations/dashboard-backend-page"
+import { DashboardSwitch } from "@/components/dashboard/dashboard-switch"
 
 export default function DashboardPage() {
-  return <OperationsDashboardBackendPage />
+  return <DashboardSwitch />
 }
