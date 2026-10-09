@@ -74,14 +74,14 @@ async function alertRecipients() {
 async function sendAlert(record: StoredSystemError) {
   const apiKey = String(process.env.RESEND_API_KEY || "").trim()
   if (!apiKey || !record.emailRecipients.length) return { status: "not_configured" as const, error: "Configure RESEND_API_KEY e um destinatario administrativo." }
-  const from = String(process.env.SYSTEM_ALERT_FROM_EMAIL || "M&C Monitor <onboarding@resend.dev>").trim()
+  const from = String(process.env.SYSTEM_ALERT_FROM_EMAIL || "ERP Carretas <onboarding@resend.dev>").trim()
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       from,
       to: record.emailRecipients,
-      subject: `[M&C] ${record.severity === "critical" ? "Falha critica" : "Erro no sistema"}: ${record.source}`,
+      subject: `[ERP Carretas] ${record.severity === "critical" ? "Falha critica" : "Erro no sistema"}: ${record.source}`,
       html: `<div style="font-family:Arial,sans-serif;color:#172033;line-height:1.5"><h2>Falha detectada no sistema</h2><table style="border-collapse:collapse"><tr><td style="padding:6px 14px 6px 0"><strong>Origem</strong></td><td>${html(record.source)}</td></tr><tr><td style="padding:6px 14px 6px 0"><strong>Erro</strong></td><td>${html(record.message)}</td></tr><tr><td style="padding:6px 14px 6px 0"><strong>Rota</strong></td><td>${html(`${record.method} ${record.path}`)}</td></tr><tr><td style="padding:6px 14px 6px 0"><strong>HTTP</strong></td><td>${html(record.statusCode || "-")}</td></tr><tr><td style="padding:6px 14px 6px 0"><strong>Usuario</strong></td><td>${html(record.actorEmail || "Nao identificado")}</td></tr><tr><td style="padding:6px 14px 6px 0"><strong>Data</strong></td><td>${html(new Date(record.occurredAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }))}</td></tr></table><p style="margin-top:20px;color:#526079">Identificador: ${html(record.fingerprint)}</p></div>`,
     }),
   })

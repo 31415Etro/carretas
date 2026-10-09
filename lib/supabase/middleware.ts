@@ -7,19 +7,12 @@ const publicPaths = [
   "/api/auth/logout",
   "/api/auth/user",
   "/api/auth/companies",
-  "/api/orcamento/whatsapp",
-  "/api/operational-state",
-  "/api/operational-files/upload",
-]
-
-const publicPatterns = [
-  /^\/api\/ordens-servico\/[^/]+\/eventos$/,
 ]
 
 const pagePermissions = [
   { prefix: "/dashboard", permission: "dashboard" },
-  { prefix: "/clientes-obras", permission: "clientes_obras" },
-  { prefix: "/servicos", permission: "clientes_obras" },
+  { prefix: "/clientes", permission: "clientes" },
+  { prefix: "/servicos", permission: "produtos_servicos" },
   { prefix: "/ordens-servico", permission: "ordens_servico" },
   { prefix: "/frota", permission: "frota" },
   { prefix: "/estoque", permission: "estoque" },
@@ -34,7 +27,6 @@ const pagePermissions = [
 
 function isPublicPath(pathname: string) {
   return publicPaths.some((path) => pathname === path || pathname.startsWith(`${path}/`))
-    || publicPatterns.some((pattern) => pattern.test(pathname))
 }
 
 function redirectWithCookies(request: NextRequest, pathname: string, source: NextResponse, returnTo = false) {

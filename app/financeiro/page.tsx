@@ -239,9 +239,6 @@ const emptyTransaction = {
   supplierId: "",
   supplierName: "",
   clientId: "",
-  workId: "",
-  environmentId: "",
-  pointId: "",
   serviceOrderId: "",
   providerId: "",
   vehicleId: "",
@@ -498,9 +495,6 @@ function transactionFromImportedPayable(item: AccountsPayable): FinancialTransac
     costCenterId: item.costCenterId,
     dreAccountId: item.dreAccountId,
     clientId: "",
-    workId: item.workId,
-    environmentId: item.environmentId,
-    pointId: item.pointId,
     serviceOrderId: item.serviceOrderId,
     providerId: item.providerId,
     vehicleId: item.vehicleId,
@@ -535,9 +529,6 @@ function transactionFromImportedReceivable(item: AccountsReceivable): FinancialT
     costCenterId: item.costCenterId,
     dreAccountId: item.dreAccountId,
     clientId: item.clientId,
-    workId: item.workId,
-    environmentId: item.environmentId,
-    pointId: item.pointId,
     serviceOrderId: item.serviceOrderId,
     providerId: "",
     vehicleId: "",
@@ -607,9 +598,6 @@ async function importAccountsSpreadsheet(file: File, kind: FinancialSpreadsheetK
         subcategoryId: "",
         costCenterId,
         dreAccountId,
-        workId: "",
-        environmentId: "",
-        pointId: "",
         serviceOrderId: "",
         providerId: "",
         vehicleId: "",
@@ -637,9 +625,6 @@ async function importAccountsSpreadsheet(file: File, kind: FinancialSpreadsheetK
       const receivable: AccountsReceivable = {
         id: financeId("ar"),
         clientId: "",
-        workId: "",
-        environmentId: "",
-        pointId: "",
         serviceOrderId: "",
         description,
         categoryId,
@@ -709,9 +694,6 @@ function dedupeTransactions(items: FinancialTransaction[]) {
   })
 }
 
-function FinanceOptions({ state, type = "ambos" }: { state: FinancialState; type?: "entrada" | "saida" | "ambos" }) {
-  return null
-}
 
 function accountForm(item: AccountsPayable | AccountsReceivable, kind: "pagar" | "receber") {
   const payable = kind === "pagar" ? item as AccountsPayable : null
@@ -722,9 +704,6 @@ function accountForm(item: AccountsPayable | AccountsReceivable, kind: "pagar" |
     supplierId: payable?.supplierId || "",
     supplierName: payable?.supplierName || "",
     clientId: receivable?.clientId || "",
-    workId: item.workId || "",
-    environmentId: item.environmentId || "",
-    pointId: item.pointId || "",
     serviceOrderId: item.serviceOrderId || "",
     providerId: payable?.providerId || "",
     vehicleId: payable?.vehicleId || "",
@@ -769,7 +748,7 @@ function accountTransaction(state: FinancialState, item: AccountsPayable | Accou
   return state.transactions.find((transaction) => {
     if (transaction.type !== (kind === "pagar" ? "Saida" : "Entrada")) return false
     if (transaction.description !== item.description || transaction.dueDate !== item.dueDate) return false
-    if (transaction.serviceOrderId !== item.serviceOrderId || transaction.workId !== item.workId) return false
+    if (transaction.serviceOrderId !== item.serviceOrderId) return false
     if (kind === "pagar" && transaction.supplierName !== (item as AccountsPayable).supplierName) return false
     if (kind === "receber" && transaction.clientId !== (item as AccountsReceivable).clientId) return false
     return Number(transaction.expectedAmount || 0) === Number(item.expectedAmount || 0)
@@ -945,9 +924,6 @@ function FinanceSheets({
       costCenterId: form.costCenterId,
       dreAccountId: form.dreAccountId || state.categories.find((item) => item.id === form.categoryId)?.dreAccountId || "dre-sem-classificacao",
       clientId: form.clientId === "nenhum" ? "" : form.clientId,
-      workId: form.workId === "nenhuma" ? "" : form.workId,
-      environmentId: form.environmentId === "nenhum" ? "" : form.environmentId,
-      pointId: form.pointId === "nenhum" ? "" : form.pointId,
       serviceOrderId: form.serviceOrderId === "nenhuma" ? "" : form.serviceOrderId,
       providerId: form.providerId || "",
       vehicleId: form.vehicleId || "",
@@ -1004,9 +980,6 @@ function FinanceSheets({
         costCenterId: dreForm.costCenterId === "nenhum" ? "" : dreForm.costCenterId,
         dreAccountId: category?.dreAccountId || "dre-sem-classificacao",
         clientId: "",
-        workId: "",
-        environmentId: "",
-        pointId: "",
         serviceOrderId: "",
         providerId: "",
         vehicleId: "",
@@ -1141,9 +1114,6 @@ function FinanceSheets({
       subcategoryId: form.subcategoryId,
       costCenterId: form.costCenterId,
       dreAccountId: form.dreAccountId || state.categories.find((item) => item.id === form.categoryId)?.dreAccountId || "dre-sem-classificacao",
-      workId: editing?.workId || "",
-      environmentId: editing?.environmentId || "",
-      pointId: editing?.pointId || "",
       serviceOrderId: erp.sourceType === "OS" && form.serviceOrderId !== "nenhuma" ? form.serviceOrderId : "",
       providerId: form.providerId || "",
       vehicleId: form.vehicleId || "",
@@ -1193,9 +1163,6 @@ function FinanceSheets({
     const draft: AccountsReceivable = {
       id: editing?.id || financeId("ar"),
       clientId: form.clientId === "nenhum" ? "" : form.clientId,
-      workId: editing?.workId || "",
-      environmentId: editing?.environmentId || "",
-      pointId: editing?.pointId || "",
       serviceOrderId: erp.sourceType === "OS" && form.serviceOrderId !== "nenhuma" ? form.serviceOrderId : "",
       description: form.description,
       categoryId: form.categoryId,
@@ -1741,7 +1708,7 @@ export default function FinanceiroPage() {
         categoryConfidence: item.categoryId ? item.categoryConfidence : (auto?.confidence as any) || item.categoryConfidence,
         categoryStatus: item.categoryId ? item.categoryStatus : (auto?.status as any) || item.categoryStatus,
       }
-      const transaction = { id: transactionId, type: "Saida" as const, description: fixedItem.originalDescription, categoryId: fixedItem.categoryId, subcategoryId: fixedItem.subcategoryId, costCenterId: fixedItem.costCenterId, dreAccountId: fixedItem.dreAccountId, clientId: "", workId: fixedItem.linkedWorkId, environmentId: "", pointId: "", serviceOrderId: fixedItem.linkedServiceOrderId, providerId: fixedItem.linkedProviderId, vehicleId: fixedItem.linkedVehicleId, supplierName: invoice.holderName, competenceDate: fixedItem.purchaseDate, dueDate: invoice.dueDate, realizedDate: fixedItem.purchaseDate, expectedAmount: 0, realizedAmount: fixedItem.amount, paymentMethod: "Cartao de credito", bankAccountId: "", creditCardId: invoice.creditCardId, creditCardInvoiceId: invoiceId, status: "Realizado" as const, origin: "Cartao de credito", notes: `Fatura ${invoice.referenceMonth}/${invoice.referenceYear} | Parcela: ${installment} | Linha: ${fixedItem.rawLine}`, attachmentName: invoice.pdfFileName, createdAt: now, updatedAt: now }
+      const transaction = { id: transactionId, type: "Saida" as const, description: fixedItem.originalDescription, categoryId: fixedItem.categoryId, subcategoryId: fixedItem.subcategoryId, costCenterId: fixedItem.costCenterId, dreAccountId: fixedItem.dreAccountId, clientId: "", serviceOrderId: fixedItem.linkedServiceOrderId, providerId: fixedItem.linkedProviderId, vehicleId: fixedItem.linkedVehicleId, supplierName: invoice.holderName, competenceDate: fixedItem.purchaseDate, dueDate: invoice.dueDate, realizedDate: fixedItem.purchaseDate, expectedAmount: 0, realizedAmount: fixedItem.amount, paymentMethod: "Cartao de credito", bankAccountId: "", creditCardId: invoice.creditCardId, creditCardInvoiceId: invoiceId, status: "Realizado" as const, origin: "Cartao de credito", notes: `Fatura ${invoice.referenceMonth}/${invoice.referenceYear} | Parcela: ${installment} | Linha: ${fixedItem.rawLine}`, attachmentName: invoice.pdfFileName, createdAt: now, updatedAt: now }
       const invoiceItem = { ...fixedItem, id: itemId, invoiceId, linkedTransactionId: transactionId }
       return { item: invoiceItem, transaction }
     })
@@ -1749,10 +1716,10 @@ export default function FinanceiroPage() {
     const transactions = pairs.map((pair) => pair.transaction)
     const adjustment = Number((total - extractedTotal).toFixed(2))
     if (Math.abs(adjustment) >= 0.01) {
-      transactions.push({ id: financeId("ft"), type: "Saida" as const, description: "Ajuste total da fatura", categoryId: "", subcategoryId: "", costCenterId: "", dreAccountId: "dre-sem-classificacao", clientId: "", workId: "", environmentId: "", pointId: "", serviceOrderId: "", providerId: "", vehicleId: "", supplierName: invoice.holderName, competenceDate: invoice.dueDate, dueDate: invoice.dueDate, realizedDate: invoice.dueDate, expectedAmount: 0, realizedAmount: adjustment, paymentMethod: "Cartao de credito", bankAccountId: "", creditCardId: invoice.creditCardId, creditCardInvoiceId: invoiceId, status: "Realizado" as const, origin: "Cartao de credito", notes: `Ajuste automatico para fechar o total oficial da fatura em ${money(total)}. Base extraida: ${money(extractedTotal)}.`, attachmentName: invoice.pdfFileName, createdAt: now, updatedAt: now })
+      transactions.push({ id: financeId("ft"), type: "Saida" as const, description: "Ajuste total da fatura", categoryId: "", subcategoryId: "", costCenterId: "", dreAccountId: "dre-sem-classificacao", clientId: "", serviceOrderId: "", providerId: "", vehicleId: "", supplierName: invoice.holderName, competenceDate: invoice.dueDate, dueDate: invoice.dueDate, realizedDate: invoice.dueDate, expectedAmount: 0, realizedAmount: adjustment, paymentMethod: "Cartao de credito", bankAccountId: "", creditCardId: invoice.creditCardId, creditCardInvoiceId: invoiceId, status: "Realizado" as const, origin: "Cartao de credito", notes: `Ajuste automatico para fechar o total oficial da fatura em ${money(total)}. Base extraida: ${money(extractedTotal)}.`, attachmentName: invoice.pdfFileName, createdAt: now, updatedAt: now })
     }
     const card = state.creditCards.find((row) => row.id === preview.creditCardId)
-    const payable = createPayable ? { id: payableId, supplierName: card?.bankName || card?.name || "Cartao de credito", description: `Fatura cartao ${invoice.referenceMonth}/${invoice.referenceYear}`, categoryId: "cat-veiculos", subcategoryId: "", costCenterId: "cc-admin", dreAccountId: "dre-financeiras", workId: "", environmentId: "", pointId: "", serviceOrderId: "", providerId: "", vehicleId: "", competenceDate: invoice.dueDate, dueDate: invoice.dueDate, paymentDate: "", expectedAmount: total, paidAmount: 0, paymentMethod: "Cartao de credito", bankAccountId: "", creditCardId: invoice.creditCardId, creditCardInvoiceId: invoiceId, status: "Aberta" as const, origin: "Cartao de credito", notes: "", attachmentName: invoice.pdfFileName, transactionId: "", createdAt: now, updatedAt: now } : null
+    const payable = createPayable ? { id: payableId, supplierName: card?.bankName || card?.name || "Cartao de credito", description: `Fatura cartao ${invoice.referenceMonth}/${invoice.referenceYear}`, categoryId: "cat-veiculos", subcategoryId: "", costCenterId: "cc-admin", dreAccountId: "dre-financeiras", serviceOrderId: "", providerId: "", vehicleId: "", competenceDate: invoice.dueDate, dueDate: invoice.dueDate, paymentDate: "", expectedAmount: total, paidAmount: 0, paymentMethod: "Cartao de credito", bankAccountId: "", creditCardId: invoice.creditCardId, creditCardInvoiceId: invoiceId, status: "Aberta" as const, origin: "Cartao de credito", notes: "", attachmentName: invoice.pdfFileName, transactionId: "", createdAt: now, updatedAt: now } : null
     const sameInvoice = (row: { creditCardId?: string; referenceMonth?: string; referenceYear?: string; pdfFileName?: string }) => row.creditCardId === invoice.creditCardId && row.referenceMonth === invoice.referenceMonth && row.referenceYear === invoice.referenceYear && (!invoice.pdfFileName || row.pdfFileName === invoice.pdfFileName)
     const oldInvoiceIds = new Set(state.creditCardInvoices.filter(sameInvoice).map((row) => row.id))
     const oldTransactionIds = new Set(state.creditCardInvoiceItems.filter((item) => oldInvoiceIds.has(item.invoiceId)).map((item) => item.linkedTransactionId).filter(Boolean))
@@ -2108,7 +2075,7 @@ function TransactionsTable({ state, transactions, opNames, compact = false }: { 
         <div className="rounded-md border bg-background p-3"><p className="text-xs text-muted-foreground">Saldo da tabela</p><strong>{money(balanceTotal)}</strong></div>
       </div>
       <DataTable headers={compact ? ["Data", "Descricao", "Parcela", "Tipo", "Categoria", "Valor", "Status", "Origem"] : ["Competencia", "Vencimento", "Descricao", "Parcela", "Tipo", "Categoria", "Subcategoria", "Centro de custo", "Valor", "Status", "Origem", "Acoes"]} empty={!visibleRows.length} stickyHeader viewportClassName={financeTableViewport} tableClassName={`${compact ? "min-w-[1080px]" : "min-w-[1680px]"} ${financeTableRows}`}>
-        {paginatedRows.map((item) => <TableRow key={item.id}><TableCell>{formatDate(compact ? financialOverviewDate(item) : item.competenceDate)}</TableCell>{!compact ? <TableCell>{formatDate(item.dueDate)}</TableCell> : null}<TableCell>{item.description}</TableCell><TableCell>{installment(item)}</TableCell><TableCell>{item.type}</TableCell><TableCell>{categoryName(state, item.categoryId)}</TableCell>{!compact ? <TableCell>{subcategoryName(state, item.subcategoryId)}</TableCell> : null}{!compact ? <TableCell>{costCenterName(state, item.costCenterId)}</TableCell> : null}<TableCell>{money(amount(item))}</TableCell><TableCell><StatusBadge status={statusFromDates(item.status, item.dueDate, item.realizedDate)} /></TableCell><TableCell>{item.origin}</TableCell>{!compact ? <TableCell><Button size="sm" variant="outline" onClick={() => alert(`${item.description}\nParcela: ${installment(item)}\nValor: ${money(amount(item))}\nObra: ${opNames.work(item.workId)}\nOS: ${item.serviceOrderId}`)}>Detalhes</Button></TableCell> : null}</TableRow>)}
+        {paginatedRows.map((item) => <TableRow key={item.id}><TableCell>{formatDate(compact ? financialOverviewDate(item) : item.competenceDate)}</TableCell>{!compact ? <TableCell>{formatDate(item.dueDate)}</TableCell> : null}<TableCell>{item.description}</TableCell><TableCell>{installment(item)}</TableCell><TableCell>{item.type}</TableCell><TableCell>{categoryName(state, item.categoryId)}</TableCell>{!compact ? <TableCell>{subcategoryName(state, item.subcategoryId)}</TableCell> : null}{!compact ? <TableCell>{costCenterName(state, item.costCenterId)}</TableCell> : null}<TableCell>{money(amount(item))}</TableCell><TableCell><StatusBadge status={statusFromDates(item.status, item.dueDate, item.realizedDate)} /></TableCell><TableCell>{item.origin}</TableCell>{!compact ? <TableCell><Button size="sm" variant="outline" onClick={() => alert(`${item.description}\nParcela: ${installment(item)}\nValor: ${money(amount(item))}\nOS: ${item.serviceOrderId}`)}>Detalhes</Button></TableCell> : null}</TableRow>)}
       </DataTable>
       {visibleRows.length ? <div className="flex flex-col gap-2 border-t pt-3 sm:flex-row sm:items-center sm:justify-between"><p className="text-sm text-muted-foreground">Exibindo {(page - 1) * pageSize + 1}-{Math.min(page * pageSize, visibleRows.length)} de {visibleRows.length} lancamentos</p><div className="flex flex-wrap items-center gap-2"><Select value={String(pageSize)} onValueChange={(value) => setPageSize(Number(value))}><SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger><SelectContent>{[10, 20, 25, 50, 100].map((size) => <SelectItem key={size} value={String(size)}>{size} por pagina</SelectItem>)}</SelectContent></Select><Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>Anterior</Button><span className="min-w-20 text-center text-sm">{page} de {totalPages}</span><Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage((current) => Math.min(totalPages, current + 1))}>Proxima</Button></div></div> : null}
     </div>
@@ -2162,80 +2129,7 @@ function DreTab({
   const { user } = useAuth()
   const isAdmin = user?.role === "admin"
   const months = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
-  const suggestedAccounts = [
-    "Curso Colaborador",
-    "Investimento TI",
-    "Insumos - Finca pino",
-    "Fontes para automacao",
-    "Controladores para automacao",
-    "Uniformes - Jaquetas",
-    "Ferramenta - Roteadores Wifi",
-    "Aquisicao maquina de cartao",
-    "Chatgpt Plus",
-    "Insumos - Corrugados",
-    "Pessoal - Compra ar condicionado",
-    "Pessoal - Torneira Cozinha",
-    "Ferramenta - Tesoura de Chapa",
-    "Insumo - Bucha de obra",
-    "Ferramenta - Martelete demolidor",
-    "Ferramenta - Escada Ferro",
-    "Ferramenta - Pistola finca pino",
-    "EPI - Calca Brim TKMS",
-    "Insumos - Nylon Infra",
-    "Investimento em TI da empresa",
-    "Insumos - Cinta perfurada",
-    "EPI - Camisa Brim TKMS",
-    "Investimento ferramentas",
-    "Investimento - Cadeira Escritorio",
-    "Investimento - TI Rack",
-    "Peca automacao Sibara",
-    "Controladores para automacao - Sibara",
-    "Software(Licenca Windows)",
-    "Insumos(fios e corrugados)",
-    "Pecas cliente",
-    "Peca para cliente",
-    "Ferramenta - Dobrador de Tubo 5/8",
-    "Ferramenta - Dobrador de Tubo 1/2",
-    "Ferramenta - Trena Irwin",
-    "EPI - Cinto de seguranca e Talabarte",
-    "Ferramenta - Bolsa coletora limpeza",
-    "Pilhas para alarme",
-    "Ferramentas - 3 Bolsa manutencao",
-    "EPI - Sapatao",
-    "Pecas",
-    "Ferramentas - Cinturao",
-    "Ferramentas - 2 Alicate amperimetro",
-    "Ferramentas - Parafusadeira",
-    "Insumo - Cabo PP para extensao",
-    "Peca TKMS - Valvula alivio",
-    "Ferramenta - Caixa organizadora",
-    "Ferramenta",
-    "Ferramenta - 2 Valvula servico acionamento manual",
-    "Peca Cliente",
-    "Insumos Tubo de Cobre",
-    "Brinde colaboradores",
-    "Ferramentas - Bolsa de limpeza",
-    "Investimento - Camera seguranca",
-    "Peca - Cliente",
-    "Pessoal",
-    "Insumo Tubo de cobre",
-    "Insumos gerais",
-    "Pessoal - Seguro carro",
-    "Manutencao Carro",
-    "Insumos",
-    "Placa TKMS",
-    "Ferramentas - Borrifadores",
-    "Manutencao Veiculo",
-    "Ferramenta - Regulador nitrogenio",
-    "Curso Evanderson",
-    "Insumos Gerais",
-    "Ferramenta - Pulverizador",
-    "Ferramenta - chave Inglesa",
-    "Insumo - Cobre",
-    "Ferramenta - Serrote Gesso",
-    "Ferramentas Gerais - Nova caixa",
-    "Sem classificacao",
-  ]
+  const suggestedAccounts = ["Sem classificacao"]
   const accountAlias = (label = "") => {
     const normalized = normalizeDescription(label)
     if (!normalized || /^[\d.,\sR$-]+$/.test(label) || /^[\d.,-]+$/.test(normalized)) return "Sem classificacao"
@@ -2243,59 +2137,7 @@ function DreTab({
     if (direct) return direct
     const compact = normalized.replace(/\s+/g, " ")
     if (compact.includes("AJUSTE TOTAL DA FATURA")) return "Sem classificacao"
-    const aliases: Array<[string, string]> = [
-      ["CURSO COLABORADOR", "Curso Colaborador"],
-      ["ESCOLA DA REFRIGERAC", "Curso Colaborador"],
-      ["MASTERLICENCA", "Investimento TI"],
-      ["INVESTIMENTO TI", "Investimento TI"],
-      ["CHATGPT", "Chatgpt Plus"],
-      ["CAKTOCHATGPT", "Chatgpt Plus"],
-      ["FINCA PINO", "Insumos - Finca pino"],
-      ["19PRODU", "Insumos - Finca pino"],
-      ["7PRODUT", "Insumos - Finca pino"],
-      ["5PRODUT", "Insumos - Finca pino"],
-      ["MASXGEN", "Insumos - Finca pino"],
-      ["TUBO DE COBRE", "Insumos Tubo de Cobre"],
-      ["REFRICRIL", "Insumos Tubo de Cobre"],
-      ["CORRUGADO", "Insumos(fios e corrugados)"],
-      ["ABTMATERIAIS", "Insumos(fios e corrugados)"],
-      ["FONTE", "Fontes para automacao"],
-      ["NAMUREM", "Fontes para automacao"],
-      ["CONTROLADOR", "Controladores para automacao"],
-      ["HORIZON", "Controladores para automacao"],
-      ["UNIFORME", "Uniformes - Jaquetas"],
-      ["IRENASCONFEC", "Uniformes - Jaquetas"],
-      ["CALCA BRIM", "EPI - Calca Brim TKMS"],
-      ["CAMISA BRIM", "EPI - Camisa Brim TKMS"],
-      ["SAPATAO", "EPI - Sapatao"],
-      ["TALABARTE", "EPI - Cinto de seguranca e Talabarte"],
-      ["INFINITEPAY", "Aquisicao maquina de cartao"],
-      ["MAQUINA DE CARTAO", "Aquisicao maquina de cartao"],
-      ["TOKIO MARINE", "Pessoal - Seguro carro"],
-      ["SEGURO CARRO", "Pessoal - Seguro carro"],
-      ["WJ MECANICA", "Manutencao Carro"],
-      ["MANUTENCAO VEICULO", "Manutencao Veiculo"],
-      ["KENNEDY", "Ferramenta"],
-      ["FERRAMENTA", "Ferramenta"],
-      ["DOBRADOR DE TUBO 5 8", "Ferramenta - Dobrador de Tubo 5/8"],
-      ["DOBRADOR DE TUBO 1 2", "Ferramenta - Dobrador de Tubo 1/2"],
-      ["TRena IRWIN".toUpperCase(), "Ferramenta - Trena Irwin"],
-      ["PARAFUSADEIRA", "Ferramentas - Parafusadeira"],
-      ["PULVERIZADOR", "Ferramenta - Pulverizador"],
-      ["CHAVE INGLESA", "Ferramenta - chave Inglesa"],
-      ["SERROTE GESSO", "Ferramenta - Serrote Gesso"],
-      ["PECAS CLIENTE", "Pecas cliente"],
-      ["PECA CLIENTE", "Peca Cliente"],
-      ["PECA PARA CLIENTE", "Peca para cliente"],
-      ["PESSOAL", "Pessoal"],
-      ["LEVEROS", "Pessoal - Compra ar condicionado"],
-      ["HHMCOME", "Pessoal - Torneira Cozinha"],
-      ["BRINDE", "Brinde colaboradores"],
-      ["PLACA TKMS", "Placa TKMS"],
-      ["VALVULA ALIVIO", "Peca TKMS - Valvula alivio"],
-      ["PILHAS", "Pilhas para alarme"],
-      ["INSUMOS GERAIS", "Insumos Gerais"],
-    ]
+    const aliases: Array<[string, string]> = []
     const alias = aliases.find(([search]) => compact.includes(search))?.[1]
     if (alias) return alias
     const generic = compact.replace(/\s*-\s*/g, " ").replace(/\s+/g, " ").trim()
@@ -2307,10 +2149,7 @@ function DreTab({
     year: currentYear,
     month: "todos",
     costCenterId: "todos",
-    workId: "todos",
-    environmentId: "todos",
-    pointId: "todos",
-    serviceTypeId: "todos",
+    clientId: "todos",
     categoryId: "todos",
     subcategoryId: "todos",
     origin: "todos",
@@ -2326,14 +2165,10 @@ function DreTab({
   const costCenters = useMemo(() => Array.isArray(state.costCenters) ? state.costCenters.filter(hasId) : [], [state.costCenters])
   const creditCards = useMemo(() => Array.isArray(state.creditCards) ? state.creditCards.filter(hasId) : [], [state.creditCards])
   const safeTransactions = useMemo(() => dedupeTransactions(rawTransactions), [rawTransactions])
-  const works = useMemo(() => Array.isArray(operationalState.works) ? operationalState.works.filter(hasId) : [], [operationalState.works])
-  const environments = useMemo(() => Array.isArray(operationalState.workEnvironments) ? operationalState.workEnvironments.filter(hasId) : [], [operationalState.workEnvironments])
-  const points = useMemo(() => Array.isArray(operationalState.workPoints) ? operationalState.workPoints.filter(hasId) : [], [operationalState.workPoints])
-  const serviceTypes = useMemo(() => Array.isArray(operationalState.serviceTypes) ? operationalState.serviceTypes.filter(hasId) : [], [operationalState.serviceTypes])
+  const clients = useMemo(() => Array.isArray(operationalState.clients) ? operationalState.clients.filter(hasId) : [], [operationalState.clients])
   const serviceOrders = useMemo(() => Array.isArray(operationalState.serviceOrders) ? operationalState.serviceOrders.filter(hasId) : [], [operationalState.serviceOrders])
   const categoryById = useMemo(() => new Map(categories.map((item) => [item.id, item])), [categories])
   const subcategoryById = useMemo(() => new Map(subcategories.map((item) => [item.id, item])), [subcategories])
-  const workById = useMemo(() => new Map(works.map((item) => [item.id, item])), [works])
   const serviceOrderById = useMemo(() => new Map(serviceOrders.map((item) => [item.id, item])), [serviceOrders])
   const invoiceItemByTransactionId = useMemo(() => {
     const map = new Map<string, CreditCardInvoiceItem>()
@@ -2346,7 +2181,6 @@ function DreTab({
   const categorizedByTransactionId = useMemo(() => new Map(
     safeTransactions.map((item) => [item.id, categorizeTransaction(state, item.description)]),
   ), [safeTransactions, state.categories, state.subcategories, state.categoryRules, state.dreAccounts])
-  const workName = (id: string) => workById.get(id)?.name || "-"
   const invoiceItemFor = (item: FinancialTransaction) => invoiceItemByTransactionId.get(item.id)
   const knownCategoryId = (id = "") => categoryById.has(id) ? id : ""
   const knownSubcategoryId = (id = "") => subcategoryById.has(id) ? id : ""
@@ -2357,12 +2191,6 @@ function DreTab({
     const category = categoryById.get(resolvedCategoryFor(item))
     const subcategory = subcategoryById.get(resolvedSubcategoryFor(item))
     return [category?.name, subcategory?.name, item.description, item.notes].filter(Boolean).join(" ")
-  }
-  const dateFromCardNotes = (item: FinancialTransaction) => {
-    const lineDate = item.notes?.match(/Linha:\s*(\d{2})\/(\d{2})/i)
-    if (!lineDate) return ""
-    const year = item.notes.match(/Fatura\s+\d{1,2}\/(\d{4})/i)?.[1] || filters.year
-    return `${year}-${lineDate[2]}-${lineDate[1]}`
   }
   const labelFromInvoiceLine = (line = "") => {
     const clean = line.replace(/\s+/g, " ").trim()
@@ -2536,17 +2364,13 @@ function DreTab({
 
   const passesDreFilters = (item: FinancialTransaction, realized: boolean) => {
     const date = transactionDate(item, realized ? "Realizado" : "Previsto")
-    const order = serviceOrderById.get(item.serviceOrderId)
     if (!date || !date.startsWith(filters.year)) return false
     if (filters.month !== "todos" && date.slice(5, 7) !== filters.month) return false
     if (filters.costCenterId !== "todos" && item.costCenterId !== filters.costCenterId) return false
-    if (filters.workId !== "todos" && item.workId !== filters.workId) return false
-    if (filters.environmentId !== "todos" && item.environmentId !== filters.environmentId) return false
-    if (filters.pointId !== "todos" && item.pointId !== filters.pointId) return false
+    if (filters.clientId !== "todos" && item.clientId !== filters.clientId) return false
     if (filters.categoryId !== "todos" && resolvedCategoryFor(item) !== filters.categoryId) return false
     if (filters.subcategoryId !== "todos" && resolvedSubcategoryFor(item) !== filters.subcategoryId) return false
     if (filters.origin !== "todos" && item.origin !== filters.origin) return false
-    if (filters.serviceTypeId !== "todos" && order?.serviceTypeId !== filters.serviceTypeId) return false
     return true
   }
 
@@ -2665,7 +2489,7 @@ function DreTab({
         const value = parseMoney(parts[index + 1] || "0")
         if (!value) return
         const month = String(index + 1).padStart(2, "0")
-        newTransactions.push({ id: financeId("ft"), type: category?.type === "entrada" ? "Entrada" : "Saida", description: `Previsto ${account} ${months[index]}/${filters.year}`, categoryId: category!.id, subcategoryId: "", costCenterId: "", dreAccountId: category!.dreAccountId, clientId: "", workId: "", environmentId: "", pointId: "", serviceOrderId: "", providerId: "", vehicleId: "", supplierName: "", competenceDate: `${filters.year}-${month}-01`, dueDate: `${filters.year}-${month}-01`, realizedDate: "", expectedAmount: value, realizedAmount: 0, paymentMethod: "", bankAccountId: "", creditCardId: "", creditCardInvoiceId: "", status: "Previsto", origin: "Importacao Excel", notes: "Previsto importado na DRE", attachmentName: file.name, createdAt: now, updatedAt: now })
+        newTransactions.push({ id: financeId("ft"), type: category?.type === "entrada" ? "Entrada" : "Saida", description: `Previsto ${account} ${months[index]}/${filters.year}`, categoryId: category!.id, subcategoryId: "", costCenterId: "", dreAccountId: category!.dreAccountId, clientId: "", serviceOrderId: "", providerId: "", vehicleId: "", supplierName: "", competenceDate: `${filters.year}-${month}-01`, dueDate: `${filters.year}-${month}-01`, realizedDate: "", expectedAmount: value, realizedAmount: 0, paymentMethod: "", bankAccountId: "", creditCardId: "", creditCardInvoiceId: "", status: "Previsto", origin: "Importacao Excel", notes: "Previsto importado na DRE", attachmentName: file.name, createdAt: now, updatedAt: now })
       })
     })
     commit((current) => ({ ...current, categories: [...newCategories, ...current.categories], transactions: [...newTransactions, ...current.transactions] }))
@@ -2772,10 +2596,7 @@ function DreTab({
         <SelectField label="Ano" value={filters.year} onChange={(value) => updateFilter("year", value)} options={Array.from({ length: 7 }, (_, index) => String(Number(currentYear) - 2 + index)).map((year) => ({ value: year, label: year }))} />
         <SelectField label="Mes" value={filters.month} onChange={(value) => updateFilter("month", value)} options={[{ value: "todos", label: "Todos" }, ...months.map((month, index) => ({ value: String(index + 1).padStart(2, "0"), label: month }))]} />
         <SelectField label="Centro de custo" value={filters.costCenterId} onChange={(value) => updateFilter("costCenterId", value)} options={[{ value: "todos", label: "Todos" }, ...costCenters.map((item) => ({ value: item.id, label: item.name || "Sem nome" }))]} />
-        <SelectField label="Obra/Local" value={filters.workId} onChange={(value) => updateFilter("workId", value)} options={[{ value: "todos", label: "Todas" }, ...works.map((item) => ({ value: item.id, label: item.name || "Sem nome" }))]} />
-        <SelectField label="Ambiente" value={filters.environmentId} onChange={(value) => updateFilter("environmentId", value)} options={[{ value: "todos", label: "Todos" }, ...environments.map((item) => ({ value: item.id, label: `${workName(item.workId)} / ${item.environmentName || "Ambiente"}` }))]} />
-        <SelectField label="Ponto" value={filters.pointId} onChange={(value) => updateFilter("pointId", value)} options={[{ value: "todos", label: "Todos" }, ...points.map((item) => ({ value: item.id, label: `${workName(item.workId)} / ${item.pointName || "Ponto"}` }))]} />
-        <SelectField label="Tipo de servico" value={filters.serviceTypeId} onChange={(value) => updateFilter("serviceTypeId", value)} options={[{ value: "todos", label: "Todos" }, ...serviceTypes.map((item) => ({ value: item.id, label: item.name || "Sem nome" }))]} />
+        <SelectField label="Cliente" value={filters.clientId} onChange={(value) => updateFilter("clientId", value)} options={[{ value: "todos", label: "Todos" }, ...clients.map((item) => ({ value: item.id, label: item.name || "Sem nome" }))]} />
         <SelectField label="Categoria" value={filters.categoryId} onChange={(value) => updateFilter("categoryId", value)} options={[{ value: "todos", label: "Todas" }, ...categories.map((item) => ({ value: item.id, label: item.name || "Sem nome" }))]} />
         <SelectField label="Subcategoria" value={filters.subcategoryId} onChange={(value) => updateFilter("subcategoryId", value)} options={[{ value: "todos", label: "Todas" }, ...subcategories.map((item) => ({ value: item.id, label: item.name || "Sem nome" }))]} />
         <SelectField label="Origem" value={filters.origin} onChange={(value) => updateFilter("origin", value)} options={[{ value: "todos", label: "Todas" }, ...Array.from(new Set(safeTransactions.map((item) => item.origin).filter(Boolean))).map((origin) => ({ value: origin, label: origin }))]} />
@@ -2957,9 +2778,9 @@ function DreTab({
           </div>
         </div>
       ) : (
-        <DataTable headers={["Data", "Descricao", "Origem", "Categoria", "Subcategoria", "Valor", "Obra/Local", "OS", "Cartao", "Acoes"]} empty={!detail?.rows.length}>{detail?.rows.map((item) => {
+        <DataTable headers={["Data", "Descricao", "Origem", "Categoria", "Subcategoria", "Valor", "Cliente", "OS", "Cartao", "Acoes"]} empty={!detail?.rows.length}>{detail?.rows.map((item) => {
           const editable = canEditTransaction(item)
-          return <TableRow key={item.id}><TableCell>{formatDate(transactionDate(item, isRealized(item) ? "Realizado" : "Previsto"))}</TableCell><TableCell>{item.description}</TableCell><TableCell>{item.origin}</TableCell><TableCell>{categoryName(state, resolvedCategoryFor(item))}</TableCell><TableCell>{subcategoryName(state, resolvedSubcategoryFor(item))}</TableCell><TableCell>{money(isRealized(item) ? signedAmount(item, "Realizado") : signedAmount(item, "Previsto"))}</TableCell><TableCell>{workName(item.workId)}</TableCell><TableCell>{serviceOrderById.get(item.serviceOrderId)?.orderNumber || "-"}</TableCell><TableCell>{creditCards.find((card) => card.id === item.creditCardId)?.name || "-"}</TableCell><TableCell><Button size="sm" variant="outline" disabled={!editable} title={editable ? "Editar lancamento" : editRestrictionMessage} onClick={() => openTransactionEditor(item)}>Editar</Button></TableCell></TableRow>
+          return <TableRow key={item.id}><TableCell>{formatDate(transactionDate(item, isRealized(item) ? "Realizado" : "Previsto"))}</TableCell><TableCell>{item.description}</TableCell><TableCell>{item.origin}</TableCell><TableCell>{categoryName(state, resolvedCategoryFor(item))}</TableCell><TableCell>{subcategoryName(state, resolvedSubcategoryFor(item))}</TableCell><TableCell>{money(isRealized(item) ? signedAmount(item, "Realizado") : signedAmount(item, "Previsto"))}</TableCell><TableCell>{opNames.client(item.clientId)}</TableCell><TableCell>{serviceOrderById.get(item.serviceOrderId)?.orderNumber || "-"}</TableCell><TableCell>{creditCards.find((card) => card.id === item.creditCardId)?.name || "-"}</TableCell><TableCell><Button size="sm" variant="outline" disabled={!editable} title={editable ? "Editar lancamento" : editRestrictionMessage} onClick={() => openTransactionEditor(item)}>Editar</Button></TableCell></TableRow>
         })}</DataTable>
       )}
     </FormSheet>
@@ -3089,9 +2910,6 @@ function BankStatementImport({ state, save }: { state: FinancialState; save: (ne
           costCenterId: category?.costCenterId || "",
           dreAccountId: category?.dreAccountId || "",
           clientId: "",
-          workId: "",
-          environmentId: "",
-          pointId: "",
           serviceOrderId: "",
           providerId: "",
           vehicleId: "",

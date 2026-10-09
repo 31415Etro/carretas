@@ -14,7 +14,6 @@ function normalizeMaterial(input: any) {
     unit: input.unit || "unidade",
     internal_code: input.internalCode || input.internal_code || "",
     minimum_stock: Number(input.minimumStock ?? input.minimum_stock ?? 0),
-    composes_kit: Boolean(input.composesKit ?? input.composes_kit ?? false),
     status: input.status || "Ativo",
     notes: input.notes || "",
     ...materialErpColumns(input),
@@ -30,7 +29,6 @@ function toMaterial(row: any) {
     internalCode: row.internal_code || "",
     minimumStock: Number(row.minimum_stock || 0),
     currentStock: Number(row.current_stock || 0),
-    composesKit: Boolean(row.composes_kit),
     status: row.status || "Ativo",
     notes: row.notes || "",
     ...materialErpFields(row),
@@ -61,17 +59,6 @@ export async function GET(request: Request) {
     if (role === "client") return NextResponse.json({ error: "Acesso restrito ao estoque." }, { status: 403 })
     const supabase = createAdminClient()
     const url = new URL(request.url)
-    const kitOptions = url.searchParams.get("kitOptions") === "1"
-    if (kitOptions) {
-      const rows = await readAllPages<any>((from, to) => supabase
-        .from("materials")
-        .select("*")
-        .eq("composes_kit", true)
-        .order("name")
-        .order("id")
-        .range(from, to))
-      return NextResponse.json({ materials: rows.map(toMaterial), count: rows.length })
-    }
 
     const hasPage = url.searchParams.has("limit")
     if (!hasPage) {

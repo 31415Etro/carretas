@@ -176,7 +176,7 @@ export function AsaasChargeButton({ state }: { state: OperationalState }) {
   const [result, setResult] = useState<ApiResult | null>(null)
   const [form, setForm] = useState({ account: "services" as AccountCode, clientId: "", serviceOrderId: "", billingType: "UNDEFINED", value: "", dueDate: futureDate(7), description: "", installmentCount: "1", idempotencyKey: newKey() })
   const clients = state.clients.filter((item) => item.status === "Ativo").map((item) => ({ value: item.id, label: item.name }))
-  const orders = state.serviceOrders.filter((item) => !form.clientId || item.clientId === form.clientId).map((item) => ({ value: item.id, label: `${item.orderNumber} - ${item.description || item.orderType}` }))
+  const orders = state.serviceOrders.filter((item) => !form.clientId || item.clientId === form.clientId).map((item) => ({ value: item.id, label: `${item.orderNumber} - ${item.description || item.orderKind}` }))
   async function submit() {
     setLoading(true); setError(""); setResult(null)
     try {
@@ -233,7 +233,7 @@ export function AsaasInvoicePanel({ state }: { state: OperationalState }) {
   const [documents, setDocuments] = useState<Array<Record<string, any>>>([])
   const [form, setForm] = useState({ kind: "service", clientId: "", serviceOrderId: "", catalogId: "", itemCode: "", itemName: "", value: "", quantity: "1", effectiveDate: today(), description: "", observations: "", authorizeNow: true })
   const clients = state.clients.filter((item) => item.status === "Ativo").map((item) => ({ value: item.id, label: item.name }))
-  const orders = state.serviceOrders.filter((item) => !form.clientId || item.clientId === form.clientId).map((item) => ({ value: item.id, label: `${item.orderNumber} - ${item.description || item.orderType}` }))
+  const orders = state.serviceOrders.filter((item) => !form.clientId || item.clientId === form.clientId).map((item) => ({ value: item.id, label: `${item.orderNumber} - ${item.description || item.orderKind}` }))
   const clientName = (id: string) => state.clients.find((item) => item.id === id)?.name || "-"
   async function loadDocuments() {
     try { const payload = await requestJson("/api/integrations/asaas/status", { cache: "no-store" }); setDocuments(payload.fiscalDocuments || []) } catch { setDocuments([]) }

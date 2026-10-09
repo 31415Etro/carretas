@@ -61,7 +61,7 @@ export async function asaasRequest<T>(code: AsaasAccountCode, path: string, init
       headers: {
         accept: "application/json",
         "content-type": "application/json",
-        "user-agent": "mc-climatizacao/1.0",
+        "user-agent": "erp-carretas/1.0",
         access_token: config.apiKey,
         ...(init.headers || {}),
       },

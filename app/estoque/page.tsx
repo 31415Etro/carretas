@@ -1,4 +1,4 @@
-import { StockPage } from "@/components/operations/mvp-pages"
+import { StockPage } from "@/components/operations/stock-page"
 
 export default function EstoqueRoute() {
   return <StockPage />

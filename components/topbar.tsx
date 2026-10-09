@@ -1,6 +1,6 @@
 "use client"
 
-import Image from "next/image"
+import { BrandMark } from "@/components/shell/brand-mark"
 import Link from "next/link"
 import { Bell, Building2, Check, ChevronsUpDown, LogOut, Settings } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -29,14 +29,7 @@ export function Topbar() {
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="flex h-14 items-center justify-between gap-3 px-3 md:h-16 md:px-6">
         <div className="flex min-w-0 items-center gap-3 md:gap-6">
-          <Image
-            src="/images/azul-20abstrato-20onda-20criativo-20capa-20para-20ebook-20-281000-20x-201000-20mm-29-20-288-29.png"
-            alt="Dexo"
-            width={260}
-            height={78}
-            className="h-14 w-auto md:h-20"
-            priority
-          />
+          <BrandMark className="text-xl md:text-2xl" />
         </div>
 
         <div className="flex items-center gap-1 md:gap-3">

@@ -1,4 +1,4 @@
-export const FINANCIAL_STORAGE_KEY = "mc-finance.v1"
+export const FINANCIAL_STORAGE_KEY = "carretas-finance.v1"
 
 export type FinancialType = "Entrada" | "Saida"
 export type FinancialStatus = "Previsto" | "Realizado" | "Vencido" | "Cancelado"
@@ -14,9 +14,6 @@ export interface FinancialTransaction {
   costCenterId: string
   dreAccountId: string
   clientId: string
-  workId: string
-  environmentId: string
-  pointId: string
   serviceOrderId: string
   providerId: string
   vehicleId: string
@@ -47,9 +44,6 @@ export interface AccountsPayable {
   subcategoryId: string
   costCenterId: string
   dreAccountId: string
-  workId: string
-  environmentId: string
-  pointId: string
   serviceOrderId: string
   providerId: string
   vehicleId: string
@@ -90,9 +84,6 @@ export interface AccountsPayable {
 export interface AccountsReceivable {
   id: string
   clientId: string
-  workId: string
-  environmentId: string
-  pointId: string
   serviceOrderId: string
   description: string
   categoryId: string
@@ -235,7 +226,6 @@ export interface CreditCardInvoiceItem {
   reviewStatus: "Pendente" | "Conferido" | "Ignorado" | "Duplicado"
   linkedTransactionId: string
   linkedServiceOrderId: string
-  linkedWorkId: string
   linkedVehicleId: string
   linkedProviderId: string
   sourcePage: number
@@ -424,39 +414,47 @@ function defaultDreAccounts(now: string): DreAccount[] {
 export function defaultFinancialState(): FinancialState {
   const now = financeNow()
   const dre = defaultDreAccounts(now)
+  const category = (id: string, name: string, type: FinancialCategory["type"], dreAccountId: string): FinancialCategory => ({ id, name, type, dreAccountId, status: "Ativo", createdAt: now, updatedAt: now })
+  const subcategory = (id: string, categoryId: string, name: string): FinancialSubcategory => ({ id, categoryId, name, status: "Ativo", createdAt: now, updatedAt: now })
   const categories: FinancialCategory[] = [
-    { id: "cat-receita-servicos", name: "Receita de servicos", type: "entrada", dreAccountId: "dre-receita-bruta", status: "Ativo", createdAt: now, updatedAt: now },
-    { id: "cat-insumos", name: "Insumos", type: "saida", dreAccountId: "dre-materiais", status: "Ativo", createdAt: now, updatedAt: now },
-    { id: "cat-veiculos", name: "Veiculos", type: "saida", dreAccountId: "dre-veiculos", status: "Ativo", createdAt: now, updatedAt: now },
-    { id: "cat-ti", name: "TI e Sistemas", type: "saida", dreAccountId: "dre-ti", status: "Ativo", createdAt: now, updatedAt: now },
-    { id: "cat-ferramentas", name: "Ferramentas", type: "saida", dreAccountId: "dre-ferramentas", status: "Ativo", createdAt: now, updatedAt: now },
-    { id: "cat-investimento", name: "Investimento", type: "saida", dreAccountId: "dre-outras", status: "Ativo", createdAt: now, updatedAt: now },
-    { id: "cat-pessoal", name: "Pessoal", type: "saida", dreAccountId: "dre-pessoal", status: "Ativo", createdAt: now, updatedAt: now },
-    { id: "cat-epis", name: "EPI", type: "saida", dreAccountId: "dre-epis", status: "Ativo", createdAt: now, updatedAt: now },
-    { id: "cat-pecas-cliente", name: "Peca para cliente", type: "saida", dreAccountId: "dre-materiais", status: "Ativo", createdAt: now, updatedAt: now },
-    { id: "cat-curso", name: "Curso Colaborador", type: "saida", dreAccountId: "dre-pessoal", status: "Ativo", createdAt: now, updatedAt: now },
+    category("cat-receita-carretas", "Venda de carretas", "entrada", "dre-receita-bruta"),
+    category("cat-receita-pecas", "Venda de pecas e acessorios", "entrada", "dre-receita-bruta"),
+    category("cat-receita-servicos", "Receita de servicos", "entrada", "dre-receita-bruta"),
+    category("cat-insumos", "Materia-prima e componentes", "saida", "dre-materiais"),
+    category("cat-pecas-cliente", "Pecas para revenda", "saida", "dre-materiais"),
+    category("cat-ferramentas", "Ferramentas e maquinas", "saida", "dre-ferramentas"),
+    category("cat-epis", "EPI e uniformes", "saida", "dre-epis"),
+    category("cat-pessoal", "Pessoal", "saida", "dre-pessoal"),
+    category("cat-veiculos", "Frota e veiculos", "saida", "dre-veiculos"),
+    category("cat-ti", "TI e sistemas", "saida", "dre-ti"),
+    category("cat-investimento", "Investimento", "saida", "dre-outras"),
+    category("cat-curso", "Treinamento", "saida", "dre-pessoal"),
   ]
   const subcategories: FinancialSubcategory[] = [
-    { id: "sub-instalacao", categoryId: "cat-receita-servicos", name: "Instalacao", status: "Ativo", createdAt: now, updatedAt: now },
-    { id: "sub-refrigeracao", categoryId: "cat-insumos", name: "Materiais de refrigeracao", status: "Ativo", createdAt: now, updatedAt: now },
-    { id: "sub-finca-pino", categoryId: "cat-insumos", name: "Finca pino", status: "Ativo", createdAt: now, updatedAt: now },
-    { id: "sub-corrugados", categoryId: "cat-insumos", name: "Corrugados", status: "Ativo", createdAt: now, updatedAt: now },
-    { id: "sub-tubo-cobre", categoryId: "cat-insumos", name: "Tubo de Cobre", status: "Ativo", createdAt: now, updatedAt: now },
-    { id: "sub-fontes", categoryId: "cat-insumos", name: "Fontes para automacao", status: "Ativo", createdAt: now, updatedAt: now },
-    { id: "sub-controladores", categoryId: "cat-insumos", name: "Controladores para automacao", status: "Ativo", createdAt: now, updatedAt: now },
-    { id: "sub-seguro", categoryId: "cat-veiculos", name: "Seguro", status: "Ativo", createdAt: now, updatedAt: now },
-    { id: "sub-manutencao-carro", categoryId: "cat-veiculos", name: "Manutencao", status: "Ativo", createdAt: now, updatedAt: now },
-    { id: "sub-chatgpt", categoryId: "cat-ti", name: "ChatGPT Plus", status: "Ativo", createdAt: now, updatedAt: now },
-    { id: "sub-automacao", categoryId: "cat-ti", name: "Investimento TI", status: "Ativo", createdAt: now, updatedAt: now },
-    { id: "sub-ferramentas", categoryId: "cat-ferramentas", name: "Ferramenta", status: "Ativo", createdAt: now, updatedAt: now },
-    { id: "sub-uniformes", categoryId: "cat-epis", name: "Uniformes", status: "Ativo", createdAt: now, updatedAt: now },
-    { id: "sub-sapatao", categoryId: "cat-epis", name: "Sapatao", status: "Ativo", createdAt: now, updatedAt: now },
-    { id: "sub-curso", categoryId: "cat-curso", name: "Curso Colaborador", status: "Ativo", createdAt: now, updatedAt: now },
+    subcategory("sub-venda-carreta-graneleira", "cat-receita-carretas", "Graneleiras"),
+    subcategory("sub-venda-carreta-carga-seca", "cat-receita-carretas", "Carga seca e baus"),
+    subcategory("sub-venda-carreta-prancha", "cat-receita-carretas", "Pranchas e plataformas"),
+    subcategory("sub-instalacao", "cat-receita-servicos", "Manutencao e reparos"),
+    subcategory("sub-chapas-perfis", "cat-insumos", "Chapas e perfis metalicos"),
+    subcategory("sub-eixos-suspensao", "cat-insumos", "Eixos e suspensao"),
+    subcategory("sub-pneus-rodas", "cat-insumos", "Pneus e rodas"),
+    subcategory("sub-eletrica-iluminacao", "cat-insumos", "Eletrica e iluminacao"),
+    subcategory("sub-tintas-acabamento", "cat-insumos", "Tintas e acabamento"),
+    subcategory("sub-parafusos-fixacao", "cat-insumos", "Parafusos e fixacao"),
+    subcategory("sub-seguro", "cat-veiculos", "Seguro"),
+    subcategory("sub-manutencao-carro", "cat-veiculos", "Manutencao"),
+    subcategory("sub-combustivel", "cat-veiculos", "Combustivel"),
+    subcategory("sub-software", "cat-ti", "Software e licencas"),
+    subcategory("sub-ferramentas", "cat-ferramentas", "Ferramentas"),
+    subcategory("sub-uniformes", "cat-epis", "Uniformes"),
+    subcategory("sub-calcados", "cat-epis", "Calcados de seguranca"),
+    subcategory("sub-curso", "cat-curso", "Cursos e certificacoes"),
   ]
   const costCenters: CostCenter[] = [
-    { id: "cc-operacao", name: "Operacao", description: "Servicos em campo", status: "Ativo", createdAt: now, updatedAt: now },
+    { id: "cc-operacao", name: "Producao", description: "Fabricacao e montagem de carretas", status: "Ativo", createdAt: now, updatedAt: now },
     { id: "cc-admin", name: "Administrativo", description: "Administracao", status: "Ativo", createdAt: now, updatedAt: now },
     { id: "cc-frota", name: "Frota", description: "Veiculos", status: "Ativo", createdAt: now, updatedAt: now },
+    { id: "cc-comercial", name: "Comercial", description: "Vendas e relacionamento com clientes", status: "Ativo", createdAt: now, updatedAt: now },
   ]
   const paymentConditions: PaymentCondition[] = [
     { id: "cond-a-vista", name: "A vista", installments: 1, firstDueDays: 0, intervalDays: 0, paymentMethod: "Pix", status: "Ativo", createdAt: now, updatedAt: now },
@@ -485,50 +483,8 @@ function makeRule(now: string, priority: number, searchText: string, categoryId:
   return { id: `rule-${slug(searchText) || priority}`, name: searchText, priority, searchText, normalizedSearchText: normalizeDescription(searchText), comparisonType: "Contem", categoryId, subcategoryId, costCenterId, dreAccountId, creditCardId: "", cardHolder: "", defaultConfidence: confidence, active: true, notes: "Regra padrao para importacao de fatura", createdAt: now, updatedAt: now }
 }
 
-function defaultCategoryRules(now: string): CategoryRule[] {
-  return [
-    makeRule(now, 1, "REFRICRIL", "cat-insumos", "sub-tubo-cobre", "cc-operacao", "dre-materiais"),
-    makeRule(now, 2, "QUALIPECAS", "cat-pecas-cliente", "", "cc-operacao", "dre-materiais"),
-    makeRule(now, 3, "QUALIPECASV", "cat-pecas-cliente", "", "cc-operacao", "dre-materiais"),
-    makeRule(now, 4, "FRIOVIX", "cat-insumos", "sub-refrigeracao", "cc-operacao", "dre-materiais"),
-    makeRule(now, 5, "MASXGEN", "cat-insumos", "sub-finca-pino", "cc-operacao", "dre-materiais"),
-    makeRule(now, 6, "5PRODUT", "cat-insumos", "sub-finca-pino", "cc-operacao", "dre-materiais"),
-    makeRule(now, 7, "7PRODUT", "cat-insumos", "sub-finca-pino", "cc-operacao", "dre-materiais"),
-    makeRule(now, 8, "19PRODU", "cat-insumos", "sub-finca-pino", "cc-operacao", "dre-materiais"),
-    makeRule(now, 9, "HORIZON", "cat-insumos", "sub-controladores", "cc-operacao", "dre-materiais"),
-    makeRule(now, 10, "NAMUREM", "cat-insumos", "sub-fontes", "cc-operacao", "dre-materiais"),
-    makeRule(now, 11, "IRENASCONFEC", "cat-epis", "sub-uniformes", "cc-operacao", "dre-epis"),
-    makeRule(now, 12, "CHATGPT", "cat-ti", "sub-chatgpt", "cc-admin", "dre-ti"),
-    makeRule(now, 13, "CAKTOCHATGPT", "cat-ti", "sub-chatgpt", "cc-admin", "dre-ti"),
-    makeRule(now, 14, "INFINITEPAY", "cat-investimento", "", "cc-admin", "dre-outras"),
-    makeRule(now, 15, "ESCOLA DA REFRIGERAC", "cat-curso", "sub-curso", "cc-admin", "dre-pessoal"),
-    makeRule(now, 16, "TOKIO MARINE", "cat-veiculos", "sub-seguro", "cc-frota", "dre-veiculos"),
-    makeRule(now, 17, "WJ MECANICA", "cat-veiculos", "sub-manutencao-carro", "cc-frota", "dre-veiculos"),
-    makeRule(now, 18, "FERRAMENTAS KENNEDY", "cat-ferramentas", "sub-ferramentas", "cc-operacao", "dre-ferramentas"),
-    makeRule(now, 19, "KENNEDY", "cat-ferramentas", "sub-ferramentas", "cc-operacao", "dre-ferramentas"),
-    makeRule(now, 20, "ABTMATERIAIS", "cat-insumos", "sub-corrugados", "cc-operacao", "dre-materiais"),
-    makeRule(now, 21, "A B T COML ELETRICA", "cat-insumos", "sub-corrugados", "cc-operacao", "dre-materiais"),
-    makeRule(now, 22, "MASTERLICENCA", "cat-ti", "sub-automacao", "cc-admin", "dre-ti"),
-    makeRule(now, 23, "REEMBOL", "cat-ferramentas", "sub-ferramentas", "cc-operacao", "dre-ferramentas"),
-    makeRule(now, 24, "MERCADOLIVRE", "cat-insumos", "sub-finca-pino", "cc-operacao", "dre-materiais", "Media"),
-    makeRule(now, 25, "MERCADOPAGO", "cat-insumos", "sub-finca-pino", "cc-operacao", "dre-materiais", "Media"),
-    makeRule(now, 26, "LEVEROS", "cat-pessoal", "", "cc-admin", "dre-pessoal"),
-    makeRule(now, 27, "HHMCOME", "cat-pessoal", "", "cc-admin", "dre-pessoal"),
-    makeRule(now, 28, "FRONTEC", "cat-insumos", "", "cc-operacao", "dre-materiais"),
-    makeRule(now, 29, "METAJUR", "cat-ferramentas", "sub-ferramentas", "cc-operacao", "dre-ferramentas"),
-    makeRule(now, 30, "TURKIAC", "cat-insumos", "sub-finca-pino", "cc-operacao", "dre-materiais"),
-    makeRule(now, 31, "DEROMUL", "cat-ferramentas", "sub-ferramentas", "cc-operacao", "dre-ferramentas"),
-    makeRule(now, 32, "VISUALS", "cat-epis", "sub-uniformes", "cc-operacao", "dre-epis"),
-    makeRule(now, 33, "MUNDIAL", "cat-insumos", "", "cc-operacao", "dre-materiais"),
-    makeRule(now, 34, "WAYCORE", "cat-investimento", "", "cc-admin", "dre-outras"),
-    makeRule(now, 35, "EMEACOM", "cat-insumos", "sub-corrugados", "cc-operacao", "dre-materiais"),
-    makeRule(now, 36, "KABUM", "cat-investimento", "", "cc-admin", "dre-outras"),
-    makeRule(now, 37, "LUMATEC", "cat-insumos", "sub-controladores", "cc-operacao", "dre-materiais"),
-    makeRule(now, 38, "SMARTNO", "cat-insumos", "sub-controladores", "cc-operacao", "dre-materiais"),
-    makeRule(now, 39, "FELIMAO", "cat-insumos", "sub-finca-pino", "cc-operacao", "dre-materiais"),
-    makeRule(now, 40, "SHOPEE", "cat-ferramentas", "sub-ferramentas", "cc-operacao", "dre-ferramentas"),
-    makeRule(now, 41, "FLAVIOV", "cat-epis", "sub-sapatao", "cc-operacao", "dre-epis"),
-  ]
+function defaultCategoryRules(_now: string): CategoryRule[] {
+  return []
 }
 
 export function loadFinancialState(): FinancialState {
@@ -708,9 +664,6 @@ export function transactionFromPayable(item: AccountsPayable): FinancialTransact
     costCenterId: item.costCenterId,
     dreAccountId: item.dreAccountId,
     clientId: "",
-    workId: item.workId,
-    environmentId: item.environmentId,
-    pointId: item.pointId,
     serviceOrderId: item.serviceOrderId,
     providerId: item.providerId,
     vehicleId: item.vehicleId,
@@ -744,9 +697,6 @@ export function transactionFromReceivable(item: AccountsReceivable): FinancialTr
     costCenterId: item.costCenterId,
     dreAccountId: item.dreAccountId,
     clientId: item.clientId,
-    workId: item.workId,
-    environmentId: item.environmentId,
-    pointId: item.pointId,
     serviceOrderId: item.serviceOrderId,
     providerId: "",
     vehicleId: "",
@@ -807,83 +757,6 @@ export function categorizeTransaction(state: FinancialState, description: string
   return { categoryId: "", subcategoryId: "", costCenterId: "", dreAccountId: resolveDreAccountId(state, "dre-sem-classificacao"), ruleId: "", confidence: "Sem categoria" as const, status: "Sem categoria" as const }
 }
 
-async function parseCreditCardInvoicePdfLegacy(file: File, state: FinancialState, creditCardId: string, fallback: { referenceMonth: string; referenceYear: string; dueDate: string; holderName: string }) {
-  let rawText = ""
-  try {
-    rawText = await file.text()
-  } catch {
-    rawText = ""
-  }
-  // PDF sem texto selecionável: segue vazio para a tela pedir o texto colado,
-  // em vez de importar dados fictícios.
-  if (!rawText || rawText.trim().length < 20) rawText = ""
-  const holderMatch = rawText.match(/Titular:\s*(.+)/i)
-  const accountMatch = rawText.match(/Conta Cart[aã]o:\s*(\d+)/i)
-  const dueMatch = rawText.match(/Vencimento:\s*(\d{2}\/\d{2}\/\d{4})/i)
-  let currentHolder = holderMatch?.[1]?.trim() || fallback.holderName || ""
-  let lastDigits = state.creditCards.find((card) => card.id === creditCardId)?.cardLastDigits || ""
-  const items: CreditCardInvoiceItem[] = []
-  const lines = rawText.split(/\r?\n/)
-  lines.forEach((line, index) => {
-    const holderBlock = line.match(/GASTOS DE (.+)\((\d{4})\)/i)
-    if (holderBlock) {
-      currentHolder = holderBlock[1].trim()
-      lastDigits = holderBlock[2]
-      return
-    }
-    if (/saldo anterior|pagamento em conta|total|limite|juros|http|pagina|gerar boleto|imprimir/i.test(line)) return
-    const match = line.trim().match(/^(\d{2}\/\d{2})\s+(.+?)\s+(?:(\d{2})\/(\d{2})\s+)?([A-ZÀ-Ú\s]{3,})\s+(-?[\d.]+,\d{2})$/i)
-    if (!match) return
-    const [, date, description, currentInstallment, totalInstallments, city, amount] = match
-    const categorization = categorizeTransaction(state, description)
-    items.push({
-      id: financeId("ccitem"),
-      invoiceId: "",
-      purchaseDate: `${fallback.referenceYear || new Date().getFullYear()}-${date.slice(3, 5)}-${date.slice(0, 2)}`,
-      originalDescription: description.trim(),
-      normalizedDescription: normalizeDescription(description),
-      currentInstallment: Number(currentInstallment || 1),
-      totalInstallments: Number(totalInstallments || 1),
-      city: city.trim(),
-      cardHolder: currentHolder,
-      cardLastDigits: lastDigits,
-      amount: parseMoney(amount),
-      categoryId: categorization.categoryId,
-      subcategoryId: categorization.subcategoryId,
-      costCenterId: categorization.costCenterId,
-      dreAccountId: categorization.dreAccountId,
-      categoryRuleId: categorization.ruleId,
-      categoryConfidence: categorization.confidence as any,
-      categoryStatus: categorization.status as any,
-      reviewStatus: categorization.confidence === "Alta" ? "Conferido" : "Pendente",
-      linkedTransactionId: "",
-      linkedServiceOrderId: "",
-      linkedWorkId: "",
-      linkedVehicleId: "",
-      linkedProviderId: "",
-      sourcePage: 1,
-      rawLine: line,
-      extractionConfidence: 0.86,
-      notes: "",
-      createdAt: financeNow(),
-      updatedAt: financeNow(),
-    })
-  })
-  const total = items.reduce((sum, item) => sum + item.amount, 0)
-  return {
-    invoice: {
-      referenceMonth: fallback.referenceMonth,
-      referenceYear: fallback.referenceYear,
-      dueDate: dueMatch?.[1] ? dueMatch[1].split("/").reverse().join("-") : fallback.dueDate,
-      holderName: currentHolder,
-      cardAccount: accountMatch?.[1] || "",
-      totalAmount: total,
-    },
-    items,
-    rawText,
-    warnings: rawText ? [] : ["Texto do PDF incompleto. OCR avancado ficara para a proxima etapa."],
-  }
-}
 
 function categoryFromImportedLabel(state: FinancialState, label?: string) {
   if (!label) return null
@@ -1110,7 +983,6 @@ export async function parseCreditCardInvoicePdf(file: File, state: FinancialStat
       reviewStatus: parsed.reviewStatus as any,
       linkedTransactionId: "",
       linkedServiceOrderId: "",
-      linkedWorkId: "",
       linkedVehicleId: "",
       linkedProviderId: "",
       sourcePage: 1,

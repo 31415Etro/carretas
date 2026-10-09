@@ -16,7 +16,7 @@ export const itemTypeOptions = [
 ]
 
 const materialNumberFields = ["minimumStock", "maximumStock", "reorderPoint", "currentStock", "grossWeight", "netWeight", "height", "width", "length", "costPrice", "salePrice", "warrantyMonths"] as const
-const materialBooleanFields = ["composesKit", "controlsLot", "controlsSerial", "controlsExpiry", "controlsStock", "allowsSale"] as const
+const materialBooleanFields = ["controlsLot", "controlsSerial", "controlsExpiry", "controlsStock", "allowsSale"] as const
 
 export const emptyMaterialForm: Record<string, any> = {
   itemType: "Produto", name: "", description: "", category: "", subcategory: "", brand: "", manufacturer: "", unit: "UN", internalCode: "", barcode: "",
@@ -24,7 +24,7 @@ export const emptyMaterialForm: Record<string, any> = {
   minimumStock: "0", maximumStock: "0", currentStock: "0", grossWeight: "0", netWeight: "0", height: "0", width: "0", length: "0", location: "",
   costPrice: "0", salePrice: "0", supplierId: "", supplierCode: "", warrantyMonths: "0", photoUrl: "", technicalSheetUrl: "",
   warehouseId: "", reorderPoint: "0", controlsLot: false, controlsSerial: false, controlsExpiry: false, controlsStock: true, allowsSale: true,
-  composesKit: false, status: "Ativo", notes: "",
+  status: "Ativo", notes: "",
 }
 
 function stockOf(material: Material) {
@@ -148,7 +148,6 @@ export function MaterialFormFields({ material, setMaterial, suppliers, existing,
         </div>
         {existing ? <p className="text-xs text-muted-foreground">O saldo muda apenas por movimentação de estoque (entrada, saída, transferência, ajuste, produção...).</p> : null}
         <div className="grid gap-3 md:grid-cols-2">
-          {toggle("composesKit", "Compõe kit?", "Se marcado, aparece no cadastro de kits do estoque.")}
           {toggle("controlsLot", "Controla lote", "Exige número do lote nas entradas.")}
           {toggle("controlsSerial", "Controla número de série", "Exige número de série em toda movimentação.")}
           {toggle("controlsExpiry", "Controla validade", "Exige data de validade nas entradas.")}

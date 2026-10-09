@@ -102,7 +102,7 @@ export async function POST(request: Request) {
       payment: body.paymentId || undefined,
       customer: body.paymentId ? undefined : customerId,
       serviceDescription: body.description || order?.description || itemName || `Servicos para ${client.corporate_name || client.name}`,
-      observations: body.observations || "Emissao pelo sistema M&C Climatizacao.",
+      observations: body.observations || "Emissao pelo ERP Carretas.",
       value,
       deductions: Number(body.deductions || 0),
       effectiveDate,

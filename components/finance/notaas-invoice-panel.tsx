@@ -65,7 +65,7 @@ export function NotaAsInvoicePanel({ state }: { state: OperationalState }) {
   const [error, setError] = useState("")
   const [message, setMessage] = useState("")
   const clients = state.clients.filter((item) => item.status === "Ativo").map((item) => ({ value: item.id, label: `${item.name}${item.document ? ` - ${item.document}` : ""}` }))
-  const orders = state.serviceOrders.filter((item) => !form.clientId || item.clientId === form.clientId).map((item) => ({ value: item.id, label: `${item.orderNumber} - ${item.description || item.orderType}` }))
+  const orders = state.serviceOrders.filter((item) => !form.clientId || item.clientId === form.clientId).map((item) => ({ value: item.id, label: `${item.orderNumber} - ${item.description || item.orderKind}` }))
   const materials = state.materials.filter((item) => item.status === "Ativo").map((item) => ({ value: item.id, label: `${item.internalCode || "Sem codigo"} - ${item.name}` }))
   const clientName = (id: string) => state.clients.find((item) => item.id === id)?.name || "-"
 
@@ -125,13 +125,13 @@ export function NotaAsInvoicePanel({ state }: { state: OperationalState }) {
   }
 
   return <div className="space-y-4">
-    <SectionCard title="Emitir nota fiscal" description="NFS-e de servicos pela empresa Maicon e NF-e de produtos pela empresa M&M, processadas pelo NotaAS.">
+    <SectionCard title="Emitir nota fiscal" description="NFS-e de servicos e NF-e de produtos, processadas pelo NotaAS.">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border bg-muted/20 p-3 text-sm">
         <div className="flex flex-wrap gap-x-4 gap-y-1"><span>NFS-e: <strong>{configuration.services ? "configurada" : "sem chave"}</strong></span><span>NF-e: <strong>{configuration.materials ? "configurada" : "sem chave"}</strong></span></div>
         <Button type="button" size="sm" variant="outline" onClick={testConnection} disabled={loading}><PlugZap className="h-4 w-4" />Testar conexao</Button>
       </div>
       <div className="grid gap-4 md:grid-cols-2">
-        <Field label="Tipo de nota"><Select value={form.kind} onValueChange={(kind) => { setForm({ ...initialForm, kind: kind as FiscalKind, clientId: form.clientId }); setConfirmed(false); setError(""); setMessage("") }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="service">NFS-e de servicos - Maicon</SelectItem><SelectItem value="material">NF-e de produtos - M&M</SelectItem></SelectContent></Select></Field>
+        <Field label="Tipo de nota"><Select value={form.kind} onValueChange={(kind) => { setForm({ ...initialForm, kind: kind as FiscalKind, clientId: form.clientId }); setConfirmed(false); setError(""); setMessage("") }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="service">NFS-e de servicos</SelectItem><SelectItem value="material">NF-e de produtos</SelectItem></SelectContent></Select></Field>
         <Field label="Cliente"><SearchableSelect value={form.clientId} onValueChange={(clientId) => setForm({ ...form, clientId, serviceOrderId: "" })} options={clients} placeholder="Selecione o cliente" /></Field>
         <Field label="OS vinculada (opcional)"><SearchableSelect value={form.serviceOrderId} onValueChange={(serviceOrderId) => { const order = state.serviceOrders.find((item) => item.id === serviceOrderId); setForm({ ...form, serviceOrderId, clientId: order?.clientId || form.clientId, value: order?.totalAmount ? String(order.totalAmount) : form.value, description: order?.description || form.description }) }} options={orders} placeholder="Nota avulsa" /></Field>
         <Field label="Data de emissao"><Input type="date" value={form.effectiveDate} onChange={(event) => setForm({ ...form, effectiveDate: event.target.value })} /></Field>

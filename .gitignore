@@ -43,20 +43,3 @@ next-env.d.ts
 
 # logs locais
 *.log
-
-# dados e documentos da M&C Climatização (mantidos fora do repositório)
-/Cadastro_Clientes.xlsx
-/Gestão a Vista.xlsx
-/RELAÇÃO DE SETORES E EQUIPAMENTOS - new.xlsx
-/TERMO ADITIVO - PMOC_INCLUSÃO EMPRESAS.docx
-/Contrato nº*
-/Itens e Kit/
-/clientes, ambientes e equipamentos/
-/cno bases/
-/contas a pagar/
-/contas a receber/
-/fatura/
-/orçamento/
-/planta/
-/public/contract-templates/contrato-sistema-climatizacao.docx
-/public/contract-templates/termo-aditivo.docx

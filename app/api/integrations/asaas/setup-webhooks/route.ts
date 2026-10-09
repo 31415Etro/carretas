@@ -16,7 +16,7 @@ export async function POST(request: Request) {
       const webhook = await asaasRequest<Record<string, unknown>>(code, "/webhooks", {
         method: "POST",
         body: JSON.stringify({
-          name: `M&C Climatizacao - ${config.label}`,
+          name: `ERP Carretas - ${config.label}`,
           url: `${origin}/api/integrations/asaas/webhooks/${code}`,
           email,
           enabled: true,

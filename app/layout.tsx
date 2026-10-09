@@ -22,9 +22,8 @@ const interMono = Inter({
 })
 
 export const metadata: Metadata = {
-  title: "Dexo CRM",
-  description: "Sistema de gestão operacional e financeiro",
-  generator: "v0.app",
+  title: "ERP Carretas",
+  description: "Gestão de fabricação, estoque, compras, vendas, serviços e financeiro de carretas",
   other: {
     google: "notranslate",
   },

@@ -25,10 +25,6 @@ function safeName(name: string) {
     .slice(0, 120) || "arquivo"
 }
 
-function equipmentPhotoNote(equipmentId: string) {
-  return equipmentId ? `equipment:${equipmentId}` : ""
-}
-
 async function authorizedAdmin(serviceOrderId: string, write = false) {
   const session = await createServerClient()
   const { data: { user } } = await session.auth.getUser()
@@ -37,7 +33,7 @@ async function authorizedAdmin(serviceOrderId: string, write = false) {
   const { data: order, error: orderError } = await admin.from("service_orders").select("id,client_id").eq("id", serviceOrderId).maybeSingle()
   if (orderError) throw orderError
   if (!resolved.exists || !order) throw new RequestError("OS nao encontrada no banco de dados.", 404)
-  if (!user) return admin
+  if (!user) throw new RequestError("Nao autenticado.", 401)
 
   const { data: profile, error: profileError } = await admin.from("profiles").select("role,client_id,active").eq("id", user.id).maybeSingle()
   if (profileError) throw profileError
@@ -93,10 +89,8 @@ export async function GET(request: Request) {
     const url = new URL(request.url)
     const serviceOrderId = String(url.searchParams.get("serviceOrderId") || "")
     const category = String(url.searchParams.get("category") || "")
-    const equipmentId = String(url.searchParams.get("equipmentId") || "")
     if (!isUuid(serviceOrderId)) return NextResponse.json({ error: "OS invalida." }, { status: 400 })
     if (category && !PHOTO_CATEGORIES.includes(category)) return NextResponse.json({ error: "Categoria de foto invalida." }, { status: 400 })
-    if (equipmentId && !isUuid(equipmentId)) return NextResponse.json({ error: "Equipamento invalido." }, { status: 400 })
 
     const supabase = await authorizedAdmin(serviceOrderId)
     if (!category) {
@@ -117,7 +111,7 @@ export async function GET(request: Request) {
       .eq("category", category)
       .order("created_at", { ascending: false })
       .limit(1)
-    query = equipmentId ? query.eq("notes", equipmentPhotoNote(equipmentId)) : query.or("notes.is.null,notes.eq.")
+    query = query.or("notes.is.null,notes.eq.")
     const { data, error } = await query.maybeSingle()
     if (error) throw error
     return NextResponse.json({ file: data ? fileResponse(data) : null })
@@ -134,17 +128,15 @@ export async function POST(request: Request) {
       const action = String(input.action || "")
       const serviceOrderId = String(input.serviceOrderId || "")
       const category = String(input.category || "")
-      const equipmentId = String(input.equipmentId || "")
       const uploadedBy = String(input.uploadedBy || "")
       const keepPrevious = input.keepPrevious === true
-      const notes = equipmentPhotoNote(equipmentId)
+      const notes = ""
       const fileName = safeName(String(input.fileName || "foto"))
       const fileType = normalizeImageType(fileName, String(input.fileType || ""))
       const fileSize = Number(input.fileSize || 0)
 
       if (!isUuid(serviceOrderId)) return NextResponse.json({ error: "OS invalida." }, { status: 400 })
       if (!PHOTO_CATEGORIES.includes(category)) return NextResponse.json({ error: "Categoria de foto invalida." }, { status: 400 })
-      if (equipmentId && !isUuid(equipmentId)) return NextResponse.json({ error: "Equipamento invalido." }, { status: 400 })
 
       const supabase = await authorizedAdmin(serviceOrderId, true)
 
@@ -230,15 +222,13 @@ export async function POST(request: Request) {
     const file = formData.get("file")
     const serviceOrderId = String(formData.get("serviceOrderId") || "")
     const category = String(formData.get("category") || "")
-    const equipmentId = String(formData.get("equipmentId") || "")
     const uploadedBy = String(formData.get("uploadedBy") || "")
     const keepPrevious = String(formData.get("keepPrevious") || "") === "true"
-    const notes = equipmentPhotoNote(equipmentId)
+    const notes = ""
 
     if (!(file instanceof File)) return NextResponse.json({ error: "Arquivo nao informado." }, { status: 400 })
     if (!serviceOrderId) return NextResponse.json({ error: "OS nao informada." }, { status: 400 })
     if (!PHOTO_CATEGORIES.includes(category)) return NextResponse.json({ error: "Categoria de foto invalida." }, { status: 400 })
-    if (equipmentId && !isUuid(equipmentId)) return NextResponse.json({ error: "Equipamento invalido." }, { status: 400 })
 
     const fileName = safeName(file.name)
     const fileType = normalizeImageType(fileName, file.type || "")

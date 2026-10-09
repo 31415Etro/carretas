@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { AlertTriangle, Save } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -17,7 +17,6 @@ import {
   type AuditLog,
   type Client,
   type OperationalState,
-  type ServiceOrder,
   createAudit,
   defaultOperationalState,
   loadOperationalState,
@@ -28,74 +27,54 @@ import { PageLayout } from "@/components/page-layout"
 import { useAuth } from "@/lib/auth-context"
 import { type SearchableOption } from "@/lib/searchable-options"
 import { SearchableSelect } from "@/components/ui/searchable-select"
-import { persistOperationalChanges } from "@/lib/operational-changes"
-import { fetchOperationalState, primeOperationalStateCache } from "@/lib/operational-state-sections"
+import { fetchOperationalState, primeOperationalStateCache } from "@/lib/operational-state-cache"
 
 export type CommitFn = (updater: (current: OperationalState) => OperationalState, options?: { persist?: boolean }) => void
 
-export function useOperationalStore(publicOrderId?: string, options?: { allowClientWrite?: boolean; skipInitialLoad?: boolean }) {
+const operationalEndpoint = "/api/operational-state"
+
+/** Estado dos cadastros (clientes, fornecedores, técnicos, frota...). Clientes externos não têm acesso. */
+export function useOperationalStore(options?: { skipInitialLoad?: boolean }) {
   const skipInitialLoad = Boolean(options?.skipInitialLoad)
   const [state, setState] = useState<OperationalState>(() => defaultOperationalState())
   const [stateLoading, setStateLoading] = useState(!skipInitialLoad)
-  const [loadFailed, setLoadFailed] = useState(false)
   const { toast } = useToast()
   const { user, isLoading } = useAuth()
   const readOnlyClient = user?.role === "client"
-  const allowClientWrite = Boolean(options?.allowClientWrite)
-  const savingRef = useRef(false)
-  const [saving, setSaving] = useState(false)
+  const cacheKey = () => `${user?.company.id || "anon"}:${user?.id || "anon"}:${operationalEndpoint}`
 
   useEffect(() => {
     if (skipInitialLoad) {
       setStateLoading(false)
-      setLoadFailed(false)
       return
     }
-    if (isLoading) return
+    if (isLoading || readOnlyClient) return
     setStateLoading(true)
-    setLoadFailed(false)
     let active = true
     const companyId = user?.company.id
-    setState(readOnlyClient || publicOrderId ? defaultOperationalState() : loadOperationalState(companyId))
-    const endpoint = publicOrderId ? `/api/operational-state?orderId=${encodeURIComponent(publicOrderId)}` : "/api/operational-state"
-    const cacheKey = `${companyId || "public"}:${user?.id || "public"}:${endpoint}`
-    fetchOperationalState(endpoint, cacheKey)
+    setState(loadOperationalState(companyId))
+    fetchOperationalState(operationalEndpoint, cacheKey())
       .then((loaded) => {
         if (!active) return
-        const companyState = user?.company ? {
-          ...loaded,
-          companySettings: {
-            ...loaded.companySettings,
-            name: user.company.tradeName || user.company.name,
-            cnpj: user.company.cnpj,
-            phone: user.company.phone,
-            email: user.company.email,
-            address: user.company.address,
-          },
-        } : loaded
-        setState(companyState)
-        if (!readOnlyClient && !publicOrderId) saveOperationalState(companyState, companyId)
+        setState(loaded)
+        saveOperationalState(loaded, companyId)
       })
       .catch((error) => {
         if (!active) return
-        setLoadFailed(true)
-        toast({ title: "Erro ao carregar dados", description: error instanceof Error ? error.message : "Recarregue a pagina antes de salvar.", variant: "destructive" })
+        toast({ title: "Erro ao carregar dados", description: error instanceof Error ? error.message : "Recarregue a página antes de salvar.", variant: "destructive" })
       })
       .finally(() => { if (active) setStateLoading(false) })
     return () => { active = false }
-  }, [isLoading, readOnlyClient, user?.id, user?.company.id, publicOrderId, skipInitialLoad])
+  }, [isLoading, readOnlyClient, user?.id, user?.company.id, skipInitialLoad])
 
-  const commit: CommitFn = (updater, options) => {
-    if (readOnlyClient && !allowClientWrite) {
-      return
-    }
+  const commit: CommitFn = (updater, commitOptions) => {
+    if (readOnlyClient) return
     setState((current) => {
       const next = updater(current)
-      if (!publicOrderId && !readOnlyClient) saveOperationalState(next, user?.company.id)
-      const endpoint = publicOrderId ? `/api/operational-state?orderId=${encodeURIComponent(publicOrderId)}` : "/api/operational-state"
-      primeOperationalStateCache(`${user?.company.id || "public"}:${user?.id || "public"}:${endpoint}`, next)
-      if (options?.persist === false) return next
-      fetch(endpoint, {
+      saveOperationalState(next, user?.company.id)
+      primeOperationalStateCache(cacheKey(), next)
+      if (commitOptions?.persist === false) return next
+      fetch(operationalEndpoint, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ state: next }),
@@ -106,38 +85,13 @@ export function useOperationalStore(publicOrderId?: string, options?: { allowCli
           throw new Error(payload?.error || `Falha ao salvar (${response.status})`)
         })
         .catch((error) => {
-          const message = error instanceof Error ? error.message : "Supabase indisponível"
-          toast({
-            title: "Erro ao salvar no banco",
-            description: message,
-            variant: "destructive",
-          })
-      })
+          toast({ title: "Erro ao salvar no banco", description: error instanceof Error ? error.message : "Supabase indisponível", variant: "destructive" })
+        })
       return next
     })
   }
 
-  async function commitConfirmed(updater: (current: OperationalState) => OperationalState) {
-    if (savingRef.current || readOnlyClient || isLoading || stateLoading || loadFailed) return false
-    savingRef.current = true
-    setSaving(true)
-    try {
-      const next = updater(state)
-      await persistOperationalChanges(state, next)
-      setState(next)
-      saveOperationalState(next, user?.company.id)
-      primeOperationalStateCache(`${user?.company.id || "public"}:${user?.id || "public"}:/api/operational-state`, next)
-      return true
-    } catch (error) {
-      toast({ title: "Erro ao salvar no banco", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" })
-      return false
-    } finally {
-      savingRef.current = false
-      setSaving(false)
-    }
-  }
-
-  return { state, commit, commitConfirmed, saving, loading: isLoading || stateLoading }
+  return { state, commit, loading: isLoading || stateLoading }
 }
 
 export function PageShell({ title, description, actions, children }: { title: string; description: string; actions?: React.ReactNode; children: React.ReactNode }) {
@@ -326,24 +280,9 @@ export function useCrudFeedback() {
 export function names(state: OperationalState) {
   return {
     client: (id: string) => state.clients.find((item) => item.id === id)?.name || "-",
-    work: (id: string) => state.works.find((item) => item.id === id)?.name || "-",
-    workNumber: (id: string) => state.works.find((item) => item.id === id)?.uniqueNumber || "-",
-    floor: (id: string) => state.workFloors.find((item) => item.id === id)?.name || "-",
-    structure: (id: string) => {
-      const item = state.workStructures.find((structure) => structure.id === id)
-      return item ? `${item.location} / ${item.floor} / ${item.environment}` : "-"
-    },
-    environment: (id: string) => {
-      const item = state.workEnvironments.find((environment) => environment.id === id)
-      return item ? `${item.floor} / ${item.final} / ${item.environmentName}` : "-"
-    },
-    point: (id: string) => {
-      const item = state.workPoints.find((point) => point.id === id)
-      return item ? item.pointName : "-"
-    },
+    supplier: (id: string) => state.suppliers.find((item) => item.id === id)?.name || "-",
     provider: (id: string) => state.providers.find((item) => item.id === id)?.fullName || "-",
     vehicle: (id: string) => state.vehicles.find((item) => item.id === id)?.plate || "-",
-    serviceType: (id: string) => state.serviceTypes.find((item) => item.id === id)?.name || "-",
     material: (id: string) => state.materials.find((item) => item.id === id)?.name || "-",
   }
 }
@@ -352,7 +291,7 @@ export function appendAudit(state: OperationalState, entityType: string, entityI
   return [createAudit(entityType, entityId, action, description), ...state.auditLogs]
 }
 
-export function fullAddress(item: Client | OperationalState["works"][number]) {
+export function fullAddress(item: Client) {
   return [item.street, item.number, item.complement, item.district, item.city, item.state].filter(Boolean).join(", ")
 }
 

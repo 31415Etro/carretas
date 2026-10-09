@@ -59,22 +59,8 @@ function SheetContent({
       <SheetOverlay />
       <SheetPrimitive.Content
         data-slot="sheet-content"
-        onPointerDownOutside={(event) => {
-          const target = event.detail.originalEvent.target
-          if (target instanceof Element && target.closest('[data-genes-support]')) {
-            event.preventDefault()
-            return
-          }
-          onPointerDownOutside?.(event)
-        }}
-        onInteractOutside={(event) => {
-          const target = event.detail.originalEvent.target
-          if (target instanceof Element && target.closest('[data-genes-support]')) {
-            event.preventDefault()
-            return
-          }
-          onInteractOutside?.(event)
-        }}
+        onPointerDownOutside={onPointerDownOutside}
+        onInteractOutside={onInteractOutside}
         className={cn(
           'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out fixed z-50 flex flex-col gap-4 shadow-lg transition ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500',
           side === 'right' &&

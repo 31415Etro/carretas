@@ -59,7 +59,7 @@ NFS-e de servico:
   "paymentId": "pay_000000000000",
   "effectiveDate": "2026-09-10",
   "value": 1200,
-  "description": "Servicos de climatizacao",
+  "description": "Manutencao de carreta",
   "municipalServiceId": "ID_DO_SERVICO_MUNICIPAL"
 }
 ```

@@ -21,7 +21,9 @@ export async function dashboardViewer() {
   const { data: profile } = await admin.from("profiles").select("role,page_permissions,active").eq("id", user.id).maybeSingle()
   if (!profile || profile.active === false || profile.role === "client") return null
   const permissions: string[] = Array.isArray(profile.page_permissions) ? profile.page_permissions : []
-  const sections = (Object.keys(sectionPermissions) as DashboardSection[]).filter((section) => profile.role === "admin" || permissions.includes(sectionPermissions[section]))
+  // Comercial fica oculto até o módulo Comercial ter especificação (as tabelas do funil antigo foram removidas).
+  const pendingSections = new Set<DashboardSection>(["comercial"])
+  const sections = (Object.keys(sectionPermissions) as DashboardSection[]).filter((section) => !pendingSections.has(section) && (profile.role === "admin" || permissions.includes(sectionPermissions[section])))
   return { user, admin, role: String(profile.role), sections }
 }
 

@@ -1,5 +1,6 @@
 "use client"
 
+import { BrandMark } from "@/components/shell/brand-mark"
 import { Suspense, useEffect } from "react"
 import type React from "react"
 import { useState } from "react"
@@ -9,7 +10,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import { Building2, Lock, Mail } from "lucide-react"
-import Image from "next/image"
 import { useAuth } from "@/lib/auth-context"
 
 export default function LoginPage() {
@@ -85,14 +85,7 @@ function LoginForm() {
         <div className="bg-white border border-gray-200 rounded-2xl shadow-2xl p-6 md:p-8 lg:p-10">
           <div className="mb-6 md:mb-8 text-center">
             <div className="flex justify-center mb-4 md:mb-6">
-              <Image
-                src="/images/azul-20abstrato-20onda-20criativo-20capa-20para-20ebook-20-281000-20x-201000-20mm-29-20-288-29.png"
-                alt="Dexo Logo"
-                width={600}
-                height={180}
-                className="w-auto h-32 lg:h-52 md:h-44"
-                priority
-              />
+              <BrandMark className="text-5xl md:text-6xl" />
             </div>
             <p className="text-sm text-gray-600">
               {availableCompanies.length ? "Escolha o CNPJ que deseja acessar." : "Entre com o usuario cadastrado no sistema."}

@@ -1,3 +1,4 @@
+import { systemPagePermissions } from "@/lib/types"
 import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
 
@@ -26,23 +27,7 @@ export async function POST(request: Request) {
       },
     })
 
-    const permissions = [
-      "dashboard",
-      "clientes_obras",
-      "ordens_servico",
-      "equipe_prestadores",
-      "operacao_campo",
-      "frota",
-      "estoque",
-      "financeiro",
-      "comercial",
-      "pmoc",
-      "orcamento",
-      "contratos",
-      "relatorios",
-      "configuracoes",
-      "users",
-    ]
+    const permissions = systemPagePermissions
 
     const { count: adminCount, error: countError } = await supabaseAdmin
       .from("profiles")

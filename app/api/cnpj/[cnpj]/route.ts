@@ -14,7 +14,7 @@ export async function GET(_request: Request, context: { params: Promise<{ cnpj: 
 
   try {
     const response = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${encodeURIComponent(cnpj)}`, {
-      headers: { Accept: "application/json", "User-Agent": "MC-Climatizacao/1.0" },
+      headers: { Accept: "application/json", "User-Agent": "ERP-Carretas/1.0" },
       signal: AbortSignal.timeout(12_000),
       next: { revalidate: 60 * 60 * 24 },
     })

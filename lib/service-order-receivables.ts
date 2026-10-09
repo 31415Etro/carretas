@@ -41,9 +41,6 @@ function receivableFromOrder(order: any) {
   return {
     id: serviceOrderReceivableId(order.id),
     client_id: order.client_id || null,
-    work_id: order.work_id || null,
-    environment_id: order.environment_id || null,
-    point_id: order.point_id || null,
     service_order_id: order.id,
     description: `OS ${order.order_number} - ${order.description || "Servico concluido"}`,
     category_id: null,

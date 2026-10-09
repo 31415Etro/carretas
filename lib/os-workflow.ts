@@ -11,7 +11,7 @@ export const osPriorities = ["Baixa", "Media", "Alta", "Urgente"]
 /** Situações que contam como serviço terminado (inclui as do sistema anterior). */
 export const finishedStatuses = new Set(["Concluída", "Entregue", "Finalizada", "Finalizada parcialmente"])
 export const cancelledStatuses = new Set(["Cancelada"])
-/** Situações antigas (climatização) tratadas como "Aberta" no fluxo novo. */
+/** Situações do fluxo anterior, mantidas para OS já gravadas e tratadas como "Aberta" no fluxo novo. */
 const legacyOpen = new Set(["Criada", "Agendada", "A caminho", "Em execucao", "Pausada", "Aguardando material", "Aguardando retorno"])
 
 export function flowIndex(status: string) {

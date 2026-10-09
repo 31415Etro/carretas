@@ -26,7 +26,6 @@ import {
 import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import { motion } from "framer-motion"
-import { GenesSupportWidget } from "@/components/genes-support-widget"
 
 function MainContent({ children }: { children: React.ReactNode }) {
   const { open } = useSidebar()
@@ -82,7 +81,7 @@ function SidebarContent() {
     {
       label: "Produtos / Serviços",
       href: "/servicos",
-      permission: "clientes_obras" as const,
+      permission: "produtos_servicos" as const,
       icon: <Wrench className="text-sidebar-foreground h-5 w-5 flex-shrink-0" />,
     },
     {
@@ -99,8 +98,8 @@ function SidebarContent() {
     },
     {
       label: "Clientes e Fornecedores",
-      href: "/clientes-obras",
-      permission: "clientes_obras" as const,
+      href: "/clientes",
+      permission: "clientes" as const,
       icon: <Building2 className="text-sidebar-foreground h-5 w-5 flex-shrink-0" />,
     },
     {
@@ -206,10 +205,10 @@ export function PageLayout({ children }: { children: React.ReactNode }) {
       { href: "/financeiro", permission: "financeiro" },
       { href: "/estoque", permission: "estoque" },
       { href: "/compras", permission: "compras" },
-      { href: "/servicos", permission: "clientes_obras" },
+      { href: "/servicos", permission: "produtos_servicos" },
       { href: "/ordens-servico", permission: "ordens_servico" },
       { href: "/frota", permission: "frota" },
-      { href: "/clientes-obras", permission: "clientes_obras" },
+      { href: "/clientes", permission: "clientes" },
       { href: "/comercial", permission: "comercial" },
       { href: "/orcamento", permission: "orcamento" },
       { href: "/contratos", permission: "contratos" },
@@ -250,7 +249,6 @@ export function PageLayout({ children }: { children: React.ReactNode }) {
         <SidebarContent />
         <MainContent>{children}</MainContent>
       </SidebarContainer>
-      <GenesSupportWidget />
     </div>
   )
 }

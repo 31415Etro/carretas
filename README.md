@@ -1,30 +1,37 @@
-# nexouidesign
+# ERP Carretas
 
-*Automatically synced with your [v0.app](https://v0.app) deployments*
+Sistema de gestão (ERP) para uma empresa que **fabrica carretas**: financeiro, estoque, compras, produtos e serviços, ordens de serviço, frota, clientes e fornecedores, dashboard e configurações. Comercial, Orçamentos, Contratos e Relatórios estão no menu aguardando especificação.
 
-[![Deployed on Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com/pmalvesibht-9513s-projects/v0-nexouidesign)
-[![Built with v0](https://img.shields.io/badge/Built%20with-v0.app-black?style=for-the-badge)](https://v0.app/chat/qBZwvPyDrwT)
+Next.js 16 (App Router) + Supabase + Tailwind.
 
-## Overview
+## Módulos
 
-This repository will stay in sync with your deployed chats on [v0.app](https://v0.app).
-Any changes you make to your deployed app will be automatically pushed to this repository from [v0.app](https://v0.app).
+| Módulo | Rota | Observações |
+| --- | --- | --- |
+| Dashboard | `/dashboard` | Indicadores de financeiro, estoque, OS, frota e comercial, com detalhamento dos registros |
+| Financeiro | `/financeiro` | Contas a pagar/receber com parcelas, contas bancárias, DRE, cartões, Asaas e NotaAS |
+| Estoque | `/estoque` | Saldo por depósito, movimentações, reservas, inventário, sugestão de compra |
+| Compras | `/compras` | Pedido, aprovação, recebimento com entrada no estoque e contas a pagar |
+| Produtos / Serviços | `/servicos` | Catálogo único: produto, matéria-prima, kit/composição (versionada) e serviço |
+| Ordens de Serviço | `/ordens-servico` | Fluxo de 9 etapas, peças reservadas/baixadas, horas, margem, aceite, fabricação |
+| Frota | `/frota` | Veículos e manutenções |
+| Clientes e Fornecedores | `/clientes` | Cadastros com consulta de CNPJ |
+| Configurações | `/configuracoes` | Usuários e permissões, equipe técnica, empresas (CNPJs) |
 
-## Deployment
+## Banco de dados
 
-Your project is live at:
+Os scripts em `scripts/` são executados no SQL Editor do Supabase, em ordem numérica. As migrações do ERP começam em `200_`:
 
-**[https://vercel.com/pmalvesibht-9513s-projects/v0-nexouidesign](https://vercel.com/pmalvesibht-9513s-projects/v0-nexouidesign)**
+`200` produtos · `201` financeiro · `202` estoque · `203` compras · `204` dashboard · `205` catálogo · `206` ordem de serviço · `207` remoção das estruturas herdadas do sistema anterior.
 
-## Build your app
+## Configuração
 
-Continue building your app on:
+Copie `.env.example` para `.env.local` e preencha as variáveis (Supabase, alertas por e-mail, Asaas, NotaAS).
 
-**[https://v0.app/chat/qBZwvPyDrwT](https://v0.app/chat/qBZwvPyDrwT)**
+## Desenvolvimento
 
-## How It Works
-
-1. Create and modify your project using [v0.app](https://v0.app)
-2. Deploy your chats from the v0 interface
-3. Changes are automatically pushed to this repository
-4. Vercel deploys the latest version from this repository
+```bash
+npm install
+npm run dev
+npm test
+```
