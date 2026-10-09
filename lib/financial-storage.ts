@@ -67,6 +67,22 @@ export interface AccountsPayable {
   notes: string
   attachmentName: string
   transactionId: string
+  /** Número do documento / NF */
+  documentNumber?: string
+  installmentNumber?: number
+  installmentCount?: number
+  /** Agrupa as parcelas geradas a partir do mesmo lançamento */
+  installmentGroupId?: string
+  paymentConditionId?: string
+  interestAmount?: number
+  fineAmount?: number
+  discountAmount?: number
+  /** Origem do lançamento: Manual, OS, Contrato, Venda ou Compra */
+  sourceType?: AccountSourceType
+  /** Número/identificação do contrato, venda ou compra de origem */
+  sourceReference?: string
+  createdBy?: string
+  updatedBy?: string
   createdAt: string
   updatedAt: string
 }
@@ -95,13 +111,32 @@ export interface AccountsReceivable {
   notes: string
   attachmentName: string
   transactionId: string
+  /** Número do documento / NF */
+  documentNumber?: string
+  installmentNumber?: number
+  installmentCount?: number
+  /** Agrupa as parcelas geradas a partir do mesmo lançamento */
+  installmentGroupId?: string
+  paymentConditionId?: string
+  interestAmount?: number
+  fineAmount?: number
+  discountAmount?: number
+  /** Origem do lançamento: Manual, OS, Contrato, Venda ou Compra */
+  sourceType?: AccountSourceType
+  /** Número/identificação do contrato, venda ou compra de origem */
+  sourceReference?: string
+  createdBy?: string
+  updatedBy?: string
   createdAt: string
   updatedAt: string
 }
 
 export interface FinancialCategory {
   id: string
+  code?: string
   name: string
+  /** Grupo da categoria (ex.: Receitas operacionais, Despesas administrativas) */
+  group?: string
   type: "entrada" | "saida" | "ambos"
   dreAccountId: string
   status: "Ativo" | "Inativo"
@@ -120,8 +155,11 @@ export interface FinancialSubcategory {
 
 export interface CostCenter {
   id: string
+  code?: string
   name: string
   description: string
+  responsible?: string
+  unit?: string
   status: "Ativo" | "Inativo"
   createdAt: string
   updatedAt: string
@@ -254,7 +292,44 @@ export interface RuleImportPreview {
   ignored: boolean
 }
 
+export type AccountSourceType = "Manual" | "OS" | "Contrato" | "Venda" | "Compra"
+
+export interface BankAccount {
+  id: string
+  name: string
+  bankName: string
+  bankCode: string
+  agency: string
+  accountNumber: string
+  accountType: "Corrente" | "Poupanca" | "Pagamento" | "Caixa" | "Investimento"
+  holderName: string
+  holderDocument: string
+  pixKey: string
+  initialBalance: number
+  initialBalanceDate: string
+  status: "Ativo" | "Inativo"
+  notes: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PaymentCondition {
+  id: string
+  name: string
+  installments: number
+  /** Dias até o primeiro vencimento, contados da emissão */
+  firstDueDays: number
+  /** Dias entre as parcelas */
+  intervalDays: number
+  paymentMethod: string
+  status: "Ativo" | "Inativo"
+  createdAt: string
+  updatedAt: string
+}
+
 export interface FinancialState {
+  bankAccounts: BankAccount[]
+  paymentConditions: PaymentCondition[]
   transactions: FinancialTransaction[]
   accountsPayable: AccountsPayable[]
   accountsReceivable: AccountsReceivable[]
@@ -383,8 +458,15 @@ export function defaultFinancialState(): FinancialState {
     { id: "cc-admin", name: "Administrativo", description: "Administracao", status: "Ativo", createdAt: now, updatedAt: now },
     { id: "cc-frota", name: "Frota", description: "Veiculos", status: "Ativo", createdAt: now, updatedAt: now },
   ]
-  const card: CreditCard = { id: "card-sicoob", name: "Cartao Sicoob Empresarial", bankName: "Sicoob", cardLastDigits: "4748", holderName: "MONICKE M VENANCIO", cardAccount: "7563239223507", closingDay: 12, dueDay: 19, creditLimit: 25000, status: "Ativo", notes: "", createdAt: now, updatedAt: now }
+  const paymentConditions: PaymentCondition[] = [
+    { id: "cond-a-vista", name: "A vista", installments: 1, firstDueDays: 0, intervalDays: 0, paymentMethod: "Pix", status: "Ativo", createdAt: now, updatedAt: now },
+    { id: "cond-30", name: "30 dias", installments: 1, firstDueDays: 30, intervalDays: 30, paymentMethod: "Boleto", status: "Ativo", createdAt: now, updatedAt: now },
+    { id: "cond-30-60", name: "30/60 dias", installments: 2, firstDueDays: 30, intervalDays: 30, paymentMethod: "Boleto", status: "Ativo", createdAt: now, updatedAt: now },
+    { id: "cond-30-60-90", name: "30/60/90 dias", installments: 3, firstDueDays: 30, intervalDays: 30, paymentMethod: "Boleto", status: "Ativo", createdAt: now, updatedAt: now },
+  ]
   return {
+    bankAccounts: [],
+    paymentConditions,
     transactions: [],
     accountsPayable: [],
     accountsReceivable: [],
@@ -392,7 +474,7 @@ export function defaultFinancialState(): FinancialState {
     subcategories,
     costCenters,
     dreAccounts: dre,
-    creditCards: [card],
+    creditCards: [],
     creditCardInvoices: [],
     creditCardInvoiceItems: [],
     categoryRules: defaultCategoryRules(now),
@@ -732,19 +814,9 @@ async function parseCreditCardInvoicePdfLegacy(file: File, state: FinancialState
   } catch {
     rawText = ""
   }
-  if (!rawText || rawText.trim().length < 20) {
-    rawText = [
-      "Fatura de FEVEREIRO",
-      `Vencimento: ${fallback.dueDate || "2026-02-19"}`,
-      `Titular: ${fallback.holderName || "MONICKE M VENANCIO"}`,
-      "Conta Cartao: 7563239223507",
-      "GASTOS DE MONICKE M VENANCIO (4748)",
-      "14/07 MERCADOPAGO *5PRODUT 07/10 EXTREMA 51,61",
-      "18/07 MERCADOPAGO *MASXGEN 07/10 SAO PAU 54,40",
-      "22/01 REFRICRIL DISTRIBUID 01/03 ICARA 10.204,99",
-      "03/07 CAKTOCHATGPTPLUSCOMP 08/09 MARILIA 5,01",
-    ].join("\n")
-  }
+  // PDF sem texto selecionável: segue vazio para a tela pedir o texto colado,
+  // em vez de importar dados fictícios.
+  if (!rawText || rawText.trim().length < 20) rawText = ""
   const holderMatch = rawText.match(/Titular:\s*(.+)/i)
   const accountMatch = rawText.match(/Conta Cart[aã]o:\s*(\d+)/i)
   const dueMatch = rawText.match(/Vencimento:\s*(\d{2}\/\d{2}\/\d{4})/i)
@@ -998,22 +1070,9 @@ function parseInvoiceLine(line: string, state: FinancialState, fallbackYear: str
 export async function parseCreditCardInvoicePdf(file: File, state: FinancialState, creditCardId: string, fallback: { referenceMonth: string; referenceYear: string; dueDate: string; holderName: string }, rawTextOverride = "") {
   state = parserStateWithDefaults(state)
   let rawText = rawTextOverride.trim() || await readInvoiceFileText(file)
-  if (!rawText || rawText.trim().length < 20) {
-    rawText = [
-      "Fatura de FEVEREIRO",
-      `Vencimento: ${fallback.dueDate || "2026-02-19"}`,
-      `Titular: ${fallback.holderName || "MONICKE M VENANCIO"}`,
-      "Conta Cartao: 7563239223507",
-      "GASTOS DE MONICKE M VENANCIO (4748)",
-      "Escola da Refrigerac 11/12 ITAJAI R$ 143,99 Curso Colaborador",
-      "MERCADOLIVRE*19PRODU 10/10 Osasco R$ 80,79 Insumos - Finca pino",
-      "MERCADOLIVRE*NAMUREM 09/10 Osasco R$ 22,66 Fontes para automacao",
-      "MERCADOLIVRE*HORIZON 09/10 Osasco R$ 135,60 Controladores para automacao",
-      "18/07 MERCADOPAGO *MASXGEN 07/10 SAO PAU 54,40",
-      "22/01 REFRICRIL DISTRIBUID 01/03 ICARA 10.204,99",
-      "03/07 CAKTOCHATGPTPLUSCOMP 08/09 MARILIA 5,01",
-    ].join("\n")
-  }
+  // PDF sem texto selecionável: segue vazio para a tela pedir o texto colado,
+  // em vez de importar dados fictícios.
+  if (!rawText || rawText.trim().length < 20) rawText = ""
   const holderMatch = rawText.match(/Titular:\s*(.+)/i)
   const accountMatch = rawText.match(/Conta Cart[aã]o:\s*(\d+)/i)
   const dueMatch = rawText.match(/Vencimento:\s*(\d{2}\/\d{2}\/\d{4})/i)

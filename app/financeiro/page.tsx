@@ -14,6 +14,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { AsaasBalanceCards, AsaasReceivableChargePanel, AsaasSavedChargeButton, AsaasSupplierPaymentButton } from "@/components/finance/asaas-operations"
 import { NotaAsInvoicePanel } from "@/components/finance/notaas-invoice-panel"
+import { DueAlertsPanel, FinanceRegistriesTab } from "@/components/finance/finance-registries"
+import { accountSettlementAmount, accountSourceTypeOptions, addDays, buildInstallments, installmentLabel, payableAutoStatus, paymentMethodOptions, receivableAutoStatus } from "@/lib/finance-erp"
 import { useAuth } from "@/lib/auth-context"
 import { createClient as createSupabaseBrowserClient } from "@/lib/supabase/client"
 import { makeId, nowIso, type Supplier } from "@/lib/operational-storage"
@@ -253,11 +255,21 @@ const emptyTransaction = {
   expectedAmount: "",
   realizedAmount: "",
   paymentMethod: "Pix",
-  bankAccountId: "Conta principal",
+  bankAccountId: "",
   creditCardId: "",
   status: "Previsto",
   attachmentName: "",
   notes: "",
+  documentNumber: "",
+  paymentConditionId: "",
+  installments: "1",
+  intervalDays: "30",
+  interestAmount: "",
+  fineAmount: "",
+  discountAmount: "",
+  sourceType: "Manual",
+  sourceReference: "",
+  cancelled: false,
 }
 
 const emptyQuickSupplier = {
@@ -731,7 +743,22 @@ function accountForm(item: AccountsPayable | AccountsReceivable, kind: "pagar" |
     status: item.status,
     attachmentName: item.attachmentName || "",
     notes: item.notes || "",
+    documentNumber: item.documentNumber || "",
+    paymentConditionId: item.paymentConditionId || "",
+    installments: String(item.installmentCount || 1),
+    interestAmount: item.interestAmount ? String(item.interestAmount) : "",
+    fineAmount: item.fineAmount ? String(item.fineAmount) : "",
+    discountAmount: item.discountAmount ? String(item.discountAmount) : "",
+    sourceType: item.sourceType || (item.serviceOrderId ? "OS" : "Manual"),
+    sourceReference: item.sourceReference || "",
+    cancelled: item.status === "Cancelada",
   }
+}
+
+function accountOriginLabel(item: AccountsPayable | AccountsReceivable, orderNumber?: string) {
+  if (item.sourceType === "OS") return `OS ${orderNumber || ""}`.trim()
+  if (item.sourceType && item.sourceType !== "Manual") return `${item.sourceType} ${item.sourceReference || ""}`.trim()
+  return item.origin || "Manual"
 }
 
 function accountTransaction(state: FinancialState, item: AccountsPayable | AccountsReceivable, kind: "pagar" | "receber") {
@@ -770,6 +797,8 @@ function FinanceSheets({
 }) {
   const operational = useOperationalStore()
   const opNames = names(operational.state)
+  const { user } = useAuth()
+  const currentUserName = user?.name || user?.email || ""
   const { requireFields, toast } = useCrudFeedback()
   const [form, setForm] = useState<Record<string, any>>(emptyTransaction)
   const accountSubmissionRef = React.useRef(false)
@@ -810,9 +839,6 @@ function FinanceSheets({
   const costCenterOptions = state.costCenters.map((item) => ({ value: item.id, label: item.name }))
   const dreOptions = state.dreAccounts.map((item) => ({ value: item.id, label: item.name }))
   const clientOptions = [{ value: "nenhum", label: "Sem cliente" }, ...operational.state.clients.map((item) => ({ value: item.id, label: item.name }))]
-  const workOptions = [{ value: "nenhuma", label: "Sem obra/local" }, ...operational.state.works.map((item) => ({ value: item.id, label: `${item.uniqueNumber} - ${item.name}` }))]
-  const environmentOptions = [{ value: "nenhum", label: "Sem ambiente" }, ...operational.state.workEnvironments.filter((item) => !form.workId || form.workId === "nenhuma" || item.workId === form.workId).map((item) => ({ value: item.id, label: `${opNames.work(item.workId)} / ${item.floor} / ${item.final} / ${item.environmentName}` }))]
-  const pointOptions = [{ value: "nenhum", label: "Sem ponto" }, ...operational.state.workPoints.filter((item) => !form.environmentId || form.environmentId === "nenhum" || item.environmentId === form.environmentId).map((item) => ({ value: item.id, label: `${opNames.work(item.workId)} / ${opNames.environment(item.environmentId)} / ${item.pointName}` }))]
   const orderOptions = [{ value: "nenhuma", label: "Sem OS" }, ...operational.state.serviceOrders.map((item) => ({ value: item.id, label: item.orderNumber }))]
   const supplierOptions = operational.state.suppliers.map((item) => ({
     value: item.id,
@@ -1013,15 +1039,100 @@ function FinanceSheets({
     close()
   }
 
+  function accountErpFields(editing: AccountsPayable | AccountsReceivable | null) {
+    const sourceType = (form.sourceType || "Manual") as NonNullable<AccountsPayable["sourceType"]>
+    return {
+      documentNumber: String(form.documentNumber || "").trim(),
+      paymentConditionId: form.paymentConditionId || "",
+      interestAmount: parseMoney(form.interestAmount || 0),
+      fineAmount: parseMoney(form.fineAmount || 0),
+      discountAmount: parseMoney(form.discountAmount || 0),
+      sourceType,
+      sourceReference: sourceType === "OS" || sourceType === "Manual" ? "" : String(form.sourceReference || "").trim(),
+      installmentNumber: editing?.installmentNumber,
+      installmentCount: editing?.installmentCount,
+      installmentGroupId: editing?.installmentGroupId || "",
+      createdBy: editing?.createdBy || currentUserName,
+      updatedBy: currentUserName,
+    }
+  }
+
+  function validateAccountForm(kind: "pagar" | "receber") {
+    const party: [string, string] = kind === "pagar" ? ["Fornecedor", selectedSupplierId] : ["Cliente", form.clientId === "nenhum" ? "" : form.clientId]
+    if (!requireFields([party, ["Descricao", form.description], ["Categoria financeira", form.categoryId], ["Valor original", form.expectedAmount], ["Data de emissao/competencia", form.competenceDate], ["Data de vencimento", form.dueDate]])) return false
+    if (parseMoney(form.expectedAmount) <= 0) {
+      toast({ title: "Valor invalido", description: "O valor original deve ser maior que zero.", variant: "destructive" })
+      return false
+    }
+    if (form.dueDate < form.competenceDate) {
+      toast({ title: "Vencimento invalido", description: "O vencimento nao pode ser anterior a emissao/competencia.", variant: "destructive" })
+      return false
+    }
+    if (["Contrato", "Venda", "Compra"].includes(form.sourceType) && !String(form.sourceReference || "").trim()) {
+      toast({ title: "Informe a origem", description: `Informe o numero do(a) ${String(form.sourceType).toLowerCase()} de origem.`, variant: "destructive" })
+      return false
+    }
+    if (form.sourceType === "OS" && (!form.serviceOrderId || form.serviceOrderId === "nenhuma")) {
+      toast({ title: "Informe a OS", description: "Selecione a ordem de servico de origem.", variant: "destructive" })
+      return false
+    }
+    const installments = Number(form.installments || 1)
+    if (!Number.isInteger(installments) || installments < 1 || installments > 120) {
+      toast({ title: "Parcelas invalidas", description: "Informe de 1 a 120 parcelas.", variant: "destructive" })
+      return false
+    }
+    return true
+  }
+
+  /** Gera uma conta por parcela (somente na criacao). A primeira pode ser baixada no ato. */
+  function splitInstallments<T extends AccountsPayable | AccountsReceivable>(record: T, idPrefix: string): T[] {
+    const count = Number(form.installments || 1)
+    if (count <= 1) return [{ ...record, installmentNumber: undefined, installmentCount: undefined }]
+    const groupId = financeId("grp")
+    return buildInstallments(record.expectedAmount, count, record.dueDate, Number(form.intervalDays || 30)).map((installment, index) => ({
+      ...record,
+      id: index === 0 ? record.id : financeId(idPrefix),
+      dueDate: installment.dueDate,
+      expectedAmount: installment.amount,
+      installmentNumber: installment.number,
+      installmentCount: installment.count,
+      installmentGroupId: groupId,
+      // juros/multa/desconto e baixa informados no cadastro valem so para a 1a parcela
+      ...(index === 0 ? {} : { interestAmount: 0, fineAmount: 0, discountAmount: 0, transactionId: "" }),
+      ...(index === 0 ? {} : "paidAmount" in record ? { paidAmount: 0, paymentDate: "" } : { receivedAmount: 0, receivedDate: "" }),
+    }) as T)
+  }
+
+  async function persistAccounts(kind: "pagar" | "receber", records: Array<AccountsPayable | AccountsReceivable>, editing: AccountsPayable | AccountsReceivable | null) {
+    const linked = editing ? accountTransaction(state, editing, kind) : undefined
+    let transactions = linked ? state.transactions.filter((item) => item.id !== linked.id) : [...state.transactions]
+    const withTransactions = records.map((record) => {
+      const payable = kind === "pagar" ? record as AccountsPayable : null
+      const receivable = kind === "receber" ? record as AccountsReceivable : null
+      const realized = payable ? Boolean(payable.paymentDate && payable.paidAmount > 0) : Boolean(receivable!.receivedDate && receivable!.receivedAmount > 0)
+      if (!realized || record.status === "Cancelada") return { ...record, transactionId: "" }
+      const next = { ...record, transactionId: (record.id === editing?.id ? linked?.id : "") || record.transactionId || financeId("ft") }
+      const transaction = payable ? transactionFromPayable(next as AccountsPayable) : transactionFromReceivable(next as AccountsReceivable)
+      transactions = [transaction, ...transactions.filter((item) => item.id !== transaction.id)]
+      return next
+    })
+    const ids = new Set(withTransactions.map((item) => item.id))
+    const next = kind === "pagar"
+      ? { ...state, transactions, accountsPayable: [...(withTransactions as AccountsPayable[]), ...state.accountsPayable.filter((item) => !ids.has(item.id))] }
+      : { ...state, transactions, accountsReceivable: [...(withTransactions as AccountsReceivable[]), ...state.accountsReceivable.filter((item) => !ids.has(item.id))] }
+    await saveState(next)
+  }
+
   async function savePayable(pay = false) {
-    if (!requireFields([["Fornecedor", selectedSupplierId], ["Descricao", form.description], ["Valor previsto", form.expectedAmount]])) return
+    if (!validateAccountForm("pagar")) return
     if (accountSubmissionRef.current) return
     accountSubmissionRef.current = true
     setAccountSubmitting(true)
     const now = financeNow()
     const editing = editingAccount?.kind === "pagar" ? editingAccount.item : null
     const supplier = operational.state.suppliers.find((item) => item.id === selectedSupplierId)
-    const payable: AccountsPayable = {
+    const erp = accountErpFields(editing)
+    const draft: AccountsPayable = {
       id: editing?.id || financeId("ap"),
       supplierId: selectedSupplierId,
       supplierName: supplier?.name || form.supplierName,
@@ -1030,45 +1141,38 @@ function FinanceSheets({
       subcategoryId: form.subcategoryId,
       costCenterId: form.costCenterId,
       dreAccountId: form.dreAccountId || state.categories.find((item) => item.id === form.categoryId)?.dreAccountId || "dre-sem-classificacao",
-      workId: form.workId === "nenhuma" ? "" : form.workId,
-      environmentId: form.environmentId === "nenhum" ? "" : form.environmentId,
-      pointId: form.pointId === "nenhum" ? "" : form.pointId,
-      serviceOrderId: form.serviceOrderId === "nenhuma" ? "" : form.serviceOrderId,
+      workId: editing?.workId || "",
+      environmentId: editing?.environmentId || "",
+      pointId: editing?.pointId || "",
+      serviceOrderId: erp.sourceType === "OS" && form.serviceOrderId !== "nenhuma" ? form.serviceOrderId : "",
       providerId: form.providerId || "",
       vehicleId: form.vehicleId || "",
       competenceDate: form.competenceDate,
       dueDate: form.dueDate,
-      paymentDate: pay ? form.realizedDate || financeToday() : editing ? form.realizedDate : "",
+      paymentDate: "",
       expectedAmount: parseMoney(form.expectedAmount),
-      paidAmount: pay ? parseMoney(form.realizedAmount || form.expectedAmount) : parseMoney(form.realizedAmount),
+      paidAmount: 0,
       paymentMethod: form.paymentMethod,
-      bankAccountId: form.bankAccountId,
+      bankAccountId: form.bankAccountId === "nenhuma" ? "" : form.bankAccountId,
       creditCardId: form.creditCardId === "nenhum" ? "" : form.creditCardId,
       creditCardInvoiceId: editing?.creditCardInvoiceId || "",
-      status: pay ? "Paga" : (form.status as any),
-      origin: editing?.origin || "Manual",
+      status: form.cancelled ? "Cancelada" : "Aberta",
+      origin: editing?.origin || (erp.sourceType === "Manual" ? "Manual" : erp.sourceType),
       notes: form.notes,
       attachmentName: form.attachmentName,
       transactionId: editing?.transactionId || "",
+      ...erp,
       createdAt: editing?.createdAt || now,
       updatedAt: now,
     }
-    const linked = editing ? accountTransaction(state, editing, "pagar") : undefined
-    const shouldRealize = Boolean(payable.paymentDate && payable.paidAmount > 0)
-    payable.transactionId = shouldRealize ? linked?.id || payable.transactionId || financeId("ft") : ""
-    const transaction = shouldRealize ? transactionFromPayable(payable) : null
-    const next = {
-      ...state,
-      accountsPayable: editing
-        ? state.accountsPayable.map((item) => item.id === payable.id ? payable : item)
-        : [payable, ...state.accountsPayable],
-      transactions: transaction
-        ? [transaction, ...state.transactions.filter((item) => item.id !== linked?.id && item.id !== payable.transactionId)]
-        : state.transactions.filter((item) => item.id !== linked?.id),
-    }
+    const [first, ...rest] = editing ? [draft] : splitInstallments(draft, "ap")
+    const firstSettlement = accountSettlementAmount(first)
+    const paidAmount = pay ? parseMoney(form.realizedAmount || firstSettlement) : parseMoney(form.realizedAmount)
+    const firstWithBaixa = { ...first, paidAmount, paymentDate: paidAmount > 0 ? form.realizedDate || financeToday() : "" }
+    const records = [firstWithBaixa, ...rest].map((item) => ({ ...item, status: payableAutoStatus(item) }))
     try {
-      await saveState(next)
-      toast({ title: editing ? "Conta a pagar atualizada" : "Conta a pagar salva", description: "Alteracoes confirmadas no Supabase." })
+      await persistAccounts("pagar", records, editing)
+      toast({ title: editing ? "Conta a pagar atualizada" : records.length > 1 ? `${records.length} parcelas geradas` : "Conta a pagar salva", description: "Alteracoes confirmadas no Supabase." })
       close()
     } catch (error) {
       toast({ title: "Erro ao salvar conta a pagar", description: error instanceof Error ? error.message : "O Supabase recusou a alteracao.", variant: "destructive" })
@@ -1079,19 +1183,20 @@ function FinanceSheets({
   }
 
   async function saveReceivable(receive = false) {
-    if (!requireFields([["Cliente", form.clientId], ["Descricao", form.description], ["Valor previsto", form.expectedAmount]])) return
+    if (!validateAccountForm("receber")) return
     if (accountSubmissionRef.current) return
     accountSubmissionRef.current = true
     setAccountSubmitting(true)
     const now = financeNow()
     const editing = editingAccount?.kind === "receber" ? editingAccount.item : null
-    const receivable: AccountsReceivable = {
+    const erp = accountErpFields(editing)
+    const draft: AccountsReceivable = {
       id: editing?.id || financeId("ar"),
       clientId: form.clientId === "nenhum" ? "" : form.clientId,
-      workId: form.workId === "nenhuma" ? "" : form.workId,
-      environmentId: form.environmentId === "nenhum" ? "" : form.environmentId,
-      pointId: form.pointId === "nenhum" ? "" : form.pointId,
-      serviceOrderId: form.serviceOrderId === "nenhuma" ? "" : form.serviceOrderId,
+      workId: editing?.workId || "",
+      environmentId: editing?.environmentId || "",
+      pointId: editing?.pointId || "",
+      serviceOrderId: erp.sourceType === "OS" && form.serviceOrderId !== "nenhuma" ? form.serviceOrderId : "",
       description: form.description,
       categoryId: form.categoryId,
       subcategoryId: form.subcategoryId,
@@ -1099,35 +1204,28 @@ function FinanceSheets({
       dreAccountId: form.dreAccountId || state.categories.find((item) => item.id === form.categoryId)?.dreAccountId || "dre-receita-bruta",
       competenceDate: form.competenceDate,
       dueDate: form.dueDate,
-      receivedDate: receive ? form.realizedDate || financeToday() : editing ? form.realizedDate : "",
+      receivedDate: "",
       expectedAmount: parseMoney(form.expectedAmount),
-      receivedAmount: receive ? parseMoney(form.realizedAmount || form.expectedAmount) : parseMoney(form.realizedAmount),
+      receivedAmount: 0,
       receiptMethod: form.paymentMethod,
-      bankAccountId: form.bankAccountId,
-      status: receive ? "Recebida" : (form.status as any),
-      origin: editing?.origin || "Manual",
+      bankAccountId: form.bankAccountId === "nenhuma" ? "" : form.bankAccountId,
+      status: form.cancelled ? "Cancelada" : "Aberta",
+      origin: editing?.origin || (erp.sourceType === "Manual" ? "Manual" : erp.sourceType),
       notes: form.notes,
       attachmentName: form.attachmentName,
       transactionId: editing?.transactionId || "",
+      ...erp,
       createdAt: editing?.createdAt || now,
       updatedAt: now,
     }
-    const linked = editing ? accountTransaction(state, editing, "receber") : undefined
-    const shouldRealize = Boolean(receivable.receivedDate && receivable.receivedAmount > 0)
-    receivable.transactionId = shouldRealize ? linked?.id || receivable.transactionId || financeId("ft") : ""
-    const transaction = shouldRealize ? transactionFromReceivable(receivable) : null
-    const next = {
-      ...state,
-      accountsReceivable: editing
-        ? state.accountsReceivable.map((item) => item.id === receivable.id ? receivable : item)
-        : [receivable, ...state.accountsReceivable],
-      transactions: transaction
-        ? [transaction, ...state.transactions.filter((item) => item.id !== linked?.id && item.id !== receivable.transactionId)]
-        : state.transactions.filter((item) => item.id !== linked?.id),
-    }
+    const [first, ...rest] = editing ? [draft] : splitInstallments(draft, "ar")
+    const firstSettlement = accountSettlementAmount(first)
+    const receivedAmount = receive ? parseMoney(form.realizedAmount || firstSettlement) : parseMoney(form.realizedAmount)
+    const firstWithBaixa = { ...first, receivedAmount, receivedDate: receivedAmount > 0 ? form.realizedDate || financeToday() : "" }
+    const records = [firstWithBaixa, ...rest].map((item) => ({ ...item, status: receivableAutoStatus(item) }))
     try {
-      await saveState(next)
-      toast({ title: editing ? "Conta a receber atualizada" : "Conta a receber salva", description: "Alteracoes confirmadas no Supabase." })
+      await persistAccounts("receber", records, editing)
+      toast({ title: editing ? "Conta a receber atualizada" : records.length > 1 ? `${records.length} parcelas geradas` : "Conta a receber salva", description: "Alteracoes confirmadas no Supabase." })
       close()
     } catch (error) {
       toast({ title: "Erro ao salvar conta a receber", description: error instanceof Error ? error.message : "O Supabase recusou a alteracao.", variant: "destructive" })
@@ -1161,7 +1259,32 @@ function FinanceSheets({
     close()
   }
 
-  function CommonFields({ kind }: { kind: "entrada" | "saida" }) {
+  function applyPaymentCondition(conditionId: string) {
+    const condition = state.paymentConditions.find((item) => item.id === conditionId)
+    if (!condition) {
+      setForm({ ...form, paymentConditionId: "" })
+      return
+    }
+    setForm({
+      ...form,
+      paymentConditionId: condition.id,
+      installments: String(condition.installments),
+      intervalDays: String(condition.intervalDays || 30),
+      paymentMethod: condition.paymentMethod || form.paymentMethod,
+      dueDate: addDays(form.competenceDate || financeToday(), condition.firstDueDays),
+    })
+  }
+
+  function CommonFields({ kind, account = false }: { kind: "entrada" | "saida"; account?: boolean }) {
+    const editingThis = Boolean(account && editingAccount)
+    const installments = Number(form.installments || 1)
+    const preview = account && !editingThis && installments > 1 && parseMoney(form.expectedAmount) > 0 && form.dueDate
+      ? buildInstallments(parseMoney(form.expectedAmount), installments, form.dueDate, Number(form.intervalDays || 30))
+      : []
+    const settlement = accountSettlementAmount({ expectedAmount: parseMoney(form.expectedAmount), interestAmount: parseMoney(form.interestAmount || 0), fineAmount: parseMoney(form.fineAmount || 0), discountAmount: parseMoney(form.discountAmount || 0) })
+    const bankOptions = [{ value: "nenhuma", label: "Sem conta" }, ...state.bankAccounts.filter((item) => item.status === "Ativo" || item.id === form.bankAccountId).map((item) => ({ value: item.id, label: item.name }))]
+    const methodOptions = Array.from(new Set([...paymentMethodOptions, form.paymentMethod].filter(Boolean))).map((value) => ({ value, label: value }))
+    const editingInstallment = editingThis && editingAccount ? installmentLabel(editingAccount.item) : "-"
     return (
       <div className="grid gap-4 md:grid-cols-2">
         <TextField label="Descricao" value={form.description} onChange={(value) => setForm({ ...form, description: value })} />
@@ -1178,22 +1301,33 @@ function FinanceSheets({
           onAction={openQuickSupplier}
         /> : null}
         {kind === "entrada" ? <SelectField label="Cliente" value={form.clientId || "nenhum"} onChange={(value) => setForm({ ...form, clientId: value })} options={clientOptions} /> : null}
-        <SelectField label="Obra/Local" value={form.workId || "nenhuma"} onChange={(value) => setForm({ ...form, workId: value, environmentId: "", pointId: "" })} options={workOptions} />
-        <SelectField label="Ambiente" value={form.environmentId || "nenhum"} onChange={(value) => setForm({ ...form, environmentId: value, pointId: "" })} options={environmentOptions} />
-        <SelectField label="Ponto" value={form.pointId || "nenhum"} onChange={(value) => setForm({ ...form, pointId: value })} options={pointOptions} />
-        <SelectField label="Ordem de Servico" value={form.serviceOrderId || "nenhuma"} onChange={(value) => setForm({ ...form, serviceOrderId: value })} options={orderOptions} />
-        <SelectField label="Categoria" value={form.categoryId || "nenhuma"} onChange={(value) => setForm({ ...form, categoryId: value === "nenhuma" ? "" : value })} options={[{ value: "nenhuma", label: "Sem categoria" }, ...categoryOptions(kind)]} />
+        {account ? <TextField label="Numero do documento / NF" value={form.documentNumber} onChange={(value) => setForm({ ...form, documentNumber: value })} /> : null}
+        <SelectField label="Categoria financeira" value={form.categoryId || "nenhuma"} onChange={(value) => setForm({ ...form, categoryId: value === "nenhuma" ? "" : value })} options={[{ value: "nenhuma", label: "Sem categoria" }, ...categoryOptions(kind)]} />
         <SelectField label="Subcategoria" value={form.subcategoryId || "nenhuma"} onChange={(value) => setForm({ ...form, subcategoryId: value === "nenhuma" ? "" : value })} options={[{ value: "nenhuma", label: "Sem subcategoria" }, ...subcategoryOptions]} />
         <SelectField label="Centro de custo" value={form.costCenterId || "nenhum"} onChange={(value) => setForm({ ...form, costCenterId: value === "nenhum" ? "" : value })} options={[{ value: "nenhum", label: "Sem centro" }, ...costCenterOptions]} />
-        <TextField label="Data de competencia" type="date" value={form.competenceDate} onChange={(value) => setForm({ ...form, competenceDate: value })} />
-        <TextField label="Data de vencimento" type="date" value={form.dueDate} onChange={(value) => setForm({ ...form, dueDate: value })} />
-        <TextField label={kind === "entrada" ? "Data de recebimento" : "Data de pagamento"} type="date" value={form.realizedDate} onChange={(value) => setForm({ ...form, realizedDate: value })} />
-        <TextField label="Valor previsto" value={form.expectedAmount} onChange={(value) => setForm({ ...form, expectedAmount: value })} />
-        <TextField label={kind === "entrada" ? "Valor recebido" : "Valor pago"} value={form.realizedAmount} onChange={(value) => setForm({ ...form, realizedAmount: value })} />
-        <TextField label={kind === "entrada" ? "Forma de recebimento" : "Forma de pagamento"} value={form.paymentMethod} onChange={(value) => setForm({ ...form, paymentMethod: value })} />
-        <TextField label="Conta bancaria" value={form.bankAccountId} onChange={(value) => setForm({ ...form, bankAccountId: value })} />
+        <TextField label="Data de emissao / competencia" type="date" value={form.competenceDate} onChange={(value) => setForm({ ...form, competenceDate: value })} />
+        <TextField label="Valor original" value={form.expectedAmount} onChange={(value) => setForm({ ...form, expectedAmount: value })} />
+        {account && !editingThis ? <SelectField label="Condicao de pagamento" value={form.paymentConditionId || "nenhuma"} onChange={(value) => applyPaymentCondition(value === "nenhuma" ? "" : value)} options={[{ value: "nenhuma", label: "Personalizada" }, ...state.paymentConditions.filter((item) => item.status === "Ativo").map((item) => ({ value: item.id, label: item.name }))]} /> : null}
+        {account && !editingThis ? <TextField label="Numero de parcelas" type="number" value={form.installments} onChange={(value) => setForm({ ...form, installments: value, paymentConditionId: "" })} /> : null}
+        {account && !editingThis && installments > 1 ? <TextField label="Intervalo entre parcelas (dias)" type="number" value={form.intervalDays} onChange={(value) => setForm({ ...form, intervalDays: value, paymentConditionId: "" })} /> : null}
+        {editingThis ? <div className="space-y-2"><Label>Parcela</Label><div className="flex h-10 items-center rounded-md border bg-muted/40 px-3 text-sm">{editingInstallment}</div></div> : null}
+        <TextField label={account && !editingThis && installments > 1 ? "Vencimento da 1a parcela" : "Data de vencimento"} type="date" value={form.dueDate} onChange={(value) => setForm({ ...form, dueDate: value })} />
+        <SelectField label={kind === "entrada" ? "Forma de recebimento" : "Forma de pagamento"} value={form.paymentMethod || "Pix"} onChange={(value) => setForm({ ...form, paymentMethod: value })} options={methodOptions} />
+        <SelectField label="Conta bancaria / caixa" value={form.bankAccountId || "nenhuma"} onChange={(value) => setForm({ ...form, bankAccountId: value === "nenhuma" ? "" : value })} options={bankOptions} />
         {kind === "saida" ? <SelectField label="Cartao de credito" value={form.creditCardId || "nenhum"} onChange={(value) => setForm({ ...form, creditCardId: value })} options={[{ value: "nenhum", label: "Sem cartao" }, ...state.creditCards.map((item) => ({ value: item.id, label: item.name }))]} /> : null}
+        {account ? <TextField label="Juros (R$)" value={form.interestAmount} onChange={(value) => setForm({ ...form, interestAmount: value })} /> : null}
+        {account ? <TextField label="Multa (R$)" value={form.fineAmount} onChange={(value) => setForm({ ...form, fineAmount: value })} /> : null}
+        {account ? <TextField label="Desconto (R$)" value={form.discountAmount} onChange={(value) => setForm({ ...form, discountAmount: value })} /> : null}
+        {account ? <div className="space-y-2"><Label>Valor para quitacao</Label><div className="flex h-10 items-center rounded-md border bg-muted/40 px-3 text-sm font-semibold">{money(settlement)}</div></div> : null}
+        <TextField label={kind === "entrada" ? "Data de recebimento (baixa)" : "Data de pagamento (baixa)"} type="date" value={form.realizedDate} onChange={(value) => setForm({ ...form, realizedDate: value })} />
+        <TextField label={kind === "entrada" ? "Valor recebido" : "Valor pago"} value={form.realizedAmount} onChange={(value) => setForm({ ...form, realizedAmount: value })} />
+        {account ? <SelectField label="Origem do lancamento" value={form.sourceType || "Manual"} onChange={(value) => setForm({ ...form, sourceType: value })} options={accountSourceTypeOptions.map((value) => ({ value, label: value === "OS" ? "Ordem de servico" : value }))} /> : null}
+        {(!account || form.sourceType === "OS") ? <SelectField label="Ordem de Servico" value={form.serviceOrderId || "nenhuma"} onChange={(value) => setForm({ ...form, serviceOrderId: value })} options={orderOptions} /> : null}
+        {account && ["Contrato", "Venda", "Compra"].includes(form.sourceType) ? <TextField label={`Numero do(a) ${String(form.sourceType).toLowerCase()}`} value={form.sourceReference} onChange={(value) => setForm({ ...form, sourceReference: value })} /> : null}
         <TextField label="Comprovante/anexo" value={form.attachmentName} onChange={(value) => setForm({ ...form, attachmentName: value })} />
+        {editingThis ? <div className="flex items-center gap-3 rounded-md border px-3 py-2"><Checkbox checked={Boolean(form.cancelled)} onCheckedChange={(checked) => setForm({ ...form, cancelled: checked === true })} /><Label>Lancamento cancelado</Label></div> : null}
+        {preview.length ? <div className="rounded-md border bg-muted/20 p-3 text-sm md:col-span-2"><p className="mb-1 font-medium">Parcelas que serao geradas</p>{preview.map((item) => <p key={item.number}>{String(item.number).padStart(2, "0")}/{String(item.count).padStart(2, "0")} - {formatDate(item.dueDate)} - {money(item.amount)}</p>)}</div> : null}
+        {editingThis && editingAccount ? <p className="text-xs text-muted-foreground md:col-span-2">Criado por {editingAccount.item.createdBy || "-"} em {formatDate(String(editingAccount.item.createdAt || "").slice(0, 10))} · Ultima alteracao por {editingAccount.item.updatedBy || "-"} em {formatDate(String(editingAccount.item.updatedAt || "").slice(0, 10))}</p> : null}
         {kind === "saida" ? (
           <Dialog open={quickSupplierOpen} onOpenChange={(open) => !quickSupplierSubmitting && setQuickSupplierOpen(open)}>
             <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
@@ -1300,15 +1434,15 @@ function FinanceSheets({
         <div className="flex gap-2"><SaveButton onClick={() => saveTransaction("Saida")}>Salvar</SaveButton><Button onClick={() => saveTransaction("Saida", true)}>Salvar como pago</Button><Button variant="outline" onClick={close}>Cancelar</Button></div>
       </FormSheet> : null}
       {sheet === "pagar" ? <FormSheet open onOpenChange={(open) => !open && !accountSubmitting && close()} title={editingAccount?.kind === "pagar" ? "Editar Conta a Pagar" : "Nova Conta a Pagar"}>
-        {CommonFields({ kind: "saida" })}
+        {CommonFields({ kind: "saida", account: true })}
         <TextAreaField label="Observacoes" value={form.notes} onChange={(value) => setForm({ ...form, notes: value })} />
-        <div className="flex gap-2"><SaveButton disabled={accountSubmitting} onClick={() => savePayable(false)}>{accountSubmitting ? "Salvando..." : editingAccount?.kind === "pagar" ? "Salvar alteracoes" : "Salvar"}</SaveButton><Button disabled={accountSubmitting} onClick={() => savePayable(true)}>{accountSubmitting ? "Salvando..." : "Salvar e pagar"}</Button><Button variant="outline" disabled={accountSubmitting} onClick={close}>Cancelar</Button></div>
+        <div className="flex gap-2"><SaveButton disabled={accountSubmitting} onClick={() => savePayable(false)}>{accountSubmitting ? "Salvando..." : editingAccount?.kind === "pagar" ? "Salvar alteracoes" : "Salvar"}</SaveButton><Button disabled={accountSubmitting} onClick={() => savePayable(true)}>{accountSubmitting ? "Salvando..." : Number(form.installments || 1) > 1 && editingAccount?.kind !== "pagar" ? "Salvar e pagar 1a parcela" : "Salvar e pagar"}</Button><Button variant="outline" disabled={accountSubmitting} onClick={close}>Cancelar</Button></div>
       </FormSheet> : null}
       {sheet === "receber" ? <FormSheet open onOpenChange={(open) => !open && !accountSubmitting && close()} title={editingAccount?.kind === "receber" ? "Editar Conta a Receber" : "Nova Conta a Receber"}>
-        {CommonFields({ kind: "entrada" })}
+        {CommonFields({ kind: "entrada", account: true })}
         <TextAreaField label="Observacoes" value={form.notes} onChange={(value) => setForm({ ...form, notes: value })} />
         {editingAccount?.kind !== "receber" ? <AsaasReceivableChargePanel input={{ clientId: form.clientId, serviceOrderId: form.serviceOrderId, value: form.expectedAmount, dueDate: form.dueDate, description: form.description }} onCreated={refreshState} /> : null}
-        <div className="flex flex-wrap gap-2"><SaveButton disabled={accountSubmitting} onClick={() => saveReceivable(false)}>{accountSubmitting ? "Salvando..." : editingAccount?.kind === "receber" ? "Salvar alteracoes" : "Salvar somente no financeiro"}</SaveButton><Button disabled={accountSubmitting} onClick={() => saveReceivable(true)}>{accountSubmitting ? "Salvando..." : "Salvar e receber"}</Button><Button variant="outline" disabled={accountSubmitting} onClick={close}>Cancelar</Button></div>
+        <div className="flex flex-wrap gap-2"><SaveButton disabled={accountSubmitting} onClick={() => saveReceivable(false)}>{accountSubmitting ? "Salvando..." : editingAccount?.kind === "receber" ? "Salvar alteracoes" : "Salvar somente no financeiro"}</SaveButton><Button disabled={accountSubmitting} onClick={() => saveReceivable(true)}>{accountSubmitting ? "Salvando..." : Number(form.installments || 1) > 1 && editingAccount?.kind !== "receber" ? "Salvar e receber 1a parcela" : "Salvar e receber"}</Button><Button variant="outline" disabled={accountSubmitting} onClick={close}>Cancelar</Button></div>
       </FormSheet> : null}
       {sheet === "dre-receita" ? <FormSheet open onOpenChange={(open) => !open && close()} title="Nova Receita na DRE" description="Escolha categoria, mes, ano e se o valor e previsto ou realizado. A receita entra como Entrada e soma na DRE.">
         {DreManualFields({ kind: "entrada" })}
@@ -1471,14 +1605,16 @@ export default function FinanceiroPage() {
   }
 
   function markPayablePaid(item: AccountsPayable, partial = false) {
-    const amount = partial ? parseMoney(prompt("Valor pago parcial:") || "0") : item.expectedAmount
-    if (!amount) return
-    const paid = { ...item, status: partial ? "Parcialmente paga" as const : "Paga" as const, paidAmount: amount, paymentDate: financeToday(), updatedAt: financeNow() }
+    const openAmount = Math.max(accountSettlementAmount(item) - Number(item.paidAmount || 0), 0)
+    const amount = partial ? parseMoney(prompt(`Valor pago agora (em aberto: ${money(openAmount)}):`) || "0") : openAmount
+    if (!amount || amount < 0) return
+    const updated = { ...item, paidAmount: Number(item.paidAmount || 0) + amount, paymentDate: financeToday(), updatedAt: financeNow(), updatedBy: user?.name || user?.email || "" }
+    const paid = { ...updated, status: payableAutoStatus(updated) }
     if (item.origin === "Cartao de credito" && item.creditCardInvoiceId) {
       commit((current) => ({
         ...current,
         accountsPayable: current.accountsPayable.map((row) => row.id === item.id ? paid : row),
-        creditCardInvoices: current.creditCardInvoices.map((invoice) => invoice.id === item.creditCardInvoiceId ? { ...invoice, status: partial ? "Em revisao" : "Paga", updatedAt: financeNow() } : invoice),
+        creditCardInvoices: current.creditCardInvoices.map((invoice) => invoice.id === item.creditCardInvoiceId ? { ...invoice, status: paid.status === "Paga" ? "Paga" : "Em revisao", updatedAt: financeNow() } : invoice),
       }))
       return
     }
@@ -1488,9 +1624,11 @@ export default function FinanceiroPage() {
   }
 
   function markReceivableReceived(item: AccountsReceivable, partial = false) {
-    const amount = partial ? parseMoney(prompt("Valor recebido parcial:") || "0") : item.expectedAmount
-    if (!amount) return
-    const received = { ...item, status: partial ? "Parcialmente recebida" as const : "Recebida" as const, receivedAmount: amount, receivedDate: financeToday(), updatedAt: financeNow() }
+    const openAmount = Math.max(accountSettlementAmount(item) - Number(item.receivedAmount || 0), 0)
+    const amount = partial ? parseMoney(prompt(`Valor recebido agora (em aberto: ${money(openAmount)}):`) || "0") : openAmount
+    if (!amount || amount < 0) return
+    const updated = { ...item, receivedAmount: Number(item.receivedAmount || 0) + amount, receivedDate: financeToday(), updatedAt: financeNow(), updatedBy: user?.name || user?.email || "" }
+    const received = { ...updated, status: receivableAutoStatus(updated) }
     const transaction = transactionFromReceivable(received)
     received.transactionId = transaction.id
     commit((current) => ({ ...current, accountsReceivable: current.accountsReceivable.map((row) => row.id === item.id ? received : row), transactions: [transaction, ...current.transactions.filter((row) => row.id !== item.transactionId)] }))
@@ -1659,7 +1797,7 @@ export default function FinanceiroPage() {
     <FinanceErrorBoundary>
     <PageShell title="Financeiro" description="Controle financeiro da empresa com previsto, realizado, contas, DRE, cartoes e importacao de fatura." actions={activeTab === "lancamentos" ? <><Button onClick={() => setSheet("entrada")}><Plus className="h-4 w-4" />Nova Entrada</Button><Button variant="secondary" onClick={() => setSheet("saida")}>Nova Saida</Button><Button variant="secondary" onClick={() => openNewAccount("pagar")}>Nova Conta a Pagar</Button><Button variant="secondary" onClick={() => openNewAccount("receber")}>Nova Conta a Receber</Button></> : null}>
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="flex flex-wrap"><TabsTrigger value="visao">Visao Geral</TabsTrigger><TabsTrigger value="lancamentos">Entradas e Saidas</TabsTrigger><TabsTrigger value="pagar">Contas a Pagar</TabsTrigger><TabsTrigger value="receber">Contas a Receber</TabsTrigger><TabsTrigger value="emitir-nf">Emitir NF</TabsTrigger><TabsTrigger value="dre">DRE</TabsTrigger><TabsTrigger value="cartao">Cartao de Credito</TabsTrigger><TabsTrigger value="importar">Importar</TabsTrigger><TabsTrigger value="regras">Regras de Categoria</TabsTrigger><TabsTrigger value="asaas">Integracao Asaas</TabsTrigger></TabsList>
+        <TabsList className="flex flex-wrap"><TabsTrigger value="visao">Visao Geral</TabsTrigger><TabsTrigger value="lancamentos">Entradas e Saidas</TabsTrigger><TabsTrigger value="pagar">Contas a Pagar</TabsTrigger><TabsTrigger value="receber">Contas a Receber</TabsTrigger><TabsTrigger value="emitir-nf">Emitir NF</TabsTrigger><TabsTrigger value="dre">DRE</TabsTrigger><TabsTrigger value="cartao">Cartao de Credito</TabsTrigger><TabsTrigger value="importar">Importar</TabsTrigger><TabsTrigger value="regras">Regras de Categoria</TabsTrigger><TabsTrigger value="cadastros">Cadastros</TabsTrigger><TabsTrigger value="asaas">Integracao Asaas</TabsTrigger></TabsList>
         {activeTab === "pagar" ? <div className="my-4 flex flex-wrap gap-2"><AsaasSupplierPaymentButton state={operational.state} /></div> : null}
         <TabsContent value="visao" className="space-y-4">
           <div className="flex flex-col gap-3 rounded-md border bg-background p-4 sm:flex-row sm:items-end sm:justify-between">
@@ -1671,6 +1809,7 @@ export default function FinanceiroPage() {
             </div>
           </div>
           {asaasSyncMessage ? <p className="rounded-md border bg-muted/30 px-3 py-2 text-sm">{asaasSyncMessage}</p> : null}
+          <DueAlertsPanel state={state} clientName={opNames.client} />
           <AsaasWebhookAlertsPanel />
           <AsaasBalanceCards />
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4"><MetricCard title="Receita prevista" value={loading ? "..." : money(financialPeriodOverview.metrics.plannedRevenue)} note={overviewPeriodLabel} icon={BarChart3} /><MetricCard title="Receita realizada" value={loading ? "..." : money(financialPeriodOverview.metrics.realizedRevenue)} note={overviewPeriodLabel} icon={TrendingUp} /><MetricCard title="Despesa realizada" value={loading ? "..." : money(financialPeriodOverview.metrics.realizedExpense)} note={overviewPeriodLabel} icon={TrendingDown} /><MetricCard title="Saldo realizado" value={loading ? "..." : money(financialPeriodOverview.metrics.realizedBalance)} note={overviewPeriodLabel} icon={Wallet} /></div>
@@ -1684,6 +1823,7 @@ export default function FinanceiroPage() {
         <TabsContent value="lancamentos" className="space-y-4"><div className="grid gap-2 md:grid-cols-[minmax(260px,1fr)_160px_160px] lg:max-w-4xl"><Input placeholder="Filtrar lancamentos" value={query} onChange={(event) => setQuery(event.target.value)} /><Select value={monthFilter} onValueChange={setMonthFilter}><SelectTrigger><SelectValue placeholder="Mes" /></SelectTrigger><SelectContent><SelectItem value="todos">Todos os meses</SelectItem><SelectItem value="01">Janeiro</SelectItem><SelectItem value="02">Fevereiro</SelectItem><SelectItem value="03">Marco</SelectItem><SelectItem value="04">Abril</SelectItem><SelectItem value="05">Maio</SelectItem><SelectItem value="06">Junho</SelectItem><SelectItem value="07">Julho</SelectItem><SelectItem value="08">Agosto</SelectItem><SelectItem value="09">Setembro</SelectItem><SelectItem value="10">Outubro</SelectItem><SelectItem value="11">Novembro</SelectItem><SelectItem value="12">Dezembro</SelectItem></SelectContent></Select><Select value={yearFilter} onValueChange={setYearFilter}><SelectTrigger><SelectValue placeholder="Ano" /></SelectTrigger><SelectContent><SelectItem value="todos">Todos os anos</SelectItem>{yearOptions.map((year) => <SelectItem key={year} value={year}>{year}</SelectItem>)}</SelectContent></Select></div><TransactionsTable state={state} transactions={filteredTransactions} opNames={opNames} /></TabsContent>
         <TabsContent value="pagar">
           <SectionCard title="Contas a Pagar">
+            <DueAlertsPanel state={state} clientName={opNames.client} kind="pagar" />
             <div className="mb-4 space-y-4">
               <div className="flex flex-wrap gap-2">
                 <Button onClick={() => openNewAccount("pagar")}><Plus className="h-4 w-4" />Nova Conta a Pagar</Button>
@@ -1729,18 +1869,19 @@ export default function FinanceiroPage() {
                 <div className="rounded-md border p-3"><p className="text-xs text-muted-foreground">Saldo a pagar</p><strong>{money(Math.max(payableTotals.expected - payableTotals.done, 0))}</strong></div>
               </div>
             </div>
-            <DataTable headers={["Vencimento", "Fornecedor", "Descricao", "Categoria", "Previsto", "Pago", "Status", "Origem", "Acoes"]} empty={!sortedPayables.length} stickyHeader viewportClassName={financeTableViewport} tableClassName={`min-w-[1320px] ${financeTableRows}`}>
-              {sortedPayables.map((item) => <TableRow key={item.id}><TableCell>{formatDate(item.dueDate)}</TableCell><TableCell>{item.supplierName}</TableCell><TableCell>{item.description}</TableCell><TableCell>{categoryName(state, item.categoryId)}</TableCell><TableCell>{money(item.expectedAmount)}</TableCell><TableCell>{money(item.paidAmount)}</TableCell><TableCell><StatusBadge status={statusFromDates(item.status, item.dueDate, item.paymentDate)} /></TableCell><TableCell>{item.origin}</TableCell><TableCell className="space-x-1"><Button size="sm" variant="outline" onClick={() => markPayablePaid(item)}>Pagar</Button><Button size="sm" variant="outline" onClick={() => markPayablePaid(item, true)}>Parcial</Button><Button size="sm" variant="outline" title="Editar conta" onClick={() => openAccountEdit({ kind: "pagar", item })}><Pencil className="h-4 w-4" />Editar</Button><Button size="sm" variant="destructive" title="Excluir conta" onClick={() => deleteAccount({ kind: "pagar", item })}><Trash2 className="h-4 w-4" />Excluir</Button></TableCell></TableRow>)}
+            <DataTable headers={["Vencimento", "Fornecedor", "Descricao", "Documento", "Parcela", "Categoria", "Valor", "Pago", "Status", "Origem", "Acoes"]} empty={!sortedPayables.length} stickyHeader viewportClassName={financeTableViewport} tableClassName={`min-w-[1500px] ${financeTableRows}`}>
+              {sortedPayables.map((item) => <TableRow key={item.id}><TableCell>{formatDate(item.dueDate)}</TableCell><TableCell>{item.supplierName}</TableCell><TableCell>{item.description}</TableCell><TableCell>{item.documentNumber || "-"}</TableCell><TableCell>{installmentLabel(item)}</TableCell><TableCell>{categoryName(state, item.categoryId)}</TableCell><TableCell>{money(accountSettlementAmount(item))}</TableCell><TableCell>{money(item.paidAmount)}</TableCell><TableCell><StatusBadge status={payableAutoStatus(item)} /></TableCell><TableCell>{accountOriginLabel(item)}</TableCell><TableCell className="space-x-1"><Button size="sm" variant="outline" onClick={() => markPayablePaid(item)}>Pagar</Button><Button size="sm" variant="outline" onClick={() => markPayablePaid(item, true)}>Parcial</Button><Button size="sm" variant="outline" title="Editar conta" onClick={() => openAccountEdit({ kind: "pagar", item })}><Pencil className="h-4 w-4" />Editar</Button><Button size="sm" variant="destructive" title="Excluir conta" onClick={() => deleteAccount({ kind: "pagar", item })}><Trash2 className="h-4 w-4" />Excluir</Button></TableCell></TableRow>)}
             </DataTable>
           </SectionCard>
         </TabsContent>
-        <TabsContent value="receber"><SectionCard title="Contas a Receber"><div className="mb-4 space-y-4"><div className="flex flex-wrap gap-2"><Button onClick={() => openNewAccount("receber")}><Plus className="h-4 w-4" />Nova Conta a Receber</Button><Button variant="outline" onClick={() => generateAccountsReport("receber")}><FileText className="h-4 w-4" />Gerar relatorio do periodo</Button></div><div className="grid gap-3 rounded-md border bg-muted/20 p-4 md:grid-cols-[minmax(180px,240px)_minmax(180px,240px)_auto]"><div className="space-y-1.5"><Label htmlFor="receivable-period-start">Data inicial</Label><Input id="receivable-period-start" type="date" value={receivablePeriod.start} onChange={(event) => setReceivablePeriod((current) => ({ ...current, start: event.target.value }))} /></div><div className="space-y-1.5"><Label htmlFor="receivable-period-end">Data final</Label><Input id="receivable-period-end" type="date" value={receivablePeriod.end} min={receivablePeriod.start || undefined} onChange={(event) => setReceivablePeriod((current) => ({ ...current, end: event.target.value }))} /></div><div className="flex items-end"><Button variant="ghost" onClick={() => setReceivablePeriod({ start: "", end: "" })}><CalendarRange className="h-4 w-4" />Limpar periodo</Button></div></div><div className="grid gap-3 md:grid-cols-3"><div className="rounded-md border p-3"><p className="text-xs text-muted-foreground">Previsto no periodo</p><strong>{money(receivableTotals.expected)}</strong></div><div className="rounded-md border p-3"><p className="text-xs text-muted-foreground">Recebido no periodo</p><strong>{money(receivableTotals.done)}</strong></div><div className="rounded-md border p-3"><p className="text-xs text-muted-foreground">Saldo a receber</p><strong>{money(Math.max(receivableTotals.expected - receivableTotals.done, 0))}</strong></div></div></div><DataTable headers={["Vencimento", "Cliente", "Descricao", "Obra", "OS", "Previsto", "Recebido", "Status", "Origem", "Acoes"]} empty={!filteredReceivables.length} stickyHeader viewportClassName={financeTableViewport} tableClassName={`min-w-[1500px] ${financeTableRows}`}>{filteredReceivables.map((item) => <TableRow key={item.id}><TableCell>{formatDate(item.dueDate)}</TableCell><TableCell>{opNames.client(item.clientId)}</TableCell><TableCell>{item.description}</TableCell><TableCell>{opNames.work(item.workId)}</TableCell><TableCell>{operational.state.serviceOrders.find((order) => order.id === item.serviceOrderId)?.orderNumber || "-"}</TableCell><TableCell>{money(item.expectedAmount)}</TableCell><TableCell>{money(item.receivedAmount)}</TableCell><TableCell><StatusBadge status={statusFromDates(item.status, item.dueDate, item.receivedDate)} /></TableCell><TableCell>{item.origin}</TableCell><TableCell className="space-x-1">{item.origin.toLowerCase().includes("asaas") ? <AsaasSavedChargeButton accountsReceivableId={item.id} /> : null}<Button size="sm" variant="outline" onClick={() => markReceivableReceived(item)}>Receber</Button><Button size="sm" variant="outline" onClick={() => markReceivableReceived(item, true)}>Parcial</Button><Button size="sm" variant="outline" title="Editar conta" onClick={() => openAccountEdit({ kind: "receber", item })}><Pencil className="h-4 w-4" />Editar</Button><Button size="sm" variant="destructive" title="Excluir conta" onClick={() => deleteAccount({ kind: "receber", item })}><Trash2 className="h-4 w-4" />Excluir</Button></TableCell></TableRow>)}</DataTable></SectionCard></TabsContent>
+        <TabsContent value="receber"><SectionCard title="Contas a Receber"><DueAlertsPanel state={state} clientName={opNames.client} kind="receber" /><div className="mb-4 space-y-4"><div className="flex flex-wrap gap-2"><Button onClick={() => openNewAccount("receber")}><Plus className="h-4 w-4" />Nova Conta a Receber</Button><Button variant="outline" onClick={() => generateAccountsReport("receber")}><FileText className="h-4 w-4" />Gerar relatorio do periodo</Button></div><div className="grid gap-3 rounded-md border bg-muted/20 p-4 md:grid-cols-[minmax(180px,240px)_minmax(180px,240px)_auto]"><div className="space-y-1.5"><Label htmlFor="receivable-period-start">Data inicial</Label><Input id="receivable-period-start" type="date" value={receivablePeriod.start} onChange={(event) => setReceivablePeriod((current) => ({ ...current, start: event.target.value }))} /></div><div className="space-y-1.5"><Label htmlFor="receivable-period-end">Data final</Label><Input id="receivable-period-end" type="date" value={receivablePeriod.end} min={receivablePeriod.start || undefined} onChange={(event) => setReceivablePeriod((current) => ({ ...current, end: event.target.value }))} /></div><div className="flex items-end"><Button variant="ghost" onClick={() => setReceivablePeriod({ start: "", end: "" })}><CalendarRange className="h-4 w-4" />Limpar periodo</Button></div></div><div className="grid gap-3 md:grid-cols-3"><div className="rounded-md border p-3"><p className="text-xs text-muted-foreground">Previsto no periodo</p><strong>{money(receivableTotals.expected)}</strong></div><div className="rounded-md border p-3"><p className="text-xs text-muted-foreground">Recebido no periodo</p><strong>{money(receivableTotals.done)}</strong></div><div className="rounded-md border p-3"><p className="text-xs text-muted-foreground">Saldo a receber</p><strong>{money(Math.max(receivableTotals.expected - receivableTotals.done, 0))}</strong></div></div></div><DataTable headers={["Vencimento", "Cliente", "Descricao", "Documento", "Parcela", "Valor", "Recebido", "Status", "Origem", "Acoes"]} empty={!filteredReceivables.length} stickyHeader viewportClassName={financeTableViewport} tableClassName={`min-w-[1500px] ${financeTableRows}`}>{filteredReceivables.map((item) => <TableRow key={item.id}><TableCell>{formatDate(item.dueDate)}</TableCell><TableCell>{opNames.client(item.clientId)}</TableCell><TableCell>{item.description}</TableCell><TableCell>{item.documentNumber || "-"}</TableCell><TableCell>{installmentLabel(item)}</TableCell><TableCell>{money(accountSettlementAmount(item))}</TableCell><TableCell>{money(item.receivedAmount)}</TableCell><TableCell><StatusBadge status={receivableAutoStatus(item)} /></TableCell><TableCell>{accountOriginLabel(item, operational.state.serviceOrders.find((order) => order.id === item.serviceOrderId)?.orderNumber)}</TableCell><TableCell className="space-x-1">{item.origin.toLowerCase().includes("asaas") ? <AsaasSavedChargeButton accountsReceivableId={item.id} /> : null}<Button size="sm" variant="outline" onClick={() => markReceivableReceived(item)}>Receber</Button><Button size="sm" variant="outline" onClick={() => markReceivableReceived(item, true)}>Parcial</Button><Button size="sm" variant="outline" title="Editar conta" onClick={() => openAccountEdit({ kind: "receber", item })}><Pencil className="h-4 w-4" />Editar</Button><Button size="sm" variant="destructive" title="Excluir conta" onClick={() => deleteAccount({ kind: "receber", item })}><Trash2 className="h-4 w-4" />Excluir</Button></TableCell></TableRow>)}</DataTable></SectionCard></TabsContent>
         <TabsContent value="dre"><DreTab state={state} transactions={state.transactions} commit={commit} operationalState={operational.state} opNames={opNames} openDreSheet={setSheet} loading={loading} loadError={loadError} /></TabsContent>
         <TabsContent value="emitir-nf"><NotaAsInvoicePanel state={operational.state} /></TabsContent>
         <TabsContent value="cartao"><CreditCardTab state={state} commit={commit} openCard={() => setSheet("cartao")} /></TabsContent>
         <TabsContent value="importar"><ImportInvoiceTab state={state} commit={commit} save={save} preview={preview} setPreview={setPreview} processInvoice={processInvoice} confirmInvoice={confirmInvoice} ocrStatus={ocrStatus} /></TabsContent>
         <TabsContent value="regras"><RulesTab state={state} openRule={() => setSheet("regra")} processRules={processRules} rulePreview={rulePreview} setRulePreview={setRulePreview} confirmRulePreview={confirmRulePreview} /></TabsContent>
         <TabsContent value="asaas"><AsaasIntegrationTab /></TabsContent>
+        <TabsContent value="cadastros"><FinanceRegistriesTab state={state} commit={commit} /></TabsContent>
       </Tabs>
       <FinanceSheets state={state} commit={commit} sheet={sheet} setSheet={setSheet} editingAccount={editingAccount} clearEditingAccount={() => setEditingAccount(null)} saveState={save} refreshState={refresh} />
     </PageShell>
