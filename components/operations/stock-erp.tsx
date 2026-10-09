@@ -295,7 +295,24 @@ export function InventoryTab({ materials, warehouses, onChanged }: { materials: 
 }
 
 export function PurchaseSuggestionTab({ materials, suppliers }: { materials: Material[]; suppliers: Supplier[] }) {
+  const { toast } = useCrudFeedback()
+  const [creating, setCreating] = useState(false)
   const rows = materials.filter(needsReplenishment).map((item) => ({ item, quantity: suggestedPurchaseQuantity(item) })).filter((row) => row.quantity > 0)
+  async function createOrders() {
+    if (!window.confirm(`Gerar pedidos de compra em rascunho para ${rows.length} item(ns)? Será criado um pedido por fornecedor preferencial.`)) return
+    setCreating(true)
+    try {
+      const payload = await api<{ orders: Array<{ orderNumber: string }>; withoutSupplier: string[] }>("/api/compras/from-suggestion", { method: "POST", body: JSON.stringify({ items: rows.map(({ item, quantity }) => ({ materialId: item.id, quantity })) }) })
+      toast({
+        title: `${payload.orders.length} pedido(s) criado(s) em Compras`,
+        description: [payload.orders.map((order) => order.orderNumber).join(", "), payload.withoutSupplier.length ? `Sem fornecedor preferencial (não incluídos): ${payload.withoutSupplier.join(", ")}` : ""].filter(Boolean).join(" · "),
+      })
+    } catch (reason) {
+      toast({ title: "Pedidos não gerados", description: reason instanceof Error ? reason.message : "Tente novamente.", variant: "destructive" })
+    } finally {
+      setCreating(false)
+    }
+  }
   const supplierName = (id?: string) => suppliers.find((item) => item.id === id)?.name || "-"
   const total = rows.reduce((sum, row) => sum + row.quantity * Number(row.item.lastPurchaseCost || row.item.averageCost || row.item.costPrice || 0), 0)
   function exportCsv() {
@@ -311,7 +328,7 @@ export function PurchaseSuggestionTab({ materials, suppliers }: { materials: Mat
   }
   return (
     <SectionCard title="Sugestão de compra" description="Itens com disponível (físico - reservado) no ponto de reposição ou abaixo do mínimo. A quantidade sugerida repõe até o estoque máximo.">
-      <div className="mb-3 flex flex-wrap items-center gap-3"><Button variant="outline" disabled={!rows.length} onClick={exportCsv}><ShoppingCart className="h-4 w-4" />Exportar lista (CSV)</Button><span className="text-sm text-muted-foreground">{rows.length} item(ns) · estimativa {brl(total)}</span></div>
+      <div className="mb-3 flex flex-wrap items-center gap-3"><Button disabled={!rows.length || creating} onClick={createOrders}><Plus className="h-4 w-4" />{creating ? "Gerando..." : "Gerar pedidos de compra"}</Button><Button variant="outline" disabled={!rows.length} onClick={exportCsv}><ShoppingCart className="h-4 w-4" />Exportar lista (CSV)</Button><span className="text-sm text-muted-foreground">{rows.length} item(ns) · estimativa {brl(total)}</span></div>
       <DataTable headers={["SKU", "Item", "Disponível", "Ponto de reposição", "Mínimo", "Máximo", "Comprar", "Último custo", "Estimativa", "Fornecedor preferencial"]} empty={!rows.length}>
         {rows.map(({ item, quantity }) => {
           const cost = Number(item.lastPurchaseCost || item.averageCost || item.costPrice || 0)

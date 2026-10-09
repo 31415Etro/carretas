@@ -23,6 +23,7 @@ const pagePermissions = [
   { prefix: "/ordens-servico", permission: "ordens_servico" },
   { prefix: "/frota", permission: "frota" },
   { prefix: "/estoque", permission: "estoque" },
+  { prefix: "/compras", permission: "compras" },
   { prefix: "/financeiro", permission: "financeiro" },
   { prefix: "/comercial", permission: "comercial" },
   { prefix: "/orcamento", permission: "orcamento" },

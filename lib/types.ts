@@ -308,6 +308,7 @@ export type PagePermission =
   | "operacao_campo"
   | "frota"
   | "estoque"
+  | "compras"
   | "financeiro"
   | "comercial"
   | "pmoc"
@@ -328,6 +329,7 @@ export const systemPagePermissions: PagePermission[] = [
   "operacao_campo",
   "frota",
   "estoque",
+  "compras",
   "financeiro",
   "comercial",
   "pmoc",
@@ -370,6 +372,7 @@ export const pagePermissionLabels: Record<PagePermission, string> = {
   operacao_campo: "Operação em Campo",
   frota: "Frota",
   estoque: "Estoque",
+  compras: "Compras",
   financeiro: "Financeiro",
   comercial: "Comercial",
   pmoc: "PMOC",

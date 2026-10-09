@@ -19,6 +19,7 @@ import {
   Settings2,
   MapPinned,
   Package,
+  ShoppingCart,
   Wrench,
   Activity,
 } from "lucide-react"
@@ -71,6 +72,12 @@ function SidebarContent() {
       href: "/estoque",
       permission: "estoque" as const,
       icon: <Package className="text-sidebar-foreground h-5 w-5 flex-shrink-0" />,
+    },
+    {
+      label: "Compras",
+      href: "/compras",
+      permission: "compras" as const,
+      icon: <ShoppingCart className="text-sidebar-foreground h-5 w-5 flex-shrink-0" />,
     },
     {
       label: "Produtos / Serviços",
@@ -198,6 +205,7 @@ export function PageLayout({ children }: { children: React.ReactNode }) {
       { href: "/dashboard", permission: "dashboard" },
       { href: "/financeiro", permission: "financeiro" },
       { href: "/estoque", permission: "estoque" },
+      { href: "/compras", permission: "compras" },
       { href: "/servicos", permission: "clientes_obras" },
       { href: "/ordens-servico", permission: "ordens_servico" },
       { href: "/frota", permission: "frota" },

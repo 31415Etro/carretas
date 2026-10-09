@@ -118,6 +118,7 @@ const selectablePagePermissions: PagePermission[] = [
   "ordens_servico",
   "frota",
   "estoque",
+  "compras",
   "financeiro",
   "comercial",
   "orcamento",

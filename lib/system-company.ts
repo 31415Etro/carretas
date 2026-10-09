@@ -45,6 +45,11 @@ export const sharedMasterTables = new Set([
   "stock_kit_items",
   "system_users",
   "vehicles",
+  // Estoque é do grupo, como o cadastro de materiais (scripts/202).
+  "warehouses",
+  "stock_balances",
+  "stock_movements",
+  "stock_reservations",
 ])
 
 export const tenantScopedTables = new Set([
@@ -64,6 +69,9 @@ export const tenantScopedTables = new Set([
   "service_orders", "stock_service_orders", "tasks", "vehicle_checklists",
   "vehicle_maintenance", "vehicle_usage", "whatsapp_budget_request_photos",
   "whatsapp_budget_requests", "work_environments", "work_floors", "work_points", "works",
+  // Financeiro e compras por CNPJ (scripts/201 e 203).
+  "bank_accounts", "payment_conditions",
+  "purchase_orders", "purchase_order_items", "purchase_receipts", "purchase_receipt_items",
 ])
 
 export function mapSystemCompany(row: any): SystemCompany {
