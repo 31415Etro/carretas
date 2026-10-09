@@ -1,0 +1,62 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+
+# next.js
+/.next/
+/.next-local/
+/.next-verify*/
+/.next-check*/
+/.next-whatsapp-check/
+/.n/
+/.b/
+/.c/
+/.d/
+/.e/
+/out/
+
+# production
+/build
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+last-next-dist.txt
+next-start-runtime-*.log
+next-dev-*.log
+next-dev-*.err
+restore-head.tar
+.restore-head/
+
+# env files
+.env*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# logs locais
+*.log
+
+# dados e documentos da M&C Climatização (mantidos fora do repositório)
+/Cadastro_Clientes.xlsx
+/Gestão a Vista.xlsx
+/RELAÇÃO DE SETORES E EQUIPAMENTOS - new.xlsx
+/TERMO ADITIVO - PMOC_INCLUSÃO EMPRESAS.docx
+/Contrato nº*
+/Itens e Kit/
+/clientes, ambientes e equipamentos/
+/cno bases/
+/contas a pagar/
+/contas a receber/
+/fatura/
+/orçamento/
+/planta/
+/public/contract-templates/contrato-sistema-climatizacao.docx
+/public/contract-templates/termo-aditivo.docx
