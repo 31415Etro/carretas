@@ -2,7 +2,8 @@ import { NextResponse } from "next/server"
 import { stockContext, stockError } from "@/lib/stock-api"
 import { applyStockMovement, stockMovementTypes, toMovement, type StockMovementInput } from "@/lib/stock-engine"
 
-const manualTypes = new Set<string>(stockMovementTypes.filter((type) => type !== "Saldo inicial"))
+// Saldo inicial e produção são gerados pelo sistema (cadastro e montagem), não lançados à mão.
+const manualTypes = new Set<string>(stockMovementTypes.filter((type) => !["Saldo inicial", "Consumo em producao", "Entrada por producao"].includes(type)))
 
 export async function GET(request: Request) {
   const context = await stockContext()

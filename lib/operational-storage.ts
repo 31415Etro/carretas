@@ -317,6 +317,17 @@ export interface Material {
   controlsLot?: boolean
   controlsSerial?: boolean
   controlsExpiry?: boolean
+  /** Tipo no catálogo único (serviços ficam em service_types) */
+  itemType?: "Produto" | "Materia-prima" | "Kit"
+  description?: string
+  subcategory?: string
+  brand?: string
+  manufacturer?: string
+  controlsStock?: boolean
+  allowsSale?: boolean
+  warrantyMonths?: number
+  photoUrl?: string
+  technicalSheetUrl?: string
   createdAt: string
   updatedAt: string
 }

@@ -29,8 +29,9 @@ export const materialSpedItemTypeOptions = [
   { value: "99", label: "99 - Outras" },
 ]
 
-const textFields = ["barcode", "ncm", "cest", "origin", "spedItemType", "location", "supplierCode"] as const
-const numberFields = ["maximumStock", "grossWeight", "netWeight", "height", "width", "length", "costPrice", "salePrice"] as const
+const textFields = ["barcode", "ncm", "cest", "origin", "spedItemType", "location", "supplierCode", "description", "subcategory", "brand", "manufacturer", "photoUrl", "technicalSheetUrl"] as const
+const numberFields = ["maximumStock", "grossWeight", "netWeight", "height", "width", "length", "costPrice", "salePrice", "warrantyMonths"] as const
+export const materialItemTypes = ["Produto", "Materia-prima", "Kit"] as const
 
 const columnByField: Record<(typeof textFields)[number] | (typeof numberFields)[number] | "supplierId", string> = {
   barcode: "barcode",
@@ -49,6 +50,13 @@ const columnByField: Record<(typeof textFields)[number] | (typeof numberFields)[
   length: "length",
   costPrice: "cost_price",
   salePrice: "sale_price",
+  description: "description",
+  subcategory: "subcategory",
+  brand: "brand",
+  manufacturer: "manufacturer",
+  photoUrl: "photo_url",
+  technicalSheetUrl: "technical_sheet_url",
+  warrantyMonths: "warranty_months",
 }
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -69,6 +77,11 @@ export function materialErpColumns(input: Record<string, any>) {
   row.controls_lot = Boolean(input.controlsLot ?? input.controls_lot)
   row.controls_serial = Boolean(input.controlsSerial ?? input.controls_serial)
   row.controls_expiry = Boolean(input.controlsExpiry ?? input.controls_expiry)
+  const itemType = String(input.itemType || input.item_type || "Produto")
+  row.item_type = (materialItemTypes as readonly string[]).includes(itemType) ? itemType : "Produto"
+  row.controls_stock = Boolean(input.controlsStock ?? input.controls_stock ?? true)
+  row.allows_sale = Boolean(input.allowsSale ?? input.allows_sale ?? true)
+  row.warranty_months = Math.max(0, Math.round(Number(input.warrantyMonths ?? input.warranty_months ?? 0) || 0))
   return row
 }
 
@@ -83,5 +96,13 @@ export function materialErpFields(row: Record<string, any>): Partial<Material> {
   fields.reservedStock = Number(row.reserved_stock || 0)
   fields.averageCost = Number(row.average_cost || 0)
   fields.lastPurchaseCost = Number(row.last_purchase_cost || 0)
-  return { ...fields, controlsLot: Boolean(row.controls_lot), controlsSerial: Boolean(row.controls_serial), controlsExpiry: Boolean(row.controls_expiry) } as Partial<Material>
+  return {
+    ...fields,
+    controlsLot: Boolean(row.controls_lot),
+    controlsSerial: Boolean(row.controls_serial),
+    controlsExpiry: Boolean(row.controls_expiry),
+    itemType: row.item_type || "Produto",
+    controlsStock: row.controls_stock !== false,
+    allowsSale: row.allows_sale !== false,
+  } as Partial<Material>
 }

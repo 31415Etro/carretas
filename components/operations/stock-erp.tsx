@@ -25,9 +25,10 @@ export const manualMovementTypes = ["Entrada por compra", "Saida por venda", "Co
 const movementLabels: Record<string, string> = {
   "Entrada por compra": "Entrada por compra", "Saida por venda": "Saída por venda", "Consumo em OS": "Consumo em OS", "Consumo em kit": "Consumo em kit",
   Transferencia: "Transferência", Devolucao: "Devolução", "Ajuste de inventario": "Ajuste de inventário", Perda: "Perda", "Saldo inicial": "Saldo inicial",
+  "Consumo em producao": "Consumo em produção", "Entrada por producao": "Entrada por produção",
 }
-const incomingTypes = new Set(["Entrada por compra", "Devolucao", "Saldo inicial"])
-const outgoingTypes = new Set(["Saida por venda", "Consumo em OS", "Consumo em kit", "Perda"])
+const incomingTypes = new Set(["Entrada por compra", "Devolucao", "Saldo inicial", "Entrada por producao"])
+const outgoingTypes = new Set(["Saida por venda", "Consumo em OS", "Consumo em kit", "Perda", "Consumo em producao"])
 
 const qty = (value: number) => Number(value || 0).toLocaleString("pt-BR", { maximumFractionDigits: 3 })
 const brl = (value: number) => Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })

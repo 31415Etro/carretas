@@ -13,6 +13,8 @@ export const stockMovementTypes = [
   "Ajuste de inventario",
   "Perda",
   "Saldo inicial",
+  "Consumo em producao",
+  "Entrada por producao",
 ] as const
 
 export type StockMovementType = (typeof stockMovementTypes)[number]
