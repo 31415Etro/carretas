@@ -3,6 +3,7 @@ import { createHash } from "node:crypto"
 import { createAdminClient, createAdminClientForServiceOrder, createClient, getSelectedSystemCompanyId } from "@/lib/supabase/server"
 import { defaultOperationalState, type OperationalState } from "@/lib/operational-storage"
 import { syncReceivablesForServiceOrders } from "@/lib/service-order-receivables"
+import { serviceOrdersNeedingStockSync, syncStockForServiceOrderSafely } from "@/lib/stock-engine"
 import { readAllPages } from "@/lib/supabase-pagination"
 import { operationalSections, operationalStateSection, type OperationalSection } from "@/lib/operational-state-sections"
 import { materialErpColumns, materialErpFields } from "@/lib/material-fields"
@@ -687,7 +688,7 @@ function toDb(state: OperationalState) {
     providers: valid(state.providers).map((x) => ({ id: x.id, full_name: x.fullName, cpf: x.cpf, rg: x.rg, birth_date: x.birthDate || null, phone: x.phone, email: x.email, zip_code: x.zipCode, street: x.street, number: x.number, complement: x.complement, district: x.district, city: x.city, state: x.state, role: x.role, relationship_type: x.relationshipType, status: x.status, notes: x.notes })),
     provider_documents: valid(state.providerDocuments).filter((x) => isUuid(x.providerId)).map((x) => ({ id: x.id, provider_id: x.providerId, type: x.type, file_url: x.fileName, file_name: x.fileName, notes: x.notes })),
     vehicles: valid(state.vehicles).map((x) => ({ id: x.id, plate: x.plate, model: x.model, brand: x.brand, year: x.year, color: x.color, current_km: x.currentKm, front_right_tire: x.frontRightTire, front_left_tire: x.frontLeftTire, rear_right_tire: x.rearRightTire, rear_left_tire: x.rearLeftTire, last_oil_change_date: x.lastOilChangeDate || null, last_oil_change_km: x.lastOilChangeKm, status: x.status, renavam: x.renavam, licensing_due_date: x.licensingDueDate || null, insurance_info: x.insuranceInfo, notes: x.notes })),
-    materials: valid(state.materials).map((x) => ({ id: x.id, name: x.name, category: x.category, unit: x.unit, internal_code: x.internalCode, minimum_stock: x.minimumStock, current_stock: x.currentStock, composes_kit: x.composesKit, status: x.status, notes: x.notes, ...materialErpColumns(x) })),
+    materials: valid(state.materials).map((x) => ({ id: x.id, name: x.name, category: x.category, unit: x.unit, internal_code: x.internalCode, minimum_stock: x.minimumStock, composes_kit: x.composesKit, status: x.status, notes: x.notes, ...materialErpColumns(x) })),
     stock_kits: valid(state.stockKits || []).map((x) => ({ id: x.id, name: x.name, description: x.description, unit_value: Number((x as any).unitValue || 0), stock_quantity: Math.max(0, Math.floor(Number((x as any).quantityInStock || 0))), status: x.status, notes: x.notes })),
     stock_kit_items: valid(state.stockKitItems || []).filter((x) => isUuid(x.kitId) && isUuid(x.materialId)).map((x) => ({ id: x.id, kit_id: x.kitId, material_id: x.materialId, quantity: x.quantity, unit: x.unit })),
     pmoc_plans: valid(state.pmocPlans || []).filter((x) => isUuid(x.clientId)).map((x) => {
@@ -796,10 +797,12 @@ export async function PUT(request: Request) {
     const namesToSave = publicOrderWrite
       ? ["service_orders", "service_order_events", "service_order_checklist_items", "service_order_materials", "service_order_files", "service_order_signatures", "vehicle_checklists", "vehicle_usage"] as const
       : ["clients", "client_contacts", "client_environments", "client_equipment", "suppliers", "works", "work_floors", "service_types", "service_type_checklist_items", "service_type_materials", "work_environments", "environment_photos", "work_points", "point_photos", "providers", "provider_documents", "vehicles", "materials", "stock_kits", "stock_kit_items", "pmoc_plans", "pmoc_sectors", "pmoc_equipment", "pmoc_equipment_services", "service_orders", "pmoc_schedules", "service_order_events", "service_order_checklist_items", "service_order_materials", "service_order_files", "service_order_signatures", "vehicle_checklists", "vehicle_usage", "vehicle_maintenance", "operational_statuses", "execution_steps", "audit_logs"] as const
+    const stockSyncIds = await serviceOrdersNeedingStockSync(supabase, rows.service_orders)
     for (const name of namesToSave) {
       await upsertRows(supabase, name, rows[name])
     }
     await syncReceivablesForServiceOrders(supabase, rows.service_orders)
+    for (const id of stockSyncIds) await syncStockForServiceOrderSafely(supabase, id)
     return NextResponse.json({ ok: true })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Erro ao salvar Supabase" }, { status: 500 })
@@ -831,6 +834,10 @@ export async function PATCH(request: Request) {
     }
     const empty = Object.fromEntries(Object.entries(defaultOperationalState()).map(([key, value]) => [key, Array.isArray(value) ? [] : value])) as unknown as OperationalState
     const rows = toDb(normalizeOperationalStateIds({ ...empty, ...changes }, companyId))
+    const stockSyncIds = new Set([
+      ...(changes.serviceOrders?.length ? await serviceOrdersNeedingStockSync(supabase, rows.service_orders) : []),
+      ...rows.service_order_materials.map((row: any) => row.service_order_id),
+    ])
     for (const [key, name] of Object.entries(tables)) {
       if (!changes[key]?.length) continue
       const records = rows[name]
@@ -845,6 +852,7 @@ export async function PATCH(request: Request) {
       }
     }
     if (changes.serviceOrders?.length) await syncReceivablesForServiceOrders(supabase, rows.service_orders)
+    for (const id of stockSyncIds) if (id) await syncStockForServiceOrderSafely(supabase, id)
     return NextResponse.json({ ok: true })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Erro ao salvar registros" }, { status: 500 })

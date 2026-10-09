@@ -4,6 +4,7 @@ import { createAdminClient, createAdminClientForServiceOrder } from "@/lib/supab
 import { isCurrentUserAdmin } from "@/lib/server-authorization"
 import { ensureReceivableForFinishedOrder, serviceOrderReceivableId } from "@/lib/service-order-receivables"
 import { syncStockOrdersForServiceOrder } from "@/lib/stock-order-service-sync"
+import { syncStockForServiceOrderSafely } from "@/lib/stock-engine"
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -203,6 +204,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (orderError) throw new Error(orderError.message)
     if (status === "Finalizada" || finishedAt) await ensureReceivableForFinishedOrder(supabase, id)
     await syncStockOrdersForServiceOrder(supabase, { ...orderExists, status })
+    await syncStockForServiceOrderSafely(supabase, id)
 
     return NextResponse.json({ event: toEvent(saved), order: { id, ...orderUpdate } })
   } catch (error) {

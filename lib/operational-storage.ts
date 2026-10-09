@@ -307,6 +307,16 @@ export interface Material {
   salePrice?: number
   supplierId?: string
   supplierCode?: string
+  /** Depósito / almoxarifado padrão do item */
+  warehouseId?: string
+  reorderPoint?: number
+  /** Calculados pelo banco a partir das movimentações e reservas (somente leitura) */
+  reservedStock?: number
+  averageCost?: number
+  lastPurchaseCost?: number
+  controlsLot?: boolean
+  controlsSerial?: boolean
+  controlsExpiry?: boolean
   createdAt: string
   updatedAt: string
 }

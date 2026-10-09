@@ -51,13 +51,24 @@ const columnByField: Record<(typeof textFields)[number] | (typeof numberFields)[
   salePrice: "sale_price",
 }
 
-/** Campos de cadastro ERP (fiscal, logística, preços) no formato da tabela `materials`. */
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * Campos de cadastro ERP (fiscal, logística, preços, controle de estoque) no formato da
+ * tabela `materials`. Saldo, reservado e custos são calculados pelo banco e nunca vão aqui.
+ */
 export function materialErpColumns(input: Record<string, any>) {
-  const row: Record<string, string | number | null> = {}
+  const row: Record<string, string | number | boolean | null> = {}
   for (const field of textFields) row[columnByField[field]] = String(input[field] ?? input[columnByField[field]] ?? "").trim()
   for (const field of numberFields) row[columnByField[field]] = Number(input[field] ?? input[columnByField[field]] ?? 0) || 0
   const supplierId = String(input.supplierId || input.supplier_id || "")
-  row.supplier_id = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(supplierId) ? supplierId : null
+  row.supplier_id = uuidPattern.test(supplierId) ? supplierId : null
+  const warehouseId = String(input.warehouseId || input.warehouse_id || "")
+  if (uuidPattern.test(warehouseId)) row.warehouse_id = warehouseId
+  row.reorder_point = Number(input.reorderPoint ?? input.reorder_point ?? 0) || 0
+  row.controls_lot = Boolean(input.controlsLot ?? input.controls_lot)
+  row.controls_serial = Boolean(input.controlsSerial ?? input.controls_serial)
+  row.controls_expiry = Boolean(input.controlsExpiry ?? input.controls_expiry)
   return row
 }
 
@@ -67,5 +78,10 @@ export function materialErpFields(row: Record<string, any>): Partial<Material> {
   for (const field of textFields) fields[field] = row[columnByField[field]] || ""
   for (const field of numberFields) fields[field] = Number(row[columnByField[field]] || 0)
   fields.supplierId = row.supplier_id || ""
-  return fields as Partial<Material>
+  fields.warehouseId = row.warehouse_id || ""
+  fields.reorderPoint = Number(row.reorder_point || 0)
+  fields.reservedStock = Number(row.reserved_stock || 0)
+  fields.averageCost = Number(row.average_cost || 0)
+  fields.lastPurchaseCost = Number(row.last_purchase_cost || 0)
+  return { ...fields, controlsLot: Boolean(row.controls_lot), controlsSerial: Boolean(row.controls_serial), controlsExpiry: Boolean(row.controls_expiry) } as Partial<Material>
 }

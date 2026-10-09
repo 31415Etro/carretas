@@ -54,6 +54,7 @@ import { calculateKitComposition, calculateKitMaterialQuantity, inferKitMeters, 
 import { buildServiceOrderPhotoCaption } from "@/lib/service-order-photo-caption"
 import { materialOriginOptions, materialSpedItemTypeOptions } from "@/lib/material-fields"
 import { EquipmentQrDialog } from "./equipment-qr-dialog"
+import { InventoryTab, MovementSheet, MovementsTab, PurchaseSuggestionTab, ReservationsTab, StockAlertBanner, WarehousesTab, materialAvailable, needsReplenishment, useWarehouses } from "./stock-erp"
 import { SystemCompaniesManager } from "@/components/system-companies-manager"
 import {
   type ChecklistItem,
@@ -478,13 +479,14 @@ const emptySupplier = {
   notes: "",
 }
 
-const materialNumberFields = ["minimumStock", "maximumStock", "currentStock", "grossWeight", "netWeight", "height", "width", "length", "costPrice", "salePrice"] as const
+const materialNumberFields = ["minimumStock", "maximumStock", "reorderPoint", "currentStock", "grossWeight", "netWeight", "height", "width", "length", "costPrice", "salePrice"] as const
 
 const emptyMaterialForm: Record<string, any> = {
   name: "", category: "", unit: "unidade", internalCode: "", barcode: "",
   ncm: "", cest: "", origin: "0", spedItemType: "00",
   minimumStock: "0", maximumStock: "0", currentStock: "0", grossWeight: "0", netWeight: "0", height: "0", width: "0", length: "0", location: "",
   costPrice: "0", salePrice: "0", supplierId: "", supplierCode: "",
+  warehouseId: "", reorderPoint: "0", controlsLot: false, controlsSerial: false, controlsExpiry: false,
   composesKit: false, status: "Ativo", notes: "",
 }
 
@@ -500,12 +502,23 @@ function materialFormFromItem(item: Material): Record<string, any> {
 
 function materialRecordFromForm(form: Record<string, any>, existing: Material | undefined, id: string): Material {
   const now = nowIso()
-  const record: Record<string, any> = { ...form, id, composesKit: Boolean(form.composesKit), createdAt: existing?.createdAt || now, updatedAt: now }
+  const record: Record<string, any> = { ...form, id, composesKit: Boolean(form.composesKit), controlsLot: Boolean(form.controlsLot), controlsSerial: Boolean(form.controlsSerial), controlsExpiry: Boolean(form.controlsExpiry), createdAt: existing?.createdAt || now, updatedAt: now }
   for (const key of materialNumberFields) record[key] = Number(String(form[key] ?? 0).replace(",", ".")) || 0
+  if (existing) {
+    // Saldo, reservado e custos vêm das movimentações: o cadastro não altera.
+    record.currentStock = materialStock(existing)
+    record.reservedStock = existing.reservedStock || 0
+    record.averageCost = existing.averageCost || 0
+    record.lastPurchaseCost = existing.lastPurchaseCost || 0
+  }
   return record as Material
 }
 
 function validateMaterialForm(form: Record<string, any>, materials: Material[], currentId?: string) {
+  if (!String(form.internalCode || "").trim()) return "Informe o SKU / código interno."
+  if (!String(form.category || "").trim()) return "Informe a categoria do item."
+  if (Number(form.reorderPoint || 0) < 0 || Number(form.minimumStock || 0) < 0) return "Estoque mínimo e ponto de reposição não podem ser negativos."
+  if (!currentId && Number(form.currentStock || 0) < 0) return "O saldo inicial não pode ser negativo."
   const sku = String(form.internalCode || "").trim().toLowerCase()
   if (sku && materials.some((item) => item.id !== currentId && String(item.internalCode || "").trim().toLowerCase() === sku)) return `O SKU "${form.internalCode}" já está em uso por outro item.`
   const ncm = String(form.ncm || "").replace(/\D/g, "")
@@ -519,8 +532,18 @@ function validateMaterialForm(form: Record<string, any>, materials: Material[], 
   return ""
 }
 
-function MaterialFormFields({ material, setMaterial, suppliers, showStatus = false }: { material: Record<string, any>; setMaterial: (value: Record<string, any>) => void; suppliers: Supplier[]; showStatus?: boolean }) {
+function MaterialFormFields({ material, setMaterial, suppliers, existing, showStatus = false }: { material: Record<string, any>; setMaterial: (value: Record<string, any>) => void; suppliers: Supplier[]; existing?: Material; showStatus?: boolean }) {
   const set = (key: string) => (value: string) => setMaterial({ ...material, [key]: value })
+  const { warehouses } = useWarehouses()
+  const defaultWarehouse = warehouses.find((item) => item.isDefault)
+  const readOnlyBox = (label: string, value: string) => <div className="space-y-2"><Label>{label}</Label><div className="flex h-10 items-center rounded-md border bg-muted/40 px-3 text-sm">{value}</div></div>
+  const quantity = (value?: number) => `${Number(value || 0).toLocaleString("pt-BR", { maximumFractionDigits: 3 })} ${material.unit || ""}`.trim()
+  const toggle = (key: "controlsLot" | "controlsSerial" | "controlsExpiry", label: string, hint: string) => (
+    <div className="flex items-center gap-3 rounded-md border px-3 py-2">
+      <Checkbox checked={Boolean(material[key])} onCheckedChange={(checked) => setMaterial({ ...material, [key]: checked === true })} />
+      <div><Label>{label}</Label><p className="text-xs text-muted-foreground">{hint}</p></div>
+    </div>
+  )
   const cost = Number(String(material.costPrice || 0).replace(",", ".")) || 0
   const sale = Number(String(material.salePrice || 0).replace(",", ".")) || 0
   const markup = cost > 0 && sale > 0 ? `${(((sale - cost) / cost) * 100).toFixed(1).replace(".", ",")}%` : "-"
@@ -549,9 +572,12 @@ function MaterialFormFields({ material, setMaterial, suppliers, showStatus = fal
       <section className="space-y-3">
         <h3 className="text-sm font-semibold">Estoque e logística</h3>
         <div className="grid gap-4 md:grid-cols-3">
-          <TextField label="Saldo atual" type="number" value={material.currentStock} onChange={set("currentStock")} />
+          <SelectField label="Depósito / almoxarifado" value={material.warehouseId || defaultWarehouse?.id || "nenhum"} onChange={(value) => setMaterial({ ...material, warehouseId: value === "nenhum" ? "" : value })} options={warehouses.length ? warehouses.filter((item) => item.status === "Ativo" || item.id === material.warehouseId).map((item) => ({ value: item.id, label: item.name })) : [{ value: "nenhum", label: "Depósito principal" }]} />
+          {existing ? readOnlyBox("Quantidade física", quantity(materialStock(existing))) : <TextField label="Saldo inicial" type="number" value={material.currentStock} onChange={set("currentStock")} />}
+          {existing ? readOnlyBox("Reservada / disponível", `${quantity(existing.reservedStock)} / ${quantity(materialAvailable(existing))}`) : null}
           <TextField label="Estoque mínimo" type="number" value={material.minimumStock} onChange={set("minimumStock")} />
           <TextField label="Estoque máximo" type="number" value={material.maximumStock} onChange={set("maximumStock")} />
+          <TextField label="Ponto de reposição" type="number" value={material.reorderPoint} onChange={set("reorderPoint")} />
           <TextField label="Peso bruto (kg)" type="number" value={material.grossWeight} onChange={set("grossWeight")} />
           <TextField label="Peso líquido (kg)" type="number" value={material.netWeight} onChange={set("netWeight")} />
           <TextField label="Localização no depósito" value={material.location} onChange={set("location")} placeholder="Corredor / prateleira / posição" />
@@ -559,12 +585,18 @@ function MaterialFormFields({ material, setMaterial, suppliers, showStatus = fal
           <TextField label="Largura (cm)" type="number" value={material.width} onChange={set("width")} />
           <TextField label="Comprimento (cm)" type="number" value={material.length} onChange={set("length")} />
         </div>
-        <div className="flex items-center gap-3 rounded-md border px-3 py-2">
-          <Checkbox checked={Boolean(material.composesKit)} onCheckedChange={(checked) => setMaterial({ ...material, composesKit: checked === true })} />
-          <div>
-            <Label>Compõe kit?</Label>
-            <p className="text-xs text-muted-foreground">Se marcado, aparece no cadastro de kits.</p>
+        {existing ? <p className="text-xs text-muted-foreground">O saldo muda apenas por movimentação de estoque (entrada, saída, transferência, ajuste...).</p> : null}
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="flex items-center gap-3 rounded-md border px-3 py-2">
+            <Checkbox checked={Boolean(material.composesKit)} onCheckedChange={(checked) => setMaterial({ ...material, composesKit: checked === true })} />
+            <div>
+              <Label>Compõe kit?</Label>
+              <p className="text-xs text-muted-foreground">Se marcado, aparece no cadastro de kits.</p>
+            </div>
           </div>
+          {toggle("controlsLot", "Controla lote", "Exige número do lote nas entradas.")}
+          {toggle("controlsSerial", "Controla número de série", "Exige número de série em toda movimentação.")}
+          {toggle("controlsExpiry", "Controla validade", "Exige data de validade nas entradas.")}
         </div>
       </section>
       <section className="space-y-3">
@@ -573,9 +605,11 @@ function MaterialFormFields({ material, setMaterial, suppliers, showStatus = fal
           <TextField label="Preço de custo (R$)" type="number" value={material.costPrice} onChange={set("costPrice")} />
           <TextField label="Preço de venda (R$)" type="number" value={material.salePrice} onChange={set("salePrice")} />
           <div className="space-y-2"><Label>Markup</Label><div className="flex h-10 items-center rounded-md border bg-muted/40 px-3 text-sm">{markup}</div></div>
+          {existing ? readOnlyBox("Custo médio", Number(existing.averageCost || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })) : null}
+          {existing ? readOnlyBox("Último custo de compra", Number(existing.lastPurchaseCost || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })) : null}
         </div>
         <div className="grid gap-4 md:grid-cols-2">
-          <SearchableSelectField label="Fornecedor padrão" value={material.supplierId || "nenhum"} onChange={(value) => setMaterial({ ...material, supplierId: value === "nenhum" ? "" : value })} options={[{ value: "nenhum", label: "Nenhum" }, ...suppliers.filter((item) => item.status !== "Inativo").map((item) => ({ value: item.id, label: item.document ? `${item.name} - ${item.document}` : item.name }))]} />
+          <SearchableSelectField label="Fornecedor preferencial" value={material.supplierId || "nenhum"} onChange={(value) => setMaterial({ ...material, supplierId: value === "nenhum" ? "" : value })} options={[{ value: "nenhum", label: "Nenhum" }, ...suppliers.filter((item) => item.status !== "Inativo").map((item) => ({ value: item.id, label: item.document ? `${item.name} - ${item.document}` : item.name }))]} />
           <TextField label="Código no fornecedor" value={material.supplierCode} onChange={set("supplierCode")} />
         </div>
       </section>
@@ -2082,11 +2116,8 @@ function QuickSheets({
         updatedAt: now,
       }
     })
-    const nextMaterials = existing ? state.materials : state.materials.map((mat) => {
-      const used = stockMaterials.filter((row) => row.materialId === mat.id).reduce((sum, row) => sum + row.quantity, 0)
-      return used ? { ...mat, currentStock: Math.max(0, materialStock(mat) - used), updatedAt: now } : mat
-    })
-    const materialUpdates = nextMaterials.filter((mat) => state.materials.some((current) => current.id === mat.id && materialStock(current) !== materialStock(mat)))
+    // Os materiais da OS são reservados no servidor e baixados quando a OS é finalizada.
+    const nextMaterials = state.materials
     const workRecord = state.works.find((item) => item.id === record.workId)
     const floorRecord = state.workFloors.find((item) => item.id === record.floorId)
     const environmentRecord = state.workEnvironments.find((item) => item.id === record.environmentId)
@@ -2105,7 +2136,6 @@ function QuickSheets({
           point: pointRecord,
           checklistItems: defaults.checklist,
           serviceOrderMaterials: selectedMaterials,
-          materialUpdates,
           includeChildren: !existing,
           auditDescription: `${record.orderNumber} ${existing ? "editada" : "criada"}`,
         }),
@@ -2146,17 +2176,17 @@ function QuickSheets({
       toast({ title: "Revise o cadastro", description: invalid, variant: "destructive" })
       return
     }
-    const record = materialRecordFromForm(material, existing, existing?.id || material.id || makeId("mat"))
+    let record = materialRecordFromForm(material, existing, existing?.id || material.id || makeId("mat"))
     try {
       const response = await fetch("/api/estoque/materials", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ material: record }),
       })
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null)
-        throw new Error(payload?.error || `Erro ${response.status}`)
-      }
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(payload?.error || `Erro ${response.status}`)
+      // Saldo inicial vira movimentação no servidor; usa o item como ficou gravado.
+      if (payload?.material) record = { ...record, ...payload.material }
     } catch (error) {
       toast({ title: "Erro ao salvar material no banco", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" })
       return
@@ -2974,7 +3004,7 @@ function QuickSheets({
       </FormSheet>
 
       <FormSheet open={sheet === "material"} onOpenChange={(open) => !open && close()} title="Cadastro de Produto / Material">
-        <MaterialFormFields material={material} setMaterial={setMaterial} suppliers={state.suppliers} />
+        <MaterialFormFields material={material} setMaterial={setMaterial} suppliers={state.suppliers} existing={state.materials.find((item) => item.id === material.id)} />
         <SaveButton onClick={saveMaterial}>Salvar material</SaveButton>
       </FormSheet>
 
@@ -4713,6 +4743,35 @@ export function StockPage() {
   const [loadingMoreStockOrders, setLoadingMoreStockOrders] = useState<Partial<Record<StockProductionStatus, boolean>>>({})
   const [selectedStockOrderIds, setSelectedStockOrderIds] = useState<string[]>([])
   const kitMaterialOptions = state.materials.filter((item) => item.status === "Ativo" && item.composesKit)
+  const { warehouses, error: warehousesError, reload: reloadWarehouses } = useWarehouses()
+  const [allMaterials, setAllMaterials] = useState<Material[]>([])
+  const [stockRefreshKey, setStockRefreshKey] = useState(0)
+  const [movementSheet, setMovementSheet] = useState<{ open: boolean; preset?: Record<string, string> }>({ open: false })
+  const [materialQuery, setMaterialQuery] = useState("")
+  const warehouseName = (id?: string) => warehouses.find((item) => item.id === id)?.name || warehouses.find((item) => item.isDefault)?.name || "-"
+
+  // Lista completa de itens (alertas, inventário, sugestão de compra) e saldos atualizados após movimentações.
+  async function refreshStockData() {
+    try {
+      const response = await fetch("/api/estoque/materials", { cache: "no-store" })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(payload?.error || `Erro ${response.status}`)
+      const rows = (payload?.materials || []) as Material[]
+      const byId = new Map(rows.map((row) => [row.id, row]))
+      setAllMaterials(rows)
+      setMaterialRows((current) => current.map((item) => byId.get(item.id) || item))
+      commit((current) => ({ ...current, materials: current.materials.map((item) => byId.get(item.id) || item) }), { persist: false })
+    } catch (error) {
+      toast({ title: "Erro ao atualizar saldos", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" })
+    }
+  }
+
+  useEffect(() => { void refreshStockData() }, [])
+
+  function stockChanged() {
+    setStockRefreshKey((current) => current + 1)
+    void refreshStockData()
+  }
 
   useEffect(() => {
     if (tab !== "materiais" && tab !== "kits") return
@@ -4981,17 +5040,17 @@ export function StockPage() {
       toast({ title: "Revise o cadastro", description: invalid, variant: "destructive" })
       return
     }
-    const record = materialRecordFromForm(material, existing, existing?.id || makeId("mat"))
+    let record = materialRecordFromForm(material, existing, existing?.id || makeId("mat"))
     try {
       const response = await fetch("/api/estoque/materials", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ material: record }),
       })
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null)
-        throw new Error(payload?.error || `Erro ${response.status}`)
-      }
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(payload?.error || `Erro ${response.status}`)
+      // Saldo inicial vira movimentação no servidor; usa o item como ficou gravado.
+      if (payload?.material) record = { ...record, ...payload.material }
     } catch (error) {
       toast({ title: "Erro ao salvar material no banco", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" })
       return
@@ -4999,6 +5058,7 @@ export function StockPage() {
     commit((current) => ({ ...current, materials: existing ? current.materials.map((item) => item.id === record.id ? record : item) : [record, ...current.materials], auditLogs: appendAudit(current, "material", record.id, existing ? "Editado" : "Criado", `Material ${record.name} ${existing ? "editado" : "criado"}`) }), { persist: false })
     setMaterialRows((current) => existing ? current.map((item) => item.id === record.id ? record : item) : [record, ...current])
     if (!existing) setMaterialCount((current) => current + 1)
+    if (!existing) stockChanged()
     toast({ title: "Material salvo", description: record.composesKit ? "Material disponível para kits." : "Material salvo fora dos kits." })
     close()
   }
@@ -5115,21 +5175,21 @@ export function StockPage() {
       const materialRecord = state.materials.find((mat) => mat.id === item.materialId)
       return { id: makeId("kititem"), kitId, materialId: item.materialId, quantity: item.quantity, unit: materialRecord?.unit || "unidade" }
     })
-    const nextMaterials = state.materials.map((mat) => {
-      const delta = stockDeltas[mat.id] || 0
-      return delta ? { ...mat, currentStock: Math.max(0, materialStock(mat) - delta), updatedAt: now } : mat
-    })
-    const materialUpdates = nextMaterials.filter((mat) => state.materials.some((current) => current.id === mat.id && materialStock(current) !== materialStock(mat)))
+    const stockChanges = Object.entries(stockDeltas).filter(([, quantity]) => quantity).map(([materialId, quantity]) => ({ materialId, quantity }))
+    let nextMaterials = state.materials
     try {
       const response = await fetch("/api/estoque/kits", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kit: record, items, materialUpdates }),
+        body: JSON.stringify({ kit: record, items, stockChanges }),
       })
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null)
-        throw new Error(payload?.error || `Erro ${response.status}`)
-      }
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(payload?.error || `Erro ${response.status}`)
+      const balances = new Map<string, any>((payload?.materials || []).map((row: any) => [row.id, row]))
+      nextMaterials = state.materials.map((mat) => {
+        const row = balances.get(mat.id)
+        return row ? { ...mat, currentStock: Number(row.current_stock || 0), reservedStock: Number(row.reserved_stock || 0), averageCost: Number(row.average_cost || 0), updatedAt: now } : mat
+      })
     } catch (error) {
       toast({ title: "Erro ao salvar kit no banco", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" })
       return
@@ -5291,11 +5351,19 @@ export function StockPage() {
       </>}
     >
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="flex flex-wrap"><TabsTrigger value="materiais">Materiais/Estoque</TabsTrigger><TabsTrigger value="kits">Kit</TabsTrigger><TabsTrigger value="stock-orders">OS de estoque</TabsTrigger></TabsList>
+        <TabsList className="flex flex-wrap"><TabsTrigger value="materiais">Itens e saldos</TabsTrigger><TabsTrigger value="movimentacoes">Movimentações</TabsTrigger><TabsTrigger value="reservas">Reservas</TabsTrigger><TabsTrigger value="inventario">Inventário</TabsTrigger><TabsTrigger value="compras">Sugestão de compra</TabsTrigger><TabsTrigger value="depositos">Depósitos</TabsTrigger><TabsTrigger value="kits">Kit</TabsTrigger><TabsTrigger value="stock-orders">OS de estoque</TabsTrigger></TabsList>
+        {warehousesError ? <p className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">{warehousesError}</p> : null}
+        <div className="mt-4"><StockAlertBanner materials={allMaterials} /></div>
+        <TabsContent value="movimentacoes" className="mt-4"><MovementsTab materials={allMaterials} warehouses={warehouses} refreshKey={stockRefreshKey} onChanged={stockChanged} /></TabsContent>
+        <TabsContent value="reservas" className="mt-4"><ReservationsTab materials={allMaterials} warehouses={warehouses} refreshKey={stockRefreshKey} onChanged={stockChanged} /></TabsContent>
+        <TabsContent value="inventario" className="mt-4"><InventoryTab materials={allMaterials} warehouses={warehouses} onChanged={stockChanged} /></TabsContent>
+        <TabsContent value="compras" className="mt-4"><PurchaseSuggestionTab materials={allMaterials} suppliers={supplierOptions} /></TabsContent>
+        <TabsContent value="depositos" className="mt-4"><WarehousesTab warehouses={warehouses} reload={reloadWarehouses} /></TabsContent>
         <TabsContent value="materiais" className="mt-4">
-          {loadingStockTabs.materiais ? <div className="py-10 text-center text-sm text-muted-foreground">Carregando materiais...</div> : <SectionCard title="Materiais e Estoque" description="Cadastre materiais, saldos e marque se o item pode compor kits.">
-            <DataTable headers={["Material", "SKU", "NCM", "Categoria", "Unidade", "Localização", "Saldo atual", "Mín. / Máx.", "Custo", "Venda", "Compõe Kit", "Status", "Ações"]} empty={!materialRows.length} stickyHeader viewportClassName="max-h-[35rem] overflow-auto overscroll-contain" tableClassName="min-w-[1320px]">
-              {materialRows.map((item) => <TableRow key={item.id} className={item.minimumStock > 0 && materialStock(item) < item.minimumStock ? "bg-destructive/5" : undefined}><TableCell>{item.name}</TableCell><TableCell className="font-mono">{item.internalCode || "-"}</TableCell><TableCell className="font-mono">{item.ncm || "-"}</TableCell><TableCell>{item.category || "-"}</TableCell><TableCell>{item.unit}</TableCell><TableCell>{item.location || "-"}</TableCell><TableCell>{materialStock(item)}</TableCell><TableCell>{item.minimumStock} / {item.maximumStock || "-"}</TableCell><TableCell>{money(item.costPrice || 0)}</TableCell><TableCell>{money(item.salePrice || 0)}</TableCell><TableCell>{item.composesKit ? "Sim" : "Não"}</TableCell><TableCell><StatusBadge status={item.status} /></TableCell><TableCell><Button size="sm" variant="outline" onClick={() => editMaterial(item)}>Editar</Button></TableCell></TableRow>)}
+          {loadingStockTabs.materiais ? <div className="py-10 text-center text-sm text-muted-foreground">Carregando materiais...</div> : <SectionCard title="Itens de estoque" description="Saldo físico, reservado e disponível por item. O saldo muda somente por movimentação.">
+            <div className="mb-3 flex flex-wrap gap-2"><Input className="max-w-sm" placeholder="Buscar por nome, SKU, categoria ou localização" value={materialQuery} onChange={(event) => setMaterialQuery(event.target.value)} /><Button variant="outline" onClick={() => setMovementSheet({ open: true })}><Plus className="h-4 w-4" />Nova movimentação</Button></div>
+            <DataTable headers={["SKU", "Item", "Categoria", "Un.", "Depósito", "Localização", "Físico", "Reservado", "Disponível", "Mín. / Máx.", "Ponto rep.", "Custo médio", "Último custo", "Status", "Ações"]} empty={!materialRows.length} stickyHeader viewportClassName="max-h-[35rem] overflow-auto overscroll-contain" tableClassName="min-w-[1320px]">
+              {materialRows.filter((item) => [item.name, item.internalCode, item.category, item.location].join(" ").toLowerCase().includes(materialQuery.toLowerCase())).map((item) => <TableRow key={item.id} className={needsReplenishment(item) ? "bg-amber-500/10" : undefined}><TableCell className="font-mono">{item.internalCode || "-"}</TableCell><TableCell>{item.name}</TableCell><TableCell>{item.category || "-"}</TableCell><TableCell>{item.unit}</TableCell><TableCell>{warehouseName(item.warehouseId)}</TableCell><TableCell>{item.location || "-"}</TableCell><TableCell>{materialStock(item)}</TableCell><TableCell>{item.reservedStock || 0}</TableCell><TableCell className={materialAvailable(item) < 0 ? "font-semibold text-destructive" : "font-semibold"}>{Math.round(materialAvailable(item) * 1000) / 1000}</TableCell><TableCell>{item.minimumStock} / {item.maximumStock || "-"}</TableCell><TableCell>{item.reorderPoint || "-"}</TableCell><TableCell>{money(item.averageCost || 0)}</TableCell><TableCell>{money(item.lastPurchaseCost || 0)}</TableCell><TableCell><StatusBadge status={item.status} /></TableCell><TableCell className="space-x-1 whitespace-nowrap"><Button size="sm" variant="outline" onClick={() => editMaterial(item)}>Editar</Button><Button size="sm" variant="outline" onClick={() => setMovementSheet({ open: true, preset: { materialId: item.id } })}>Movimentar</Button></TableCell></TableRow>)}
             </DataTable>
             {materialRows.length < materialCount ? <div className="mt-4 flex justify-center"><Button type="button" variant="outline" disabled={loadingMoreRegistries === "materiais"} onClick={() => void loadMoreStockRegistries("materiais")}>{loadingMoreRegistries === "materiais" ? "Carregando..." : `Carregar mais (${Math.min(stockRegistryBatchSize, materialCount - materialRows.length)})`}</Button></div> : null}
           </SectionCard>}
@@ -5363,8 +5431,9 @@ export function StockPage() {
         </TabsContent>
       </Tabs>
 
+      <MovementSheet open={movementSheet.open} onOpenChange={(open) => setMovementSheet((current) => ({ ...current, open }))} materials={allMaterials} warehouses={warehouses} preset={movementSheet.preset} onSaved={stockChanged} />
       <FormSheet open={sheet === "material"} onOpenChange={(open) => !open && close()} title="Cadastro de Produto / Material">
-        <MaterialFormFields material={material} setMaterial={setMaterial} suppliers={supplierOptions} showStatus />
+        <MaterialFormFields material={material} setMaterial={setMaterial} suppliers={supplierOptions} existing={materialRows.find((item) => item.id === editingMaterialId) || state.materials.find((item) => item.id === editingMaterialId)} showStatus />
         <SaveButton onClick={saveMaterial}>Salvar material</SaveButton>
       </FormSheet>
 

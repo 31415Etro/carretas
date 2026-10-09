@@ -3,6 +3,8 @@ import { currentUserRole } from "@/lib/server-authorization"
 import { createAdminClient } from "@/lib/supabase/server"
 import { readAllPages } from "@/lib/supabase-pagination"
 import { materialErpColumns, materialErpFields } from "@/lib/material-fields"
+import { stockContext, stockError } from "@/lib/stock-api"
+import { applyStockMovement } from "@/lib/stock-engine"
 
 function normalizeMaterial(input: any) {
   return {
@@ -12,7 +14,6 @@ function normalizeMaterial(input: any) {
     unit: input.unit || "unidade",
     internal_code: input.internalCode || input.internal_code || "",
     minimum_stock: Number(input.minimumStock ?? input.minimum_stock ?? 0),
-    current_stock: Number(input.currentStock ?? input.current_stock ?? 0),
     composes_kit: Boolean(input.composesKit ?? input.composes_kit ?? false),
     status: input.status || "Ativo",
     notes: input.notes || "",
@@ -93,15 +94,34 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const context = await stockContext()
+  if ("error" in context) return context.error
   try {
     const { material } = await request.json()
     if (!material?.id || !material?.name || !material?.unit) {
       return NextResponse.json({ error: "Material, id e unidade são obrigatórios." }, { status: 400 })
     }
-    const supabase = createAdminClient()
-    const saved = await upsertMaterial(supabase, normalizeMaterial(material))
+    const supabase = context.admin
+    const { data: existing, error: lookupError } = await supabase.from("materials").select("id").eq("id", material.id).maybeSingle()
+    if (lookupError) throw new Error(`materials: ${lookupError.message}`)
+    // O saldo nunca é gravado pelo cadastro: só muda por movimentação de estoque.
+    let saved = await upsertMaterial(supabase, normalizeMaterial(material))
+    const initialStock = Number(material.currentStock || 0)
+    if (!existing && initialStock > 0) {
+      await applyStockMovement(supabase, {
+        materialId: saved.id,
+        movementType: "Saldo inicial",
+        quantity: initialStock,
+        toWarehouseId: material.warehouseId || "",
+        unitCost: Number(material.costPrice || 0),
+        responsible: context.responsible,
+        reason: "Saldo informado no cadastro do item",
+      })
+      const { data: refreshed } = await supabase.from("materials").select("*").eq("id", saved.id).single()
+      if (refreshed) saved = refreshed
+    }
     return NextResponse.json({ material: toMaterial(saved) })
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Erro ao salvar material" }, { status: 500 })
+    return stockError(error, "Erro ao salvar material")
   }
 }

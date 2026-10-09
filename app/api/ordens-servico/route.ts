@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import { createAdminClient, createClient, getSelectedSystemCompanyId } from "@/lib/supabase/server"
 import { ensureReceivableForFinishedOrder } from "@/lib/service-order-receivables"
 import { syncStockOrdersForServiceOrder } from "@/lib/stock-order-service-sync"
+import { syncStockForServiceOrderSafely } from "@/lib/stock-engine"
 
 class OrderValidationError extends Error {}
 
@@ -352,7 +353,7 @@ export async function POST(request: Request) {
   try {
     const { companyId, supabase } = await authorizedCompanyClient()
     const body = await request.json()
-    const { order, work, floor, environment, point, checklistItems = [], serviceOrderMaterials = [], materialUpdates = [], auditDescription, includeChildren = false } = body
+    const { order, work, floor, environment, point, checklistItems = [], serviceOrderMaterials = [], auditDescription, includeChildren = false } = body
 
     if (!order?.id || !nullableUuid(order.id)) throw new OrderValidationError("OS sem ID valido.")
     if (!nullableUuid(order.clientId)) throw new OrderValidationError("Cliente invalido na OS.")
@@ -465,19 +466,6 @@ export async function POST(request: Request) {
         status: item.status || "Utilizado",
         notes: item.notes || "",
       })))
-
-      await upsertRows(supabase, "materials", materialUpdates.map((item: any) => ({
-        id: item.id,
-        name: item.name,
-        category: item.category || "",
-        unit: item.unit || "unidade",
-        internal_code: item.internalCode || "",
-        minimum_stock: Number(item.minimumStock || 0),
-        current_stock: Number(item.currentStock || 0),
-        composes_kit: Boolean(item.composesKit),
-        status: item.status || "Ativo",
-        notes: item.notes || "",
-      })))
     }
 
     await upsertRows(supabase, "audit_logs", [{
@@ -491,8 +479,10 @@ export async function POST(request: Request) {
 
     if (savedOrder.status === "Finalizada") await ensureReceivableForFinishedOrder(supabase, savedOrder.id)
     await syncStockOrdersForServiceOrder(supabase, savedOrder)
+    // Saldo só muda por movimentação: a OS reserva as peças e dá baixa ao ser finalizada.
+    const stockWarnings = await syncStockForServiceOrderSafely(supabase, savedOrder.id)
 
-    return NextResponse.json({ data: savedOrder, companyId })
+    return NextResponse.json({ data: savedOrder, companyId, stockWarnings })
   } catch (error) {
     const status = error instanceof OrderValidationError
       ? error.message === "Nao autenticado." ? 401 : error.message.includes("somente leitura") || error.message.includes("sem permissao") ? 403 : 400

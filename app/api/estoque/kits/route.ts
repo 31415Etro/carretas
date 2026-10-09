@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { currentUserRole } from "@/lib/server-authorization"
 import { createAdminClient } from "@/lib/supabase/server"
 import { readAllPages } from "@/lib/supabase-pagination"
+import { stockContext, stockError } from "@/lib/stock-api"
+import { applyStockMovement } from "@/lib/stock-engine"
 
 function kitRow(input: any) {
   return {
@@ -22,21 +24,6 @@ function itemRow(input: any) {
     material_id: input.materialId || input.material_id,
     quantity: Number(input.quantity || 0),
     unit: input.unit || "unidade",
-  }
-}
-
-function materialRow(input: any) {
-  return {
-    id: input.id,
-    name: input.name,
-    category: input.category || "",
-    unit: input.unit || "unidade",
-    internal_code: input.internalCode || "",
-    minimum_stock: Number(input.minimumStock || 0),
-    current_stock: Number(input.currentStock || 0),
-    composes_kit: Boolean(input.composesKit),
-    status: input.status || "Ativo",
-    notes: input.notes || "",
   }
 }
 
@@ -129,8 +116,10 @@ function toKitItem(row: any) {
 }
 
 export async function POST(request: Request) {
+  const context = await stockContext()
+  if ("error" in context) return context.error
   try {
-    const { kit, items = [], materialUpdates = [] } = await request.json()
+    const { kit, items = [], stockChanges = [] } = await request.json() as { kit: any; items: any[]; stockChanges: Array<{ materialId: string; quantity: number }> }
     if (!kit?.id || !kit?.name) {
       return NextResponse.json({ error: "Nome do kit é obrigatório." }, { status: 400 })
     }
@@ -138,15 +127,29 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Adicione pelo menos um material ao kit." }, { status: 400 })
     }
 
-    const supabase = createAdminClient()
+    const supabase = context.admin
+    // Montagem consome os materiais; reduzir a composição devolve a diferença ao estoque.
+    for (const change of stockChanges) {
+      const quantity = Math.round(Number(change.quantity || 0) * 1000) / 1000
+      if (!change.materialId || !quantity) continue
+      await applyStockMovement(supabase, {
+        materialId: change.materialId,
+        movementType: quantity > 0 ? "Consumo em kit" : "Devolucao",
+        quantity: Math.abs(quantity),
+        responsible: context.responsible,
+        documentReference: `Kit ${kit.name}`,
+        reason: quantity > 0 ? "Montagem de kit" : "Redução da composição do kit",
+      })
+    }
     const [savedKit] = await upsertRows(supabase, "stock_kits", [kitRow(kit)])
     const { error: deleteError } = await supabase.from("stock_kit_items").delete().eq("kit_id", kit.id)
     if (deleteError) throw new Error(`stock_kit_items: ${deleteError.message}`)
     const savedItems = await upsertRows(supabase, "stock_kit_items", items.map(itemRow))
-    const savedMaterials = await upsertRows(supabase, "materials", materialUpdates.map(materialRow))
+    const changedIds = stockChanges.map((change) => change.materialId).filter(Boolean)
+    const { data: savedMaterials } = changedIds.length ? await supabase.from("materials").select("id,current_stock,reserved_stock,average_cost").in("id", changedIds) : { data: [] }
 
     return NextResponse.json({ kit: savedKit || kitRow(kit), items: savedItems, materials: savedMaterials })
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Erro ao salvar kit" }, { status: 500 })
+    return stockError(error, "Erro ao salvar kit")
   }
 }
