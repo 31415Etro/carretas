@@ -26,7 +26,7 @@ Next.js 16 (App Router) + Supabase + Tailwind.
 
 Os scripts em `scripts/` são executados no SQL Editor do Supabase, em ordem numérica. As migrações do ERP começam em `200_`:
 
-`200` produtos · `201` financeiro · `202` estoque · `203` compras · `204` dashboard · `205` catálogo · `206` ordem de serviço · `207` remoção das estruturas herdadas do sistema anterior · `208` frota (rode depois do 206; o 207 só em banco sem dados do sistema anterior) · `209` comercial · `210` orçamentos · `211` contratos · `212` relatórios · `214` configurações.
+`200` produtos · `201` financeiro · `202` estoque · `203` compras · `204` dashboard · `205` catálogo · `206` ordem de serviço · `207` remoção das estruturas herdadas do sistema anterior · `208` frota (rode depois do 206; o 207 só em banco sem dados do sistema anterior) · `209` comercial · `210` orçamentos · `211` contratos · `212` relatórios · `213` auditoria · `214` configurações.
 
 ## Configuração
 
