@@ -536,3 +536,33 @@ export async function createFinancialReceivableForPayment(input: {
   if (error) throw new Error(`create_asaas_receivable: ${error.message}`)
   return { payment: paymentRow, accountsReceivableId: receivableId }
 }
+
+/** Reprocessa um webhook do Asaas que falhou (processed_at vazio), contando a tentativa. */
+export async function reprocessAsaasEvent(eventId: string) {
+  const admin = createAdminClient()
+  const { data: event } = await admin.from("asaas_webhook_events").select("id,account_id,payload,processed_at,reprocess_attempts").eq("id", eventId).maybeSingle()
+  if (!event) throw new Error("Evento não encontrado.")
+  if (event.processed_at) throw new Error("Este evento já foi processado.")
+  const { data: account } = await admin.from("asaas_accounts").select("code").eq("id", event.account_id).maybeSingle()
+  if (!account?.code) throw new Error("Conta Asaas do evento não encontrada.")
+  const code = account.code as AsaasAccountCode
+  await admin.from("asaas_webhook_events").update({ reprocess_attempts: Number(event.reprocess_attempts || 0) + 1 }).eq("id", event.id)
+  const resource = resourceFromWebhook(event.payload as JsonRecord)
+  try {
+    if (resource.type === "payment") {
+      const payment = await upsertAsaasPayment(code, resource.value)
+      await updateReceivableFromPayment(payment)
+    } else if (resource.type === "transfer") {
+      await upsertAsaasTransfer(code, resource.value)
+    } else if (resource.type === "bill") {
+      await upsertAsaasBillPayment(code, resource.value)
+    } else if (resource.type === "invoice") {
+      await upsertAsaasInvoice(code, resource.value)
+    }
+    await admin.from("asaas_webhook_events").update({ processed_at: new Date().toISOString(), processing_error: null }).eq("id", event.id)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Falha desconhecida"
+    await admin.from("asaas_webhook_events").update({ processing_error: message }).eq("id", event.id)
+    throw error
+  }
+}

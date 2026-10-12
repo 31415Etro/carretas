@@ -22,6 +22,7 @@ type Options = {
   providers: Array<{ id: string; name: string }>
   materials: Array<{ id: string; name: string; code: string; unit: string; price: number; cost: number; stock: number; reserved: number; controlsStock: boolean }>
   vehicles: Array<{ id: string; name: string }>
+  settings?: { defaultChecklist: string[]; priorityDays: Record<string, number> }
 }
 type Asset = { id: string; clientId: string; assetType: string; identification: string; plate: string; chassis: string }
 type ChecklistRow = { item: string; ok: boolean | null; notes?: string }
@@ -116,7 +117,22 @@ export function OsDetailPage({ id }: { id: string }) {
   }, [header.clientId])
 
   const readOnly = Boolean(detail && locked.has(detail.status))
-  const set = (field: keyof typeof emptyHeader) => (value: string) => setHeader((current) => ({ ...current, [field]: value }))
+  const [dueEdited, setDueEdited] = useState(false)
+  useEffect(() => {
+    if (!isNew || !options.settings) return
+    setChecklist(options.settings.defaultChecklist.map((item) => ({ item, ok: null })))
+  }, [isNew, options.settings])
+  useEffect(() => {
+    if (!isNew || dueEdited || !options.settings) return
+    const days = options.settings.priorityDays[header.priority]
+    if (!(days >= 0)) return
+    const due = new Date(Date.now() + days * 86400000).toISOString().slice(0, 10)
+    setHeader((current) => (current.dueDate === due ? current : { ...current, dueDate: due }))
+  }, [isNew, dueEdited, options.settings, header.priority])
+  const set = (field: keyof typeof emptyHeader) => (value: string) => {
+    if (field === "dueDate") setDueEdited(true)
+    setHeader((current) => ({ ...current, [field]: value }))
+  }
   const materialInfo = (materialId: string) => options.materials.find((item) => item.id === materialId)
   const live = useMemo(() => osTotals(
     services.map((item) => ({ quantity: num(item.quantity), unitPrice: num(item.unitPrice) })),

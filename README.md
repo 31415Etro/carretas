@@ -20,13 +20,13 @@ Next.js 16 (App Router) + Supabase + Tailwind.
 | Contratos | `/contratos` | Contratos de receita e despesa, cobrança recorrente automática sem duplicar, OS periódicas de manutenção, aditivos e documentos com versões, obrigações e alertas de vencimento (agendador em `/api/contratos/cron`, exige `CRON_SECRET`) |
 | Relatórios | `/relatorios` | 31 relatórios de financeiro, estoque, produtos, OS, frota, comercial, orçamentos e contratos, com filtros, colunas, agrupamento, ordenação, totais, exportação em PDF/Excel/CSV respeitando permissões, relatórios salvos com usuários autorizados e envio agendado por e-mail (`/api/relatorios/cron`) |
 | Log do Sistema | `/logs-sistema` | Trilha de auditoria (quem, quando, o quê, valores antes/depois, IP, sessão, resultado e origem) protegida contra alteração com cadeia de hash, retenção configurável, exportação e verificação de integridade; mais as falhas técnicas do sistema. Somente administradores |
-| Configurações | `/configuracoes` | Usuários e permissões, equipe técnica, empresas (CNPJs) |
+| Configurações | `/configuracoes` | Empresas (fiscal, endereço, certificado, logotipo), filiais, usuários (empresas autorizadas, filial, departamento, cargo, MFA), equipe técnica, parâmetros financeiros/estoque/operacionais/comerciais/notificações, naturezas de operação, tabelas de preço, modelos de orçamento, integrações (status, histórico, reprocessamento) e documentos |
 
 ## Banco de dados
 
 Os scripts em `scripts/` são executados no SQL Editor do Supabase, em ordem numérica. As migrações do ERP começam em `200_`:
 
-`200` produtos · `201` financeiro · `202` estoque · `203` compras · `204` dashboard · `205` catálogo · `206` ordem de serviço · `207` remoção das estruturas herdadas do sistema anterior · `208` frota (rode depois do 206; o 207 só em banco sem dados do sistema anterior) · `209` comercial · `210` orçamentos · `211` contratos · `212` relatórios · `213` auditoria.
+`200` produtos · `201` financeiro · `202` estoque · `203` compras · `204` dashboard · `205` catálogo · `206` ordem de serviço · `207` remoção das estruturas herdadas do sistema anterior · `208` frota (rode depois do 206; o 207 só em banco sem dados do sistema anterior) · `209` comercial · `210` orçamentos · `211` contratos · `212` relatórios · `214` configurações.
 
 ## Configuração
 
@@ -39,3 +39,8 @@ npm install
 npm run dev
 npm test
 ```
+
+## Documentação
+
+- `docs/dicionario-de-dados.md`: dicionário de dados gerado das migrações (`python scripts/gerar-dicionario-de-dados.py`).
+- `docs/lgpd.md`: práticas técnicas de proteção de dados pessoais.

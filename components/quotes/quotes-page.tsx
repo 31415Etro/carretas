@@ -9,6 +9,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { DataTable, MetricCard, PageShell, SearchableSelectField, SectionCard, SelectField, StatusBadge, TextAreaField, TextField, useCrudFeedback } from "@/components/operations/shared"
+import { resolveTablePrice } from "@/lib/config"
 import { buildInstallments, quoteTotals, quoteTypes, shareMessage } from "@/lib/quotes"
 import { buildQuotePdf } from "@/lib/quote-pdf"
 
@@ -22,6 +23,9 @@ type Options = {
   warehouses: Array<{ id: string; name: string; isDefault: boolean }>
   opportunities: Array<{ id: string; code: string; title: string; clientId: string; salespersonId: string; interest: string; estimatedValue: number; stage: string }>
   company: { id: string; name: string; legalName: string; cnpj: string; email: string; phone: string; address: string; hasLogo: boolean }
+  templates: Array<{ id: string; name: string; quoteType: string; validityDays: number; paymentConditionId: string; deliveryText: string; warrantyDays: number; notes: string }>
+  priceTables: Array<{ id: string; name: string; clientId: string; validFrom: string; validUntil: string; active: boolean; items: Array<{ materialId: string; serviceTypeId: string; price: number }> }>
+  settings: { defaultValidityDays: number; discountApprovalPercent: number }
   emailConfigured: boolean
   canConfigure: boolean
 }
@@ -86,7 +90,7 @@ export function QuotesPage() {
   const readOnly = Boolean(detail) && status !== "Rascunho"
 
   function startNew(prefill: Row = {}) {
-    setForm({ ...emptyForm(), ...prefill })
+    setForm({ ...emptyForm(), validUntil: plusDays(options?.settings.defaultValidityDays || 15), ...prefill })
     setLines([])
     setDetail(null)
     setAction(null)
@@ -135,7 +139,9 @@ export function QuotesPage() {
     if (!options || !adding.id) return
     const source = adding.kind === "Produto" ? options.products.find((item) => item.id === adding.id) : options.services.find((item) => item.id === adding.id)
     if (!source) return
-    setLines((current) => [...current, { key: key(), lineType: adding.kind, catalogId: source.id, description: source.name, unit: source.unit, quantity: "1", unitPrice: String(source.price), discountPercent: "0", notes: "", catalogPrice: source.price, unitCost: source.cost }])
+    // tabela de preços vigente do cliente (ou geral) tem prioridade sobre o preço de catálogo
+    const table = resolveTablePrice(options.priceTables, form.clientId, adding.kind, source.id)
+    setLines((current) => [...current, { key: key(), lineType: adding.kind, catalogId: source.id, description: source.name, unit: source.unit, quantity: "1", unitPrice: String(table ? table.price : source.price), discountPercent: "0", notes: "", catalogPrice: source.price, unitCost: source.cost }])
     if (adding.kind === "Serviço" && "warrantyDays" in source && source.warrantyDays > num(form.warrantyDays)) setForm((current) => ({ ...current, warrantyDays: String(source.warrantyDays) }))
     setAdding({ ...adding, id: "" })
   }
@@ -355,6 +361,9 @@ export function QuotesPage() {
               <TextField label="Prazo de entrega / execução" value={form.deliveryText} onChange={(value) => !readOnly && setForm({ ...form, deliveryText: value })} />
               <TextField label="Garantia (dias)" type="number" value={form.warrantyDays} onChange={(value) => !readOnly && setForm({ ...form, warrantyDays: value })} />
             </div>
+            {!detail && options && options.templates.length > 0 && (
+              <div className="max-w-sm"><Opts label="Modelo de orçamento" value="" onChange={(value) => { const template = options.templates.find((item) => item.id === value); if (template) setForm((current) => ({ ...current, quoteType: template.quoteType || current.quoteType, validUntil: plusDays(template.validityDays), paymentConditionId: template.paymentConditionId || current.paymentConditionId, deliveryText: template.deliveryText || current.deliveryText, warrantyDays: String(template.warrantyDays), notes: template.notes || current.notes })) }} items={options.templates.map((item) => ({ value: item.id, label: item.name }))} placeholder="Aplicar um modelo..." /></div>
+            )}
             {client && !client.document && <p className="text-xs text-amber-600">Este cliente é um lead sem CPF/CNPJ: complete o cadastro em Comercial antes de formalizar.</p>}
 
             <div className="space-y-2">

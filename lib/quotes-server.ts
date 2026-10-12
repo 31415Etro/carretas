@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto"
 import type { createAdminClient } from "@/lib/supabase/server"
+import { discountNeedsApproval, maxDiscountPercent } from "@/lib/config"
+import { loadSection } from "@/lib/config-server"
 import { applyStockMovement } from "@/lib/stock-engine"
 import { buildInstallments, canCreateVersion, describeChanges, editableInPlace, effectiveStatus, quoteTotals, shareMessage, validateQuote, validateQuoteTransition, type QuoteInput } from "@/lib/quotes"
 import { readAllPages } from "@/lib/supabase-pagination"
@@ -260,11 +262,18 @@ export async function duplicateQuote(admin: Admin, id: string, responsible: stri
 
 // ---------------- Situação, envio e aceite
 
-export async function changeQuoteStatus(admin: Admin, id: string, to: string, extra: { acceptedBy?: string; acceptNotes?: string; reason?: string; via?: string; sentTo?: string }, responsible: string) {
+export async function changeQuoteStatus(admin: Admin, id: string, to: string, extra: { acceptedBy?: string; acceptNotes?: string; reason?: string; via?: string; sentTo?: string }, responsible: string, role?: string) {
   const { data: row } = await admin.from("quotes").select("*").eq("id", id).maybeSingle()
   if (!row) fail("Orçamento não encontrado.")
   const message = validateQuoteTransition(row!.status, to, { acceptedBy: extra.acceptedBy, reason: extra.reason, validUntil: row!.valid_until })
   if (message) fail(message)
+  // Configurações > Comerciais: desconto acima do limite só sai/é aprovado com administrador ou gerente
+  if (role && (to === "Enviado" || to === "Aprovado")) {
+    const settings = await loadSection(admin, "commercial")
+    const { data: items } = await admin.from("quote_items").select("discount_percent").eq("quote_id", id)
+    const percent = maxDiscountPercent((items || []).map((item) => ({ discountPercent: Number(item.discount_percent) })), Number(row!.discount_amount), Number(row!.items_subtotal))
+    if (discountNeedsApproval(percent, Number(settings.discountApprovalPercent), role)) fail(`Desconto de ${percent.toLocaleString("pt-BR")}% acima do limite de ${Number(settings.discountApprovalPercent).toLocaleString("pt-BR")}%: peça a um gerente ou administrador para enviar/aprovar.`)
+  }
   const patch: Record<string, any> = { status: to }
   let description = ""
   if (to === "Enviado") {
@@ -393,7 +402,7 @@ export async function removeAttachment(admin: Admin, attachmentId: string, respo
 
 export const emailConfigured = () => Boolean(String(process.env.RESEND_API_KEY || "").trim())
 
-export async function sendQuoteEmail(admin: Admin, id: string, input: { to: string; subject?: string; message?: string; pdfBase64: string; companyName: string; replyTo?: string }, responsible: string) {
+export async function sendQuoteEmail(admin: Admin, id: string, input: { to: string; subject?: string; message?: string; pdfBase64: string; companyName: string; replyTo?: string }, responsible: string, role?: string) {
   const apiKey = String(process.env.RESEND_API_KEY || "").trim()
   if (!apiKey) fail("Envio por e-mail não configurado: defina RESEND_API_KEY no servidor.")
   const to = text(input.to)
@@ -419,7 +428,7 @@ export async function sendQuoteEmail(admin: Admin, id: string, input: { to: stri
     const payload = await response.json().catch(() => null)
     fail(`Falha no envio: ${payload?.message || `Resend HTTP ${response.status}`}`)
   }
-  return changeQuoteStatus(admin, id, "Enviado", { via: "E-mail", sentTo: to }, responsible)
+  return changeQuoteStatus(admin, id, "Enviado", { via: "E-mail", sentTo: to }, responsible, role)
 }
 
 export async function companyBranding(admin: Admin, companyId: string) {

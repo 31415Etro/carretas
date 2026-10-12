@@ -30,3 +30,20 @@ export async function getSelectedSystemCompany(companies?: SystemCompany[]) {
     || available[0]
     || defaultSystemCompany
 }
+
+/**
+ * Empresas em que o usuário pode trabalhar: administrador vê todas; os demais, as vinculadas em
+ * profile_companies. Perfil sem nenhum vínculo mantém acesso a todas (compatibilidade com usuários antigos).
+ */
+export async function listAuthorizedCompanies(userId: string, role: string): Promise<SystemCompany[]> {
+  const companies = await listSystemCompanies(true)
+  if (role === "admin") return companies
+  try {
+    const { data } = await createAdminClient({ bypassCompanyScope: true }).from("profile_companies").select("company_id").eq("profile_id", userId)
+    if (!data || !data.length) return companies
+    const allowed = new Set(data.map((row: { company_id: string }) => row.company_id))
+    return companies.filter((company) => allowed.has(company.id))
+  } catch {
+    return companies
+  }
+}

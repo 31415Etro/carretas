@@ -1,4 +1,4 @@
-import { SettingsPage } from "@/components/operations/registry-pages"
+import { SettingsPage } from "@/components/settings/settings-page"
 
 export default function Page() {
   return <SettingsPage />

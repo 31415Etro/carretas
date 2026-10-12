@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { audit } from "@/lib/audit"
 import { createClient } from "@/lib/supabase/server"
-import { listSystemCompanies } from "@/lib/system-company-server"
+import { listAuthorizedCompanies } from "@/lib/system-company-server"
 import { SYSTEM_COMPANY_COOKIE } from "@/lib/system-company"
 
 export async function POST(request: Request) {
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("id,active")
+      .select("id,active,role")
       .eq("id", data.user.id)
       .maybeSingle()
     if (!profile || profile.active === false) {
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     const response = NextResponse.json({
       success: true,
       requiresCompanySelection: true,
-      companies: await listSystemCompanies(true),
+      companies: await listAuthorizedCompanies(data.user.id, String(profile.role || "user")),
       user: {
         id: data.user.id,
         email: data.user.email,

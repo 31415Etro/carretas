@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server"
+import { loadSection } from "@/lib/config-server"
+import { stockAdjustmentNeedsApproval } from "@/lib/config"
 import { stockContext, stockError } from "@/lib/stock-api"
 import { applyStockMovement, stockMovementTypes, toMovement, type StockMovementInput } from "@/lib/stock-engine"
 
@@ -46,6 +48,21 @@ export async function POST(request: Request) {
     const inputs: StockMovementInput[] = Array.isArray(body.movements) ? body.movements : [body.movement]
     if (!inputs.length || inputs.some((item) => !item?.materialId || !manualTypes.has(item.movementType))) {
       return NextResponse.json({ error: "Informe item, tipo de movimentação válido e quantidade." }, { status: 400 })
+    }
+    // aprovação de ajustes e perdas (Configurações > Estoque): acima do valor limite só administrador ou gerente
+    const adjustments = inputs.filter((item) => ["Ajuste de inventario", "Perda"].includes(item.movementType))
+    if (adjustments.length) {
+      const settings = await loadSection(context.admin, "stock")
+      if (settings.adjustmentApprovalRequired && context.role !== "admin" && context.role !== "manager") {
+        const { data: materials } = await context.admin.from("materials").select("id,average_cost,cost_price").in("id", adjustments.map((item) => item.materialId))
+        const value = adjustments.reduce((sum, item) => {
+          const material = (materials || []).find((row) => row.id === item.materialId)
+          return sum + Number(item.quantity || 0) * Number(item.unitCost ?? material?.average_cost ?? material?.cost_price ?? 0)
+        }, 0)
+        if (stockAdjustmentNeedsApproval({ adjustmentApprovalRequired: true, adjustmentApprovalThreshold: Number(settings.adjustmentApprovalThreshold || 0) }, value, context.role)) {
+          return NextResponse.json({ error: `Ajuste de ${value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} acima do limite de ${Number(settings.adjustmentApprovalThreshold || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}: peça a um gerente ou administrador.` }, { status: 403 })
+        }
+      }
     }
     const saved = []
     for (const input of inputs) {

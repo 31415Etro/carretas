@@ -31,14 +31,14 @@ export async function POST(request: Request, { params }: Params) {
   try {
     const body = await request.json()
     switch (body.action) {
-      case "status": return NextResponse.json(await changeQuoteStatus(context.admin, id, String(body.to || ""), body, context.responsible))
+      case "status": return NextResponse.json(await changeQuoteStatus(context.admin, id, String(body.to || ""), body, context.responsible, context.role))
       case "version": return NextResponse.json(await createVersion(context.admin, id, context.responsible))
       case "duplicate": return NextResponse.json(await duplicateQuote(context.admin, id, context.responsible))
       case "formalize": return NextResponse.json(await formalizeQuote(context.admin, id, { target: body.target === "OS" ? "OS" : "Venda", warehouseId: body.warehouseId, baseDate: body.baseDate }, context.responsible))
       case "email": {
         const company = await getSelectedSystemCompany()
         const branding = await companyBranding(context.admin, company.id)
-        return NextResponse.json(await sendQuoteEmail(context.admin, id, { to: body.to, subject: body.subject, message: body.message, pdfBase64: body.pdfBase64, companyName: branding.name, replyTo: branding.email }, context.responsible))
+        return NextResponse.json(await sendQuoteEmail(context.admin, id, { to: body.to, subject: body.subject, message: body.message, pdfBase64: body.pdfBase64, companyName: branding.name, replyTo: branding.email }, context.responsible, context.role))
       }
       case "attach":
         await addAttachment(context.admin, id, { path: String(body.path || ""), name: String(body.name || "arquivo") }, context.responsible)

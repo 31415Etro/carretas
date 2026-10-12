@@ -4,6 +4,7 @@
 import type { createAdminClient } from "@/lib/supabase/server"
 import { funnelStages, stageProbability } from "@/lib/commercial"
 import { billingPeriodicities } from "@/lib/contracts"
+import { loadSection } from "@/lib/config-server"
 import { effectiveStatus } from "@/lib/quotes"
 import { inRange, monthKey, type Row } from "@/lib/reports"
 import { readAllPages } from "@/lib/supabase-pagination"
@@ -291,14 +292,15 @@ const funnel: Runner = async ({ admin, params }) => {
 }
 
 const salesBySeller: Runner = async ({ admin, start, end }) => {
-  const [rows, people] = await Promise.all([all(admin, "opportunities"), all(admin, "salespeople", "id,name")])
+  const [rows, people, commercial] = await Promise.all([all(admin, "opportunities"), all(admin, "salespeople", "id,name"), loadSection(admin, "commercial")])
+  const commissionPercent = Number(commercial.defaultCommissionPercent || 0)
   return people.map((person) => {
     const mine = rows.filter((row) => row.salesperson_id === person.id)
     const won = mine.filter((row) => row.stage === "Ganho" && inRange(row.closed_at, start, end))
     const lost = mine.filter((row) => row.stage === "Perdido" && inRange(row.closed_at, start, end))
     const open = mine.filter((row) => !["Ganho", "Perdido"].includes(row.stage))
     const wonValue = sum(won, (row) => row.estimated_value)
-    return { seller: person.name, won: won.length, wonValue, lost: lost.length, open: open.length, openValue: sum(open, (row) => row.estimated_value), conversion: won.length + lost.length ? round2((won.length / (won.length + lost.length)) * 100) : 0, ticket: won.length ? round2(wonValue / won.length) : 0 }
+    return { seller: person.name, won: won.length, wonValue, commission: round2((wonValue * commissionPercent) / 100), lost: lost.length, open: open.length, openValue: sum(open, (row) => row.estimated_value), conversion: won.length + lost.length ? round2((won.length / (won.length + lost.length)) * 100) : 0, ticket: won.length ? round2(wonValue / won.length) : 0 }
   }).filter((row) => row.won || row.lost || row.open)
 }
 

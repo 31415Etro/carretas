@@ -3,6 +3,7 @@ import { currentUserRole } from "@/lib/server-authorization"
 import { stockContext } from "@/lib/stock-api"
 import { companyBranding, emailConfigured, quoteError } from "@/lib/quotes-server"
 import { getSelectedSystemCompany } from "@/lib/system-company-server"
+import { listPriceTables, listTemplates, loadSection } from "@/lib/config-server"
 import { readAllPages } from "@/lib/supabase-pagination"
 
 /** Listas do formulário: clientes, vendedores, catálogo (preço, custo e estoque), condições e dados da empresa. */
@@ -11,6 +12,7 @@ export async function GET() {
   if ("error" in context) return context.error
   try {
     const { role } = await currentUserRole()
+    const [templates, priceTables, commercial] = await Promise.all([listTemplates(context.admin).catch(() => []), listPriceTables(context.admin).catch(() => []), loadSection(context.admin, "commercial")])
     const company = await getSelectedSystemCompany()
     const [clients, people, conditions, materials, services, warehouses, opportunities, branding] = await Promise.all([
       readAllPages<any>((from, to) => context.admin.from("clients").select("id,name,document,status,phone,email").neq("status", "Inativo").order("name").order("id").range(from, to)),
@@ -31,6 +33,9 @@ export async function GET() {
       warehouses: (warehouses.data || []).map((row) => ({ id: row.id, name: row.name, isDefault: Boolean(row.is_default) })),
       opportunities: (opportunities.data || []).map((row) => ({ id: row.id, code: row.code, title: row.title, clientId: row.client_id, salespersonId: row.salesperson_id, interest: row.interest, estimatedValue: Number(row.estimated_value || 0), stage: row.stage })),
       company: { id: branding.id, name: branding.name, legalName: branding.legalName, cnpj: branding.cnpj, email: branding.email, phone: branding.phone, address: branding.address, hasLogo: branding.hasLogo },
+      templates: templates.filter((item) => item.active),
+      priceTables: priceTables.filter((item) => item.active),
+      settings: { defaultValidityDays: Number(commercial.defaultValidityDays || 15), discountApprovalPercent: Number(commercial.discountApprovalPercent || 0) },
       emailConfigured: emailConfigured(),
       canConfigure: role === "admin" || role === "manager",
     })

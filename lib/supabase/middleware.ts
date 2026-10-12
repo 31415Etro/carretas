@@ -12,6 +12,7 @@ const publicPaths = [
   "/api/contratos/cron",
   "/api/relatorios/cron",
   "/api/auditoria/cron",
+  "/api/notificacoes/cron",
 ]
 
 const pagePermissions = [
@@ -110,6 +111,16 @@ export async function updateSession(request: NextRequest) {
     await supabase.auth.signOut()
     if (pathname.startsWith("/api/")) return NextResponse.json({ error: "Usuario inativo ou sem perfil" }, { status: 403 })
     return redirectWithCookies(request, "/login", supabaseResponse)
+  }
+
+  // empresa do cookie precisa estar entre as autorizadas (perfil sem vínculos mantém todas)
+  if (profile.role !== "admin" && hasSelectedCompany) {
+    const { data: links } = await supabase.from("profile_companies").select("company_id").eq("profile_id", user.id)
+    if (links && links.length && !links.some((link) => link.company_id === request.cookies.get("system_company_id")?.value)) {
+      await logAuditEdge({ companyId: request.cookies.get("system_company_id")?.value, actorId: audit.actorId, actorEmail: audit.actorEmail, module: "acesso", action: "Acesso negado", description: "Tentativa de usar uma empresa sem autorização.", result: "Negado", ip: audit.ip, session: audit.session, request: audit.request })
+      if (pathname.startsWith("/api/")) return NextResponse.json({ error: "Empresa nao autorizada para este usuario" }, { status: 403 })
+      return redirectWithCookies(request, "/login", supabaseResponse)
+    }
   }
 
   const storedPermissions = Array.isArray(profile.page_permissions) ? profile.page_permissions : []

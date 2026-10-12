@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { listSystemCompanies, getSelectedSystemCompany } from "@/lib/system-company-server"
+import { listAuthorizedCompanies, getSelectedSystemCompany } from "@/lib/system-company-server"
 import { SYSTEM_COMPANY_COOKIE } from "@/lib/system-company"
 import { cookies } from "next/headers"
 
@@ -58,7 +58,7 @@ export async function GET() {
       clientId: profile.client_id || null,
     }
 
-    const companies = await listSystemCompanies(true)
+    const companies = await listAuthorizedCompanies(authUser.id, String(user.role || "user"))
     const selectedCookie = (await cookies()).get(SYSTEM_COMPANY_COOKIE)?.value
     if (!selectedCookie || !companies.some((item) => item.id === selectedCookie)) {
       return NextResponse.json({ user: null, authenticated: true, requiresCompanySelection: true, companies })

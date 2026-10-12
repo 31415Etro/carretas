@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server"
+import { loadSection } from "@/lib/config-server"
+import { priorityDeadlines } from "@/lib/config"
 import { stockContext } from "@/lib/stock-api"
 import { readAllPages } from "@/lib/supabase-pagination"
 
@@ -7,6 +9,7 @@ export async function GET() {
   const context = await stockContext()
   if ("error" in context) return context.error
   try {
+    const osSettings = await loadSection(context.admin, "os")
     const [clients, services, providers, materials, vehicles] = await Promise.all([
       readAllPages<any>((from, to) => context.admin.from("clients").select("id,name,document").order("name").order("id").range(from, to)),
       context.admin.from("service_types").select("*").eq("status", "Ativo").order("name"),
@@ -20,6 +23,7 @@ export async function GET() {
       providers: (providers.data || []).filter((row) => row.status !== "Inativo").map((row) => ({ id: row.id, name: row.full_name })),
       materials: materials.map((row) => ({ id: row.id, name: row.name, code: row.internal_code || "", unit: row.unit, price: Number(row.sale_price || 0), cost: Number(row.average_cost || row.cost_price || 0), stock: Number(row.current_stock || 0), reserved: Number(row.reserved_stock || 0), controlsStock: row.controls_stock !== false })),
       vehicles: (vehicles.data || []).map((row) => ({ id: row.id, name: `${row.plate} - ${row.model}` })),
+      settings: { defaultChecklist: osSettings.defaultChecklist, priorityDays: priorityDeadlines(osSettings) },
     })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Erro ao carregar opções." }, { status: 400 })
