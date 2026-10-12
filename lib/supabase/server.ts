@@ -1,6 +1,6 @@
 import { createServerClient as createServerClientSsr } from "@supabase/ssr"
 import { createClient as createSupabaseClient } from "@supabase/supabase-js"
-import { cookies } from "next/headers"
+import { cookies, headers as requestHeaders } from "next/headers"
 import {
   DEFAULT_SYSTEM_COMPANY_ID,
   SYSTEM_COMPANY_COOKIE,
@@ -47,6 +47,16 @@ function companyAwareFetch(bypassCompanyScope = false, forcedCompanyId?: string)
     const headers = new Headers(input instanceof Request ? input.headers : undefined)
     new Headers(init?.headers).forEach((value, key) => headers.set(key, value))
     headers.set(SYSTEM_COMPANY_HEADER, companyId)
+    // quem fez a ação, de onde e em qual requisição: o banco grava na trilha de auditoria (triggers)
+    try {
+      const incoming = await requestHeaders()
+      for (const name of ["x-audit-actor-id", "x-audit-actor-email", "x-audit-ip", "x-audit-session", "x-audit-request", "x-audit-origin"]) {
+        const value = incoming.get(name)
+        if (value) headers.set(name, value)
+      }
+    } catch {
+      headers.set("x-audit-origin", "Agendador")
+    }
     if (sharedMasterTables.has(table)) return fetch(input, { ...init, headers })
     if (!tenantScopedTables.has(table)) return fetch(input, { ...init, headers })
 

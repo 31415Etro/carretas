@@ -1,3 +1,4 @@
+import { audit } from "@/lib/audit"
 import type { createAdminClient } from "@/lib/supabase/server"
 import { currentUserRole } from "@/lib/server-authorization"
 import { buildReportFile, reportFileName, type ReportMeta } from "@/lib/report-export"
@@ -54,6 +55,7 @@ export async function executeReport(admin: Admin, user: ReportUser | { id: strin
   const meta: ReportMeta = { title: def!.name, periodLabel: describePeriod(def!, start, end, today), filtersText: describeFilters(def!, filters), companyName, generatedAt: new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) }
   if (input.exportFormat || origin !== "Manual") {
     await admin.from("report_runs").insert({ saved_report_id: input.savedReportId || null, report_id: def!.id, report_name: def!.name, origin, format: input.exportFormat || null, period_start: start, period_end: end, row_count: result.rowCount, user_id: user.id, user_name: user.name })
+    if (input.exportFormat) await audit({ module: "relatorios", action: "Exportação de dados", description: `Exportou "${def!.name}" em ${input.exportFormat}: ${result.rowCount} registro(s), ${meta.periodLabel}${meta.filtersText ? `, ${meta.filtersText}` : ""}.`, recordId: def!.id, actorId: user.id, actorEmail: user.email })
   }
   return { reportId: def!.id, module: def!.module, name: def!.name, period: { start, end }, meta, result }
 }

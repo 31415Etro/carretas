@@ -1,3 +1,4 @@
+import { auditRoute } from "@/lib/audit"
 import { randomUUID } from "node:crypto"
 import { NextResponse } from "next/server"
 import { asaasRequest, isAsaasAccountCode } from "@/lib/asaas"
@@ -5,7 +6,7 @@ import { getAsaasAccountRow, upsertAsaasBillPayment } from "@/lib/asaas-server"
 import { currentUserRole } from "@/lib/server-authorization"
 import { createAdminClient } from "@/lib/supabase/server"
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const current = await currentUserRole()
   if (!current.user || current.role !== "admin") return NextResponse.json({ error: "Acesso restrito a administradores." }, { status: 403 })
   try {
@@ -45,3 +46,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Falha ao pagar boleto." }, { status: 400 })
   }
 }
+
+export const POST = auditRoute({ module: "integracoes", action: "Pagamento de conta (Asaas)" }, handlePOST)

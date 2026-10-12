@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { audit } from "@/lib/audit"
 import { createClient } from "@/lib/supabase/server"
 import { listSystemCompanies } from "@/lib/system-company-server"
 import { SYSTEM_COMPANY_COOKIE } from "@/lib/system-company"
@@ -17,6 +18,7 @@ export async function POST(request: Request) {
 
     if (error) {
       console.error("[v0] Login error:", error.message)
+      await audit({ module: "acesso", action: "Login", description: `Falha de login para ${String(email || "").slice(0, 120)}: credenciais inválidas ou conta bloqueada.`, result: "Falha", actorEmail: String(email || "").slice(0, 120), companyId: null, origin: "Usuário" })
       return NextResponse.json({ error: error.message }, { status: 401 })
     }
 
@@ -31,8 +33,10 @@ export async function POST(request: Request) {
       .maybeSingle()
     if (!profile || profile.active === false) {
       await supabase.auth.signOut()
+      await audit({ module: "acesso", action: "Login", description: `Login negado para ${String(email || "").slice(0, 120)}: usuário inativo ou sem perfil.`, result: "Negado", actorId: data.user.id, actorEmail: String(email || "").slice(0, 120), companyId: null, origin: "Usuário" })
       return NextResponse.json({ error: "Usuario inativo ou sem perfil de acesso" }, { status: 403 })
     }
+    await audit({ module: "acesso", action: "Login", description: `Login de ${String(data.user.email || "").slice(0, 120)}.`, actorId: data.user.id, actorEmail: String(data.user.email || ""), companyId: null, origin: "Usuário" })
 
     console.log("[v0] Login successful for user:", data.user.id)
 

@@ -1,9 +1,10 @@
+import { auditRoute } from "@/lib/audit"
 import { NextResponse } from "next/server"
 import { asaasRequest, getAsaasAccountConfig } from "@/lib/asaas"
 import { ASAAS_WEBHOOK_EVENTS } from "@/lib/asaas-events"
 import { isCurrentUserAdmin } from "@/lib/server-authorization"
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   if (!(await isCurrentUserAdmin())) return NextResponse.json({ error: "Acesso restrito a administradores." }, { status: 403 })
   try {
     const origin = new URL(request.url).origin
@@ -34,3 +35,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Falha ao configurar webhooks." }, { status: 400 })
   }
 }
+
+export const POST = auditRoute({ module: "integracoes", action: "Configuração de webhooks (Asaas)" }, handlePOST)

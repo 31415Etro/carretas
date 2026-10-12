@@ -1,9 +1,10 @@
+import { auditRoute } from "@/lib/audit"
 import { NextResponse } from "next/server"
 import { isAsaasAccountCode } from "@/lib/asaas"
 import { syncAsaasStatement } from "@/lib/asaas-server"
 import { isCurrentUserAdmin } from "@/lib/server-authorization"
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   if (!(await isCurrentUserAdmin())) return NextResponse.json({ error: "Acesso restrito a administradores." }, { status: 403 })
   try {
     const body = await request.json()
@@ -32,3 +33,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Falha ao sincronizar extrato." }, { status: 400 })
   }
 }
+
+export const POST = auditRoute({ module: "integracoes", action: "Sincronização com o Asaas" }, handlePOST)

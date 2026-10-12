@@ -1,3 +1,4 @@
+import { auditRoute } from "@/lib/audit"
 import { randomUUID } from "node:crypto"
 import { NextResponse } from "next/server"
 import { asaasRequest, isAsaasAccountCode } from "@/lib/asaas"
@@ -9,7 +10,7 @@ function digits(value: unknown) {
   return String(value || "").replace(/\D/g, "")
 }
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const current = await currentUserRole()
   if (!current.user || current.role !== "admin") return NextResponse.json({ error: "Acesso restrito a administradores." }, { status: 403 })
   try {
@@ -72,3 +73,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Falha ao realizar transferencia." }, { status: 400 })
   }
 }
+
+export const POST = auditRoute({ module: "integracoes", action: "Transferência (Asaas)" }, handlePOST)

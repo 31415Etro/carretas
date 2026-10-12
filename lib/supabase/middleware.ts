@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
+import { clientIp, logAuditEdge, originFor, sessionIdFromToken, withAuditHeaders } from "@/lib/audit-edge"
 
 const publicPaths = [
   "/login",
@@ -10,6 +11,7 @@ const publicPaths = [
   // Agendador de contratos: autenticado por CRON_SECRET dentro da própria rota.
   "/api/contratos/cron",
   "/api/relatorios/cron",
+  "/api/auditoria/cron",
 ]
 
 const pagePermissions = [
@@ -71,6 +73,20 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   const pathname = request.nextUrl.pathname
+
+  // Contexto de auditoria: usuário, IP, sessão e requisição seguem para as rotas e para o banco (cabeçalhos x-audit-*).
+  // Valores vindos do cliente são descartados; só valem os verificados aqui.
+  let sessionToken: string | null | undefined
+  try {
+    sessionToken = (await supabase.auth.getSession()).data.session?.access_token
+  } catch {
+    sessionToken = null
+  }
+  const audit = { actorId: user?.id || "", actorEmail: user?.email || "", ip: clientIp(request.headers), session: sessionIdFromToken(sessionToken), request: crypto.randomUUID(), origin: originFor(pathname, Boolean(user)) }
+  const forwarded = NextResponse.next({ request: { headers: withAuditHeaders(request.headers, audit) } })
+  supabaseResponse.cookies.getAll().forEach((cookie) => forwarded.cookies.set(cookie))
+  supabaseResponse = forwarded
+
   if (!user && !isPublicPath(pathname)) {
     if (pathname.startsWith("/api/")) return NextResponse.json({ error: "Nao autenticado" }, { status: 401 })
     return redirectWithCookies(request, "/login", supabaseResponse, true)
@@ -106,6 +122,7 @@ export async function updateSession(request: NextRequest) {
 
   const page = pagePermissions.find((item) => pathname === item.prefix || pathname.startsWith(`${item.prefix}/`))
   if (page && profile.role !== "admin" && !permissions.includes(page.permission)) {
+    await logAuditEdge({ companyId: request.cookies.get("system_company_id")?.value, actorId: audit.actorId, actorEmail: audit.actorEmail, module: "acesso", action: "Acesso negado", description: `Tentativa de abrir ${pathname} sem a permissão "${page.permission}".`, result: "Negado", ip: audit.ip, session: audit.session, request: audit.request })
     return redirectWithCookies(request, firstAllowed, supabaseResponse)
   }
 

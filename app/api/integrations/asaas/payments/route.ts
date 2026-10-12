@@ -1,3 +1,4 @@
+import { auditRoute } from "@/lib/audit"
 import { NextResponse } from "next/server"
 import { randomUUID } from "node:crypto"
 import { asaasExternalReference, asaasRequest, isAsaasAccountCode } from "@/lib/asaas"
@@ -26,7 +27,7 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const current = await currentUserRole()
   if (!current.user || current.role !== "admin") return NextResponse.json({ error: "Acesso restrito a administradores." }, { status: 403 })
   try {
@@ -129,3 +130,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Falha ao emitir cobranca." }, { status: 400 })
   }
 }
+
+export const POST = auditRoute({ module: "integracoes", action: "Cobrança criada (Asaas)" }, handlePOST)

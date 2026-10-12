@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { audit } from "@/lib/audit"
 import { currentUserRole } from "@/lib/server-authorization"
 import { createAdminClient } from "@/lib/supabase/server"
 import { isStockEngineMissing, STOCK_MIGRATION_HINT } from "@/lib/stock-engine"
@@ -7,7 +8,10 @@ import { isStockEngineMissing, STOCK_MIGRATION_HINT } from "@/lib/stock-engine"
 export async function stockContext() {
   const { user, role } = await currentUserRole()
   if (!user) return { error: NextResponse.json({ error: "Nao autenticado." }, { status: 401 }) } as const
-  if (role === "client") return { error: NextResponse.json({ error: "Acesso restrito ao estoque." }, { status: 403 }) } as const
+  if (role === "client") {
+    await audit({ module: "acesso", action: "Acesso negado", description: "Cliente externo tentou usar uma rota interna do ERP.", result: "Negado", actorId: user.id, actorEmail: user.email || "" })
+    return { error: NextResponse.json({ error: "Acesso restrito ao estoque." }, { status: 403 }) } as const
+  }
   const responsible = String(user.user_metadata?.full_name || user.user_metadata?.name || user.email || "Usuario")
   return { admin: createAdminClient(), responsible } as const
 }

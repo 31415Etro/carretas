@@ -1,3 +1,4 @@
+import { auditRoute } from "@/lib/audit"
 import { NextResponse } from "next/server"
 import { notaAsConfiguration, notaAsDocumentPath, type NotaAsDocumentKind } from "@/lib/notaas"
 import { isCurrentUserAdmin } from "@/lib/server-authorization"
@@ -5,7 +6,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 
 export const dynamic = "force-dynamic"
 
-export async function GET(_request: Request, context: { params: Promise<{ id: string; format: string }> }) {
+async function handleGET(_request: Request, context: { params: Promise<{ id: string; format: string }> }) {
   if (!(await isCurrentUserAdmin())) return NextResponse.json({ error: "Acesso restrito a administradores." }, { status: 403 })
   try {
     const { id, format: rawFormat } = await context.params
@@ -39,3 +40,5 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     return NextResponse.json({ error: error instanceof Error ? error.message : "Falha ao baixar documento fiscal." }, { status: 500 })
   }
 }
+
+export const GET = auditRoute({ module: "integracoes", action: "Download de documento fiscal (NotaAS)" }, handleGET)
