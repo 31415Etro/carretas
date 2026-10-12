@@ -60,7 +60,7 @@ export async function loadDashboardData(admin: AdminClient, sections: DashboardS
     need("frota") ? rows(admin, "vehicle_maintenance", warnings) : [],
     need("frota") ? rows(admin, "fuel_entries", warnings) : [],
     need("comercial") ? rows(admin, "opportunities", warnings) : [],
-    [], // contratos: módulo ainda sem especificação
+    need("comercial") ? rows(admin, "contracts", warnings) : [],
   ])
 
   // Início do serviço = evento "Iniciar serviço" das OS finalizadas no período.
@@ -75,7 +75,7 @@ export async function loadDashboardData(admin: AdminClient, sections: DashboardS
     })
   }
 
-  const clientIds = Array.from(new Set([...receivables.map((row) => row.client_id), ...orders.map((row) => row.client_id), ...leads.map((row) => row.client_id)].filter(Boolean)))
+  const clientIds = Array.from(new Set([...receivables.map((row) => row.client_id), ...orders.map((row) => row.client_id), ...leads.map((row) => row.client_id), ...contracts.map((row) => row.client_id)].filter(Boolean)))
   const providerIds = Array.from(new Set(orders.map((row) => row.main_provider_id).filter(Boolean)))
   const clients: Record<string, string> = {}
   const providers: Record<string, string> = {}

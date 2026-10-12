@@ -353,6 +353,16 @@ export async function formalizeQuote(admin: Admin, id: string, options: { target
   return { ...(await getQuote(admin, id)), warnings }
 }
 
+/** Orçamento aprovado que virou contrato: os títulos saem da recorrência do contrato, não do orçamento. */
+export async function markQuoteAsContract(admin: Admin, quoteId: string, contractNumber: string, responsible: string) {
+  const { data: quote } = await admin.from("quotes").select("*").eq("id", quoteId).maybeSingle()
+  if (!quote) fail("Orçamento não encontrado.")
+  if (quote!.status !== "Aprovado") fail("Só é possível gerar contrato de um orçamento aprovado.")
+  await admin.from("quotes").update({ status: "Convertido", converted_to: "Contrato", converted_at: new Date().toISOString() }).eq("id", quoteId)
+  await event(admin, quoteId, "Convertido", `Convertido no contrato ${contractNumber}. Os lançamentos financeiros seguem as condições do contrato.`, responsible)
+  await winOpportunity(admin, quote, responsible)
+}
+
 /** Dados do orçamento aprovado para pré-preencher a OS. */
 export async function quoteForOrder(admin: Admin, id: string) {
   const detail = await getQuote(admin, id)

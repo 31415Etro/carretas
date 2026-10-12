@@ -37,6 +37,8 @@ export function serviceOrderReceivableId(orderId: string) {
 }
 
 async function billedByQuote(admin: AdminClient, order: any) {
+  // OS gerada por contrato sem valor extra: o contrato já cobra a recorrência.
+  if (order?.contract_id && Number(order.total_amount || 0) <= 0) return true
   if (!order?.source_quote_id) return false
   const { data } = await admin.from("quotes").select("receivables_generated_at").eq("id", order.source_quote_id).maybeSingle()
   return Boolean(data?.receivables_generated_at)

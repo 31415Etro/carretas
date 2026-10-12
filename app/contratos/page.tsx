@@ -1,5 +1,5 @@
-import { ModulePlaceholder } from "@/components/shell/module-placeholder"
+import { ContractsPage } from "@/components/contracts/contracts-page"
 
 export default function Page() {
-  return <ModulePlaceholder title="Contratos" description="Contratos de venda, fabricação e manutenção." />
+  return <ContractsPage />
 }

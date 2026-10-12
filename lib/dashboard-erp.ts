@@ -252,10 +252,10 @@ export function buildDashboard(raw: DashboardData, filters: DashboardFilters) {
     const closedInPeriod = leads.filter((row) => ["Ganho", "Perdido"].includes(row.stage) && inPeriod(row.closed_at || row.updated_at, filters))
     const won = closedInPeriod.filter((row) => row.stage === "Ganho")
     const pipeline = leads.filter((row) => !["Ganho", "Perdido"].includes(row.stage))
-    const sentContracts = data.contracts.filter((row) => row.status === "Enviado" || (row.status === "Assinado" && inPeriod(row.updated_at, filters)))
+    const sentContracts = data.contracts.filter((row) => row.status === "Aguardando assinatura")
     const leadRow = (row: any) => [row.title, data.names.clients[row.client_id] || "-", row.stage, money(row.estimated_value), br(row.updated_at)]
     const leadColumns = ["Negociação", "Cliente / lead", "Etapa", "Valor estimado", "Atualizado"]
-    details["com.propostas"] = { title: "Propostas em andamento (proposta e negociação) e contratos enviados", href: "/comercial", columns: leadColumns, rows: [...proposals.map(leadRow), ...sentContracts.map((row) => [`Contrato ${row.contract_number}`, row.client_name, row.status, money(row.value), br(row.updated_at)])] }
+    details["com.propostas"] = { title: "Propostas em andamento (orçamento e negociação) e contratos aguardando assinatura", href: "/comercial", columns: leadColumns, rows: [...proposals.map(leadRow), ...sentContracts.map((row) => [`Contrato ${row.contract_number}`, (row.direction === "Receita" ? data.names.clients[row.client_id] : "") || "-", row.status, money(row.total_value), br(row.updated_at)])] }
     details["com.conversao"] = { title: "Oportunidades encerradas no período", href: "/comercial", columns: leadColumns, rows: closedInPeriod.map(leadRow) }
     details["com.vendas"] = { title: "Oportunidades ganhas no período", href: "/comercial", columns: leadColumns, rows: won.map(leadRow) }
     details["com.funil"] = { title: "Oportunidades no funil", href: "/comercial", columns: leadColumns, rows: pipeline.map(leadRow) }

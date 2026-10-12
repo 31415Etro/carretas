@@ -43,6 +43,7 @@ export type OsInput = {
   productionSerial?: string
   opportunityId?: string
   quoteId?: string
+  contractId?: string
 }
 
 export function validateOs(input: OsInput) {
@@ -124,6 +125,7 @@ export async function saveOs(admin: AdminClient, input: OsInput, responsible: st
     client_id: input.clientId,
     ...(input.opportunityId ? { opportunity_id: input.opportunityId } : {}),
     ...(input.quoteId ? { source_quote_id: input.quoteId } : {}),
+    ...(input.contractId ? { contract_id: input.contractId } : {}),
     customer_asset_id: input.customerAssetId || null,
     vehicle_id: input.vehicleId || null,
     service_type_id: input.serviceTypeId,
