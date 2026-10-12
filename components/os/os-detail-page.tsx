@@ -46,7 +46,7 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
   return payload as T
 }
 
-const emptyHeader = { orderKind: "Manutenção corretiva", clientId: "", customerAssetId: "", vehicleId: "", serviceTypeId: "", description: "", priority: "Media", technicianId: "", teamProviderIds: [] as string[], plannedStart: "", dueDate: "", servicesSummary: "", discountAmount: "0", discountAuthorizedBy: "", warrantyDays: "0", technicalNotes: "", paymentMethod: "", paymentDueDate: "", productionProductId: "", productionQuantity: "1", productionSerial: "" }
+const emptyHeader = { opportunityId: "", orderKind: "Manutenção corretiva", clientId: "", customerAssetId: "", vehicleId: "", serviceTypeId: "", description: "", priority: "Media", technicianId: "", teamProviderIds: [] as string[], plannedStart: "", dueDate: "", servicesSummary: "", discountAmount: "0", discountAuthorizedBy: "", warrantyDays: "0", technicalNotes: "", paymentMethod: "", paymentDueDate: "", productionProductId: "", productionQuantity: "1", productionSerial: "" }
 
 export function OsDetailPage({ id }: { id: string }) {
   const isNew = id === "nova"
@@ -66,6 +66,14 @@ export function OsDetailPage({ id }: { id: string }) {
   const [assetForm, setAssetForm] = useState({ assetType: "Carreta", identification: "", plate: "", chassis: "", brand: "", model: "", manufactureYear: "", axles: "" })
   const [time, setTime] = useState({ providerId: "", workDate: new Date().toISOString().slice(0, 10), hours: "", hourlyCost: "", notes: "" })
   const [acceptance, setAcceptance] = useState({ name: "", document: "", signature: "", notes: "" })
+
+  // OS aberta a partir de uma negociação ganha (Comercial): cliente, descrição e vínculo vêm na URL.
+  useEffect(() => {
+    if (!isNew) return
+    const query = new URLSearchParams(window.location.search)
+    const clientId = query.get("clientId")
+    if (clientId) setHeader((current) => ({ ...current, clientId, opportunityId: query.get("opportunityId") || "", description: current.description || query.get("description") || "" }))
+  }, [isNew])
 
   const load = useCallback(async () => {
     if (isNew) return

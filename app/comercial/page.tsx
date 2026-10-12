@@ -1,5 +1,5 @@
-import { ModulePlaceholder } from "@/components/shell/module-placeholder"
+import { CommercialPage } from "@/components/commercial/commercial-page"
 
 export default function Page() {
-  return <ModulePlaceholder title="Comercial" description="Oportunidades, propostas e vendas." />
+  return <CommercialPage />
 }

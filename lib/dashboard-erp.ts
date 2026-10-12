@@ -17,7 +17,7 @@ export type DashboardData = {
   fuel: any[]
   leads: any[]
   contracts: any[]
-  names: { clients: Record<string, string>; providers: Record<string, string>; vehicles: Record<string, string> }
+  names: { clients: Record<string, string>; providers: Record<string, string>; vehicles: Record<string, string>; salespeople?: Record<string, string> }
 }
 
 export type Indicator = { key: string; label: string; value: number; format: "money" | "number" | "percent" | "hours" | "times"; hint?: string; tone?: "good" | "bad" | "neutral" }
@@ -32,8 +32,7 @@ const openOrderStatuses = new Set(["Aberta", "Em análise", "Aguardando orçamen
 const runningOrderStatuses = new Set(["Aguardando peças", "Em execução", "Em conferência", "Suspensa", "A caminho", "Em execucao", "Pausada", "Aguardando material", "Aguardando retorno"])
 const consumptionTypes = new Set(["Consumo em OS", "Consumo em kit", "Saida por venda", "Consumo em producao"])
 const cogsTypes = new Set(["Consumo em OS", "Saida por venda"])
-const leadStages = ["prospeccao", "contato", "qualificacao", "proposta", "negociacao", "ganho", "perdido"]
-const stageLabels: Record<string, string> = { prospeccao: "Prospecção", contato: "Contato", qualificacao: "Qualificação", proposta: "Proposta", negociacao: "Negociação", ganho: "Ganho", perdido: "Perdido" }
+const leadStages = ["Novo lead", "Contato realizado", "Qualificação", "Orçamento", "Negociação", "Ganho", "Perdido"]
 
 const round2 = (value: number) => Math.round((Number(value) || 0) * 100) / 100
 const day = (value?: string | null) => String(value || "").slice(0, 10)
@@ -249,13 +248,13 @@ export function buildDashboard(raw: DashboardData, filters: DashboardFilters) {
   // ---------------- Comercial
   {
     const leads = data.leads
-    const proposals = leads.filter((row) => ["proposta", "negociacao"].includes(row.bant_stage))
-    const closedInPeriod = leads.filter((row) => ["ganho", "perdido"].includes(row.bant_stage) && inPeriod(row.bant_updated_at || row.updated_at, filters))
-    const won = closedInPeriod.filter((row) => row.bant_stage === "ganho")
-    const pipeline = leads.filter((row) => !["ganho", "perdido"].includes(row.bant_stage))
+    const proposals = leads.filter((row) => ["Orçamento", "Negociação"].includes(row.stage))
+    const closedInPeriod = leads.filter((row) => ["Ganho", "Perdido"].includes(row.stage) && inPeriod(row.closed_at || row.updated_at, filters))
+    const won = closedInPeriod.filter((row) => row.stage === "Ganho")
+    const pipeline = leads.filter((row) => !["Ganho", "Perdido"].includes(row.stage))
     const sentContracts = data.contracts.filter((row) => row.status === "Enviado" || (row.status === "Assinado" && inPeriod(row.updated_at, filters)))
-    const leadRow = (row: any) => [row.name, row.company || "-", stageLabels[row.bant_stage] || row.bant_stage, money(row.estimated_value), br(row.bant_updated_at || row.updated_at)]
-    const leadColumns = ["Lead", "Empresa", "Etapa", "Valor estimado", "Atualizado"]
+    const leadRow = (row: any) => [row.title, data.names.clients[row.client_id] || "-", row.stage, money(row.estimated_value), br(row.updated_at)]
+    const leadColumns = ["Negociação", "Cliente / lead", "Etapa", "Valor estimado", "Atualizado"]
     details["com.propostas"] = { title: "Propostas em andamento (proposta e negociação) e contratos enviados", href: "/comercial", columns: leadColumns, rows: [...proposals.map(leadRow), ...sentContracts.map((row) => [`Contrato ${row.contract_number}`, row.client_name, row.status, money(row.value), br(row.updated_at)])] }
     details["com.conversao"] = { title: "Oportunidades encerradas no período", href: "/comercial", columns: leadColumns, rows: closedInPeriod.map(leadRow) }
     details["com.vendas"] = { title: "Oportunidades ganhas no período", href: "/comercial", columns: leadColumns, rows: won.map(leadRow) }
@@ -268,8 +267,8 @@ export function buildDashboard(raw: DashboardData, filters: DashboardFilters) {
         { key: "com.vendas", label: "Vendas ganhas", value: sum(won, (row) => row.estimated_value), format: "money" },
         { key: "com.funil", label: "Oportunidades no funil", value: pipeline.length, format: "number", hint: money(sum(pipeline, (row) => row.estimated_value)) },
       ],
-      charts: [{ key: "com.funil", title: "Funil de vendas", series: leadStages.map((stage) => ({ etapa: stageLabels[stage], oportunidades: leads.filter((row) => row.bant_stage === stage).length })), bars: [{ key: "oportunidades", label: "Oportunidades" }] }],
-      notes: ["Vendas por vendedor: as oportunidades ainda não registram o vendedor responsável; entra com o módulo Comercial."],
+      charts: [{ key: "com.vendedor", title: "Vendas ganhas por vendedor (R$)", series: [...new Set(won.map((row) => row.salesperson_id))].map((id) => ({ vendedor: data.names.salespeople?.[id] || "-", vendas: round2(sum(won.filter((row) => row.salesperson_id === id), (item) => item.estimated_value)) })), bars: [{ key: "vendas", label: "Vendas" }] }, { key: "com.funil", title: "Funil de vendas", series: leadStages.map((stage) => ({ etapa: stage, oportunidades: leads.filter((row) => row.stage === stage).length })), bars: [{ key: "oportunidades", label: "Oportunidades" }] }],
+      notes: [],
     }
   }
 

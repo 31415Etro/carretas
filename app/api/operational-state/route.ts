@@ -96,14 +96,12 @@ function fromDb(rows: Record<string, any[]>): OperationalState {
 function toDb(state: OperationalState) {
   const valid = <T extends { id: string }>(items: T[]) => items.filter((x) => isUuid(x.id))
   return {
-    clients: valid(state.clients).map((x) => ({ id: x.id, type: x.type, name: x.name, document: x.document, corporate_name: x.corporateName, trade_name: x.tradeName, state_registration: x.stateRegistration, responsible_name: x.responsibleName, phone: x.phone, mobile: x.mobile, email: x.email, zip_code: x.zipCode, street: x.street, number: x.number, complement: x.complement, district: x.district, city: x.city, state: x.state, status: x.status, notes: x.notes })),
-    suppliers: valid(state.suppliers || []).map((x) => ({ id: x.id, name: x.name, document: x.document, contact_name: x.contactName, phone: x.phone, email: x.email, category: x.category, category_ids: (x.categoryIds || []).filter(isUuid), city: x.city, state: x.state, status: x.status, notes: x.notes })),
     providers: valid(state.providers).map((x) => ({ id: x.id, full_name: x.fullName, cpf: x.cpf, rg: x.rg, birth_date: x.birthDate || null, phone: x.phone, email: x.email, zip_code: x.zipCode, street: x.street, number: x.number, complement: x.complement, district: x.district, city: x.city, state: x.state, role: x.role, relationship_type: x.relationshipType, status: x.status, notes: x.notes })),
     audit_logs: valid(state.auditLogs).map((x) => ({ id: x.id, user_id: null, entity_type: x.entityType, entity_id: nullableUuid(x.entityId), action: x.action, description: x.description })),
   }
 }
 
-const writeOrder = ["clients", "suppliers", "providers", "audit_logs"] as const
+const writeOrder = ["providers", "audit_logs"] as const
 
 async function internalUser() {
   const session = await createClient()

@@ -40,6 +40,7 @@ export type OsInput = {
   productionProductId?: string
   productionQuantity?: number
   productionSerial?: string
+  opportunityId?: string
 }
 
 export function validateOs(input: OsInput) {
@@ -119,6 +120,7 @@ export async function saveOs(admin: AdminClient, input: OsInput, responsible: st
     ...(input.id ? { id: input.id } : { order_number: orderNumber, status: "Aberta", opened_by: responsible }),
     order_kind: input.orderKind,
     client_id: input.clientId,
+    ...(input.opportunityId ? { opportunity_id: input.opportunityId } : {}),
     customer_asset_id: input.customerAssetId || null,
     vehicle_id: input.vehicleId || null,
     service_type_id: input.serviceTypeId,

@@ -21,8 +21,7 @@ export async function dashboardViewer() {
   const { data: profile } = await admin.from("profiles").select("role,page_permissions,active").eq("id", user.id).maybeSingle()
   if (!profile || profile.active === false || profile.role === "client") return null
   const permissions: string[] = Array.isArray(profile.page_permissions) ? profile.page_permissions : []
-  // Comercial fica oculto até o módulo Comercial ter especificação (as tabelas do funil antigo foram removidas).
-  const pendingSections = new Set<DashboardSection>(["comercial"])
+  const pendingSections = new Set<DashboardSection>()
   const sections = (Object.keys(sectionPermissions) as DashboardSection[]).filter((section) => !pendingSections.has(section) && (profile.role === "admin" || permissions.includes(sectionPermissions[section])))
   return { user, admin, role: String(profile.role), sections }
 }
@@ -60,8 +59,8 @@ export async function loadDashboardData(admin: AdminClient, sections: DashboardS
     need("frota") ? rows(admin, "vehicles", warnings) : [],
     need("frota") ? rows(admin, "vehicle_maintenance", warnings) : [],
     need("frota") ? rows(admin, "fuel_entries", warnings) : [],
-    need("comercial") ? rows(admin, "commercial_leads", warnings) : [],
-    need("comercial") ? rows(admin, "contracts", warnings) : [],
+    need("comercial") ? rows(admin, "opportunities", warnings) : [],
+    [], // contratos: módulo ainda sem especificação
   ])
 
   // Início do serviço = evento "Iniciar serviço" das OS finalizadas no período.
@@ -76,7 +75,7 @@ export async function loadDashboardData(admin: AdminClient, sections: DashboardS
     })
   }
 
-  const clientIds = Array.from(new Set([...receivables.map((row) => row.client_id), ...orders.map((row) => row.client_id)].filter(Boolean)))
+  const clientIds = Array.from(new Set([...receivables.map((row) => row.client_id), ...orders.map((row) => row.client_id), ...leads.map((row) => row.client_id)].filter(Boolean)))
   const providerIds = Array.from(new Set(orders.map((row) => row.main_provider_id).filter(Boolean)))
   const clients: Record<string, string> = {}
   const providers: Record<string, string> = {}
@@ -88,8 +87,13 @@ export async function loadDashboardData(admin: AdminClient, sections: DashboardS
     const { data } = await admin.from("providers").select("id,full_name").in("id", providerIds.slice(index, index + 200))
     ;(data || []).forEach((row) => { providers[row.id] = row.full_name })
   }
+  const salespeople: Record<string, string> = {}
+  if (leads.length) {
+    const { data } = await admin.from("salespeople").select("id,name")
+    ;(data || []).forEach((row) => { salespeople[row.id] = row.name })
+  }
   const vehicleNames: Record<string, string> = Object.fromEntries(vehicles.map((row) => [row.id, `${row.fleet_number || ""} ${row.plate || ""} ${row.model || ""}`.replace(/\s+/g, " ").trim()]))
 
-  const data: DashboardData = { receivables, payables, transactions, materials, movements, orders, orderStarts, vehicles, maintenance, fuel, leads, contracts, names: { clients, providers, vehicles: vehicleNames } }
+  const data: DashboardData = { receivables, payables, transactions, materials, movements, orders, orderStarts, vehicles, maintenance, fuel, leads, contracts, names: { clients, providers, vehicles: vehicleNames, salespeople } }
   return { data, warnings }
 }

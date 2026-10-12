@@ -1,104 +1,37 @@
 "use client"
 
 import type React from "react"
-import { useEffect, useRef, useState } from "react"
-import {
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  Plus,
-  
-  Search,
-  
-  
-  
-  
-  
-  X,
-} from "lucide-react"
-import { Badge } from "@/components/ui/badge"
+import { useEffect, useState } from "react"
+import { Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { useAuth } from "@/lib/auth-context"
 import { pagePermissionLabels, type PagePermission } from "@/lib/types"
-import { compareAlphaNumeric } from "@/lib/utils"
-import { cnpjRegistrationNotes, cleanCpfCnpj, formatCpfCnpjDocument, type CnpjCompany } from "@/lib/cnpj-lookup"
 import { SystemCompaniesManager } from "@/components/system-companies-manager"
+import { makeId, nowIso, type OperationalState, type Provider } from "@/lib/operational-storage"
 import {
-  
-  type Client,
-  
-  
-  
-  type OperationalState,
-  type Provider,
-  
-  
-  
-  
-  
-  type Supplier,
-  
-  
-  
-  
-  
-  
-  formatDate,
-  
-  makeId,
-  
-  
-  nowIso,
-  
-  
-  today,
-} from "@/lib/operational-storage"
-import {
-  AlertRow,
-  ConfirmInline,
   DataTable,
   FormSheet,
-  
   PageShell,
   SaveButton,
-  SearchableSelectField,
   SectionCard,
   SelectField,
   StatusBadge,
   TextAreaField,
   TextField,
   appendAudit,
-  
   names,
   useCrudFeedback,
-  
   useOperationalStore,
 } from "./shared"
 
-type SheetKind = "client" | "supplier" | "provider" | "user" | ""
+type SheetKind = "provider" | "user" | ""
 
 const selectablePagePermissions: PagePermission[] = [
   "dashboard",
-  "clientes",
   "ordens_servico",
   "frota",
   "estoque",
@@ -112,100 +45,6 @@ const selectablePagePermissions: PagePermission[] = [
 ]
 
 const clientDefaultPermissions: PagePermission[] = []
-
-
-
-function normalizeClientImportKey(value: unknown) {
-  return String(value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim()
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-const emptyClient = {
-  type: "PJ",
-  name: "",
-  document: "",
-  corporateName: "",
-  tradeName: "",
-  stateRegistration: "",
-  responsibleName: "",
-  phone: "",
-  mobile: "",
-  email: "",
-  zipCode: "",
-  street: "",
-  number: "",
-  complement: "",
-  district: "",
-  city: "",
-  state: "SP",
-  status: "Ativo",
-  notes: "",
-}
-
-const emptySupplier = {
-  name: "",
-  document: "",
-  contactName: "",
-  phone: "",
-  email: "",
-  category: "",
-  categoryIds: [] as string[],
-  city: "",
-  state: "SP",
-  status: "Ativo",
-  notes: "",
-}
-
-function CnpjLookupField({ value, onChange, onLookup, loading, label = "CPF/CNPJ" }: { value: string; onChange: (value: string) => void; onLookup: () => void; loading: boolean; label?: string }) {
-  const document = cleanCpfCnpj(value)
-  return (
-    <div className="space-y-2">
-      <Label>{label}</Label>
-      <div className="flex gap-2">
-        <Input
-          inputMode="text"
-          value={value}
-          onChange={(event) => onChange(formatCpfCnpjDocument(event.target.value))}
-          onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); onLookup() } }}
-          placeholder="CPF ou CNPJ"
-        />
-        {document.length === 14 ? <Button type="button" variant="outline" size="icon" onClick={onLookup} disabled={loading} title="Consultar dados do CNPJ">
-          <Search className={`h-4 w-4 ${loading ? "animate-pulse" : ""}`} />
-        </Button> : null}
-      </div>
-      {loading ? <p className="text-xs text-muted-foreground">Consultando dados cadastrais...</p> : null}
-    </div>
-  )
-}
-
-function withCnpjNotes(current: string, company: CnpjCompany) {
-  const details = cnpjRegistrationNotes(company)
-  const previous = String(current || "").split("\n\nDados do CNPJ:\n")[0].trim()
-  return [previous, details ? `Dados do CNPJ:\n${details}` : ""].filter(Boolean).join("\n\n")
-}
-
-
-
 
 
 
@@ -240,40 +79,6 @@ const emptyProvider = {
 
 
 
-const tireOptions = ["Novo", "3/4 vida", "Meia vida", "1/4 vida", "Solicitar troca"]
-
-
-function dateTime(value: string) {
-  return value ? new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value)) : "-"
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 function QuickSheets({
   state,
   commit,
@@ -288,30 +93,11 @@ function QuickSheets({
   preset?: Record<string, string>
 }) {
   const { requireFields, toast } = useCrudFeedback()
-  const [client, setClient] = useState<Record<string, any>>(emptyClient)
-  const [supplier, setSupplier] = useState<Record<string, any>>(emptySupplier)
-  const [supplierCategories, setSupplierCategories] = useState<Array<{ id: string; name: string }>>([])
-  const [supplierCategoriesLoading, setSupplierCategoriesLoading] = useState(false)
-  const [supplierCategoriesError, setSupplierCategoriesError] = useState("")
   const [provider, setProvider] = useState<Record<string, any>>(emptyProvider)
-  const [savingClient, setSavingClient] = useState(false)
-  const savingClientRef = useRef(false)
-  const [savingSupplier, setSavingSupplier] = useState(false)
-  const savingSupplierRef = useRef(false)
-  const [cnpjLookupTarget, setCnpjLookupTarget] = useState<"client" | "supplier" | "">("")
-  const lastAutomaticCnpjRef = useRef("")
   const [user, setUser] = useState<Record<string, any>>({ name: "", email: "", phone: "", profile: "Tecnico", temporaryPassword: "123456", status: "Ativo", permissions: ["dashboard", "ordens_servico"], clientId: "" })
 
   useEffect(() => {
     if (!sheet) return
-    if (sheet === "client") {
-      const existingClient = state.clients.find((item) => item.id === preset?.id)
-      setClient(existingClient ? { ...emptyClient, ...existingClient } : emptyClient)
-    }
-    if (sheet === "supplier") {
-      const existingSupplier = state.suppliers.find((item) => item.id === preset?.id)
-      setSupplier(existingSupplier ? { ...emptySupplier, ...existingSupplier, categoryIds: existingSupplier.categoryIds || [] } : emptySupplier)
-    }
     if (sheet === "provider") {
       const existingProvider = state.providers.find((item) => item.id === preset?.id)
       setProvider(existingProvider ? { ...emptyProvider, ...existingProvider } : emptyProvider)
@@ -324,177 +110,9 @@ function QuickSheets({
     }
   }, [sheet, preset, state])
 
-  useEffect(() => {
-    const target = sheet === "client" && !client.id
-      ? "client"
-      : sheet === "supplier" && !supplier.id ? "supplier" : ""
-    if (!target) return
-    const document = cleanCpfCnpj(target === "client" ? client.document : supplier.document)
-    const key = `${target}:${document}`
-    if (document.length !== 14 || lastAutomaticCnpjRef.current === key) return
-    const timer = window.setTimeout(() => {
-      lastAutomaticCnpjRef.current = key
-      void lookupCnpj(target, true)
-    }, 500)
-    return () => window.clearTimeout(timer)
-  }, [sheet, client.type, client.id, client.document, supplier.id, supplier.document])
-
-  useEffect(() => {
-    if (sheet !== "supplier") return
-    let active = true
-    setSupplierCategoriesLoading(true)
-    setSupplierCategoriesError("")
-    fetch("/api/financial-categories/options", { cache: "no-store" })
-      .then(async (response) => {
-        const payload = await response.json().catch(() => null)
-        if (!response.ok) throw new Error(payload?.error || `Erro ${response.status}`)
-        if (active) setSupplierCategories(Array.isArray(payload?.categories) ? payload.categories : [])
-      })
-      .catch((error) => {
-        if (active) setSupplierCategoriesError(error instanceof Error ? error.message : "Erro ao carregar categorias")
-      })
-      .finally(() => {
-        if (active) setSupplierCategoriesLoading(false)
-      })
-    return () => { active = false }
-  }, [sheet])
-
-  useEffect(() => {
-    if (sheet !== "supplier" || !supplierCategories.length) return
-    setSupplier((current) => {
-      if (current.categoryIds?.length || !current.category) return current
-      const legacyNames = String(current.category).split(/[,;]/).map((value) => value.trim().toLocaleLowerCase("pt-BR")).filter(Boolean)
-      const categoryIds = supplierCategories.filter((item) => legacyNames.includes(item.name.toLocaleLowerCase("pt-BR"))).map((item) => item.id)
-      return categoryIds.length ? { ...current, categoryIds } : current
-    })
-  }, [sheet, supplierCategories])
-
-  async function lookupCnpj(target: "client" | "supplier", automatic = false) {
-    const document = cleanCpfCnpj(target === "client" ? client.document : supplier.document)
-    if (document.length !== 14) {
-      if (!automatic) toast({ title: "CNPJ incompleto", description: "Informe os 14 caracteres do CNPJ.", variant: "destructive" })
-      return
-    }
-    setCnpjLookupTarget(target)
-    try {
-      const response = await fetch(`/api/cnpj/${encodeURIComponent(document)}`, { cache: "no-store" })
-      const payload = await response.json().catch(() => null)
-      if (!response.ok || !payload?.company) throw new Error(payload?.error || `Falha ao consultar CNPJ (HTTP ${response.status}).`)
-      const company = payload.company as CnpjCompany
-      if (target === "client") {
-        setClient((current) => ({
-          ...current,
-          type: "PJ",
-          document: company.document,
-          name: company.legalName || current.name,
-          corporateName: company.legalName || current.corporateName,
-          tradeName: company.tradeName || current.tradeName,
-          phone: company.phone || current.phone,
-          mobile: company.phone || current.mobile,
-          email: company.email || current.email,
-          zipCode: company.zipCode || current.zipCode,
-          street: company.street || current.street,
-          number: company.number || current.number,
-          complement: company.complement || current.complement,
-          district: company.district || current.district,
-          city: company.city || current.city,
-          state: company.state || current.state,
-          notes: withCnpjNotes(current.notes, company),
-        }))
-      } else {
-        setSupplier((current) => ({
-          ...current,
-          document: company.document,
-          name: company.tradeName || company.legalName || current.name,
-          phone: company.phone || current.phone,
-          email: company.email || current.email,
-          city: company.city || current.city,
-          state: company.state || current.state,
-          notes: withCnpjNotes(current.notes, company),
-        }))
-      }
-      toast({ title: "CNPJ encontrado", description: `${company.tradeName || company.legalName} preenchido automaticamente.` })
-    } catch (error) {
-      toast({ title: "Nao foi possivel consultar o CNPJ", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" })
-    } finally {
-      setCnpjLookupTarget("")
-    }
-  }
-
   function close() {
     setSheet("")
   }
-
-  async function saveClient() {
-    if (savingClientRef.current) return
-    if (!requireFields([["Nome ou razao social", client.name], ["CPF/CNPJ", client.document]])) return
-    const now = nowIso()
-    const existing = state.clients.find((item) => item.id === client.id)
-    const record: Client = { ...(client as any), id: existing?.id || client.id || makeId("client"), createdAt: existing?.createdAt || now, updatedAt: now }
-    savingClientRef.current = true
-    setSavingClient(true)
-    setClient((current) => ({ ...current, id: record.id }))
-    try {
-      const response = await fetch("/api/clients", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ client: record }),
-      })
-      const payload = await response.json().catch(() => null)
-      if (!response.ok) throw new Error(payload?.error || `Falha ao salvar cliente (HTTP ${response.status}).`)
-      const saved: Client = payload.client
-      commit((current) => ({
-        ...current,
-        clients: [saved, ...current.clients.filter((item) => item.id !== saved.id)],
-        auditLogs: appendAudit(current, "client", saved.id, existing ? "Editado" : "Criado", `Cliente ${saved.name} ${existing ? "editado" : "criado"}`),
-      }), { persist: false })
-      setClient(emptyClient)
-      toast({ title: existing ? "Cliente atualizado" : "Cliente salvo", description: "Cadastro atualizado no banco de dados." })
-      close()
-    } catch (error) {
-      toast({ title: "Erro ao salvar no banco", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" })
-    } finally {
-      savingClientRef.current = false
-      setSavingClient(false)
-    }
-  }
-
-
-
-  async function saveSupplier() {
-    if (savingSupplierRef.current) return
-    if (!requireFields([["Fornecedor", supplier.name], ["Telefone", supplier.phone]])) return
-    const now = nowIso()
-    const existing = (state.suppliers || []).find((item) => item.id === supplier.id)
-    const categoryIds = Array.from(new Set((supplier.categoryIds || []).filter(Boolean))) as string[]
-    const selectedCategoryNames = categoryIds.map((id) => supplierCategories.find((item) => item.id === id)?.name).filter(Boolean) as string[]
-    const record: Supplier = { ...(supplier as any), id: existing?.id || supplier.id || makeId("supplier"), categoryIds, category: selectedCategoryNames.join(", ") || supplier.category || "", createdAt: existing?.createdAt || now, updatedAt: now }
-    savingSupplierRef.current = true
-    setSavingSupplier(true)
-    setSupplier((current) => ({ ...current, id: record.id }))
-    try {
-      const response = await fetch("/api/suppliers", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ supplier: record }),
-      })
-      const payload = await response.json().catch(() => null)
-      if (!response.ok) throw new Error(payload?.error || `Falha ao salvar fornecedor (HTTP ${response.status}).`)
-      const saved: Supplier = payload.supplier
-      commit((current) => ({
-        ...current,
-        suppliers: [saved, ...(current.suppliers || []).filter((item) => item.id !== saved.id)],
-        auditLogs: appendAudit(current, "supplier", saved.id, existing ? "Editado" : "Criado", `Fornecedor ${saved.name} ${existing ? "editado" : "criado"}`),
-      }), { persist: false })
-      setSupplier(emptySupplier)
-      toast({ title: existing ? "Fornecedor atualizado" : "Fornecedor salvo", description: "Cadastro atualizado no banco de dados." })
-      close()
-    } catch (error) {
-      toast({ title: "Erro ao salvar no banco", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" })
-    } finally {
-      savingSupplierRef.current = false
-      setSavingSupplier(false)
-    }
-  }
-
-
-
 
   function saveProvider() {
     if (!requireFields([["Nome", provider.fullName], ["Celular", provider.phone], ["Cargo", provider.role]])) return
@@ -579,79 +197,6 @@ function QuickSheets({
 
   return (
     <>
-      <FormSheet open={sheet === "client"} onOpenChange={(open) => !open && close()} title="Cadastro de Cliente" description="Dados principais, endereco e dados comerciais.">
-        <div className="grid gap-4 md:grid-cols-2">
-          <SelectField label="Tipo de cliente" value={client.type} onChange={(value) => setClient({ ...client, type: value })} options={[{ value: "PF", label: "Pessoa Fisica" }, { value: "PJ", label: "Pessoa Juridica" }]} />
-          <SelectField label="Status" value={client.status} onChange={(value) => setClient({ ...client, status: value })} options={["Ativo", "Inativo", "Prospect"].map((value) => ({ value, label: value }))} />
-          <TextField label={client.type === "PF" ? "Nome completo" : "Razao social"} value={client.name} onChange={(value) => setClient({ ...client, name: value })} />
-          <CnpjLookupField value={client.document} onChange={(value) => {
-            const length = cleanCpfCnpj(value).length
-            setClient({ ...client, document: value, type: length === 11 ? "PF" : length === 14 ? "PJ" : client.type })
-          }} onLookup={() => lookupCnpj("client")} loading={cnpjLookupTarget === "client"} />
-          {client.type === "PJ" ? <TextField label="Nome fantasia" value={client.tradeName} onChange={(value) => setClient({ ...client, tradeName: value })} /> : null}
-          {client.type === "PJ" ? <TextField label="Inscricao estadual" value={client.stateRegistration} onChange={(value) => setClient({ ...client, stateRegistration: value })} /> : null}
-          <TextField label="Responsavel" value={client.responsibleName} onChange={(value) => setClient({ ...client, responsibleName: value })} />
-          <TextField label="Telefone/Celular" value={client.mobile || client.phone} onChange={(value) => setClient({ ...client, mobile: value, phone: value })} />
-          <TextField label="E-mail" value={client.email} onChange={(value) => setClient({ ...client, email: value })} />
-          <TextField label="CEP" value={client.zipCode} onChange={(value) => setClient({ ...client, zipCode: value })} />
-          <TextField label="Rua" value={client.street} onChange={(value) => setClient({ ...client, street: value })} />
-          <TextField label="Numero" value={client.number} onChange={(value) => setClient({ ...client, number: value })} />
-          <TextField label="Complemento" value={client.complement} onChange={(value) => setClient({ ...client, complement: value })} />
-          <TextField label="Bairro" value={client.district} onChange={(value) => setClient({ ...client, district: value })} />
-          <TextField label="Cidade" value={client.city} onChange={(value) => setClient({ ...client, city: value })} />
-          <TextField label="Estado" value={client.state} onChange={(value) => setClient({ ...client, state: value })} />
-        </div>
-        <TextAreaField label="Observacoes" value={client.notes} onChange={(value) => setClient({ ...client, notes: value })} />
-        <div className="flex flex-wrap gap-2">
-          <SaveButton onClick={saveClient} disabled={savingClient}>{savingClient ? "Salvando..." : "Salvar cliente"}</SaveButton>
-          <Button variant="outline" onClick={close}>Cancelar</Button>
-        </div>
-      </FormSheet>
-
-      <FormSheet open={sheet === "supplier"} onOpenChange={(open) => !open && close()} title="Cadastro de Fornecedor" description="Dados do fornecedor para compras, contratos e financeiro.">
-        <div className="grid gap-4 md:grid-cols-2">
-          <TextField label="Fornecedor" value={supplier.name} onChange={(value) => setSupplier({ ...supplier, name: value })} />
-          <CnpjLookupField value={supplier.document} onChange={(value) => setSupplier({ ...supplier, document: value })} onLookup={() => lookupCnpj("supplier")} loading={cnpjLookupTarget === "supplier"} />
-          <TextField label="Contato" value={supplier.contactName} onChange={(value) => setSupplier({ ...supplier, contactName: value })} />
-          <TextField label="Telefone" value={supplier.phone} onChange={(value) => setSupplier({ ...supplier, phone: value })} />
-          <TextField label="E-mail" value={supplier.email} onChange={(value) => setSupplier({ ...supplier, email: value })} />
-          <div className="space-y-3 md:col-span-2">
-            <SearchableSelectField
-              label="Categorias do fornecedor"
-              value=""
-              onChange={(categoryId) => setSupplier({ ...supplier, categoryIds: Array.from(new Set([...(supplier.categoryIds || []), categoryId])) })}
-              options={supplierCategories.filter((item) => !(supplier.categoryIds || []).includes(item.id)).map((item) => ({ value: item.id, label: item.name }))}
-              placeholder={supplierCategoriesLoading ? "Carregando categorias..." : "Pesquisar e adicionar categoria"}
-              searchPlaceholder="Pesquisar categoria..."
-              emptyLabel="Nenhuma categoria disponível."
-            />
-            {supplierCategoriesError ? <AlertRow>{supplierCategoriesError}</AlertRow> : null}
-            <div className="flex min-h-10 flex-wrap gap-2 rounded-md border p-2">
-              {(supplier.categoryIds || []).map((categoryId: string) => {
-                const category = supplierCategories.find((item) => item.id === categoryId)
-                return (
-                  <Badge key={categoryId} variant="secondary" className="gap-1 py-1 pl-2 pr-1">
-                    {category?.name || categoryId}
-                    <Button type="button" size="icon" variant="ghost" className="h-5 w-5" title="Remover categoria" onClick={() => setSupplier({ ...supplier, categoryIds: (supplier.categoryIds || []).filter((id: string) => id !== categoryId) })}>
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </Badge>
-                )
-              })}
-              {!(supplier.categoryIds || []).length ? <span className="px-1 text-sm text-muted-foreground">Nenhuma categoria vinculada.</span> : null}
-            </div>
-          </div>
-          <TextField label="Cidade" value={supplier.city} onChange={(value) => setSupplier({ ...supplier, city: value })} />
-          <TextField label="Estado" value={supplier.state} onChange={(value) => setSupplier({ ...supplier, state: value })} />
-          <SelectField label="Status" value={supplier.status} onChange={(value) => setSupplier({ ...supplier, status: value })} options={["Ativo", "Inativo"].map((value) => ({ value, label: value }))} />
-        </div>
-        <TextAreaField label="Observações" value={supplier.notes} onChange={(value) => setSupplier({ ...supplier, notes: value })} />
-        <div className="flex flex-wrap gap-2">
-          <SaveButton onClick={saveSupplier} disabled={savingSupplier}>{savingSupplier ? "Salvando..." : "Salvar fornecedor"}</SaveButton>
-          <Button variant="outline" onClick={close}>Cancelar</Button>
-        </div>
-      </FormSheet>
-
       <FormSheet open={sheet === "provider"} onOpenChange={(open) => !open && close()} title={provider.id ? "Editar Prestador" : "Cadastro de Prestador"}>
         <div className="grid gap-4 md:grid-cols-2">
           <TextField label="Nome completo" value={provider.fullName} onChange={(value) => setProvider({ ...provider, fullName: value })} />
@@ -730,96 +275,6 @@ function useSheetWithPreset() {
 }
 
 
-export function ClientsPage() {
-  const { state, commit } = useOperationalStore()
-  const { sheet, setSheet, preset, openSheet } = useSheetWithPreset()
-  const [tab, setTab] = useState("clientes")
-  const [query, setQuery] = useState("")
-  const normalizedQuery = normalizeClientImportKey(query)
-  const matchesQuery = (values: unknown[]) => normalizeClientImportKey(values.filter(Boolean).join(" ")).includes(normalizedQuery)
-  const clients = state.clients
-    .filter((item) => matchesQuery([item.name, item.corporateName, item.tradeName, item.document, item.responsibleName, item.phone, item.mobile, item.email, item.city, item.state, item.status]))
-    .sort((left, right) => compareAlphaNumeric(left.name, right.name))
-  const suppliers = (state.suppliers || [])
-    .filter((item) => matchesQuery([item.name, item.document, item.contactName, item.phone, item.email, item.category, item.city, item.state, item.status, item.notes]))
-    .sort((left, right) => compareAlphaNumeric(left.name, right.name))
-
-  function inactivate(kind: "client" | "supplier", id: string) {
-    commit((current) => ({
-      ...current,
-      clients: kind === "client" ? current.clients.map((item) => item.id === id ? { ...item, status: "Inativo", updatedAt: nowIso() } : item) : current.clients,
-      suppliers: kind === "supplier" ? (current.suppliers || []).map((item) => item.id === id ? { ...item, status: "Inativo", updatedAt: nowIso() } : item) : (current.suppliers || []),
-      auditLogs: appendAudit(current, kind, id, "Inativado", `${kind === "client" ? "Cliente" : "Fornecedor"} inativado`),
-    }))
-  }
-
-  return (
-    <PageShell title="Clientes e Fornecedores" description="Cadastre clientes e fornecedores." actions={<><Button onClick={() => openSheet("client")}><Plus className="h-4 w-4" />Novo Cliente</Button><Button variant="secondary" onClick={() => openSheet("supplier")}>Novo Fornecedor</Button></>}>
-      <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="flex flex-wrap"><TabsTrigger value="clientes">Clientes</TabsTrigger><TabsTrigger value="fornecedores">Fornecedores</TabsTrigger><TabsTrigger value="historico">Histórico</TabsTrigger></TabsList>
-        {tab !== "historico" ? <div className="relative my-4 w-full max-w-3xl">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input className="h-11 pl-9 pr-10" placeholder={tab === "fornecedores" ? "Pesquisar fornecedor, CPF/CNPJ, contato, categoria ou cidade" : "Pesquisar cliente, CPF/CNPJ, nome fantasia, contato ou cidade"} value={query} onChange={(event) => setQuery(event.target.value)} />
-          {query ? <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2" title="Limpar pesquisa" onClick={() => setQuery("")}><X className="h-4 w-4" /></Button> : null}
-        </div> : null}
-        <TabsContent value="clientes">
-          <SectionCard title="Clientes">
-            <DataTable headers={["Cliente", "Tipo", "CPF/CNPJ", "Responsável", "Telefone", "E-mail", "Cidade", "Status", "Ações"]} empty={!clients.length} stickyHeader viewportClassName="max-h-[calc(100vh-19rem)] overflow-auto overscroll-contain" tableClassName="h-auto min-w-[1180px] [&_tbody_tr]:h-auto [&_td]:py-2.5">
-              {clients.map((client) => <TableRow key={client.id}><TableCell>{client.name}</TableCell><TableCell>{client.type}</TableCell><TableCell>{client.document || "-"}</TableCell><TableCell>{client.responsibleName || "-"}</TableCell><TableCell>{client.mobile || client.phone || "-"}</TableCell><TableCell>{client.email || "-"}</TableCell><TableCell>{[client.city, client.state].filter(Boolean).join(" / ") || "-"}</TableCell><TableCell><StatusBadge status={client.status} /></TableCell><TableCell className="space-x-1"><Button size="sm" variant="outline" onClick={() => openSheet("client", { id: client.id })}>Editar</Button><ConfirmInline label="Inativar" onConfirm={() => inactivate("client", client.id)} /></TableCell></TableRow>)}
-            </DataTable>
-          </SectionCard>
-        </TabsContent>
-        <TabsContent value="fornecedores">
-          <SectionCard title="Fornecedores">
-            <DataTable headers={["Fornecedor", "CPF/CNPJ", "Categoria", "Contato", "Telefone", "E-mail", "Cidade", "Status", "Ações"]} empty={!suppliers.length} stickyHeader viewportClassName="max-h-[calc(100vh-19rem)] overflow-auto overscroll-contain" tableClassName="h-auto min-w-[1220px] [&_tbody_tr]:h-auto [&_td]:py-2.5">
-              {suppliers.map((supplier) => <TableRow key={supplier.id}><TableCell>{supplier.name}</TableCell><TableCell>{supplier.document || "-"}</TableCell><TableCell>{supplier.category || "-"}</TableCell><TableCell>{supplier.contactName || "-"}</TableCell><TableCell>{supplier.phone || "-"}</TableCell><TableCell>{supplier.email || "-"}</TableCell><TableCell>{[supplier.city, supplier.state].filter(Boolean).join(" / ") || "-"}</TableCell><TableCell><StatusBadge status={supplier.status} /></TableCell><TableCell><div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => openSheet("supplier", { id: supplier.id })}>Editar</Button><ConfirmInline label="Inativar" onConfirm={() => inactivate("supplier", supplier.id)} /></div></TableCell></TableRow>)}
-            </DataTable>
-          </SectionCard>
-        </TabsContent>
-        <TabsContent value="historico">
-          <AuditTable state={state} filter={["client", "supplier"]} />
-        </TabsContent>
-      </Tabs>
-      <QuickSheets state={state} commit={commit} sheet={sheet} setSheet={setSheet} preset={preset} />
-    </PageShell>
-  )
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 export function SettingsPage() {
   const { state, commit } = useOperationalStore()
   const { user } = useAuth()
@@ -836,10 +291,4 @@ export function SettingsPage() {
     </PageShell>
   )
 }
-
-function AuditTable({ state, filter, entityId }: { state: OperationalState; filter: string[]; entityId?: string }) {
-  const logs = state.auditLogs.filter((log) => (!filter.length || filter.includes(log.entityType)) && (!entityId || log.entityId === entityId))
-  return <SectionCard title="Historico"><DataTable headers={["Data/hora", "Usuario", "Tipo de acao", "Entidade", "Descricao"]} empty={!logs.length}>{logs.map((log) => <TableRow key={log.id}><TableCell>{dateTime(log.createdAt)}</TableCell><TableCell>{log.userId}</TableCell><TableCell>{log.action}</TableCell><TableCell>{log.entityType}</TableCell><TableCell>{log.description}</TableCell></TableRow>)}</DataTable></SectionCard>
-}
-
 

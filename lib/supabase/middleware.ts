@@ -11,7 +11,7 @@ const publicPaths = [
 
 const pagePermissions = [
   { prefix: "/dashboard", permission: "dashboard" },
-  { prefix: "/clientes", permission: "clientes" },
+  { prefix: "/clientes", permission: "comercial" },
   { prefix: "/servicos", permission: "produtos_servicos" },
   { prefix: "/ordens-servico", permission: "ordens_servico" },
   { prefix: "/frota", permission: "frota" },

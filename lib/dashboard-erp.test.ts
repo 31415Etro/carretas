@@ -81,3 +81,21 @@ test("estoque e frota", () => {
   assert.equal(value(result, "frota", "frota.custos"), 800)
   assert.equal(value(result, "frota", "frota.vencimentos"), 1)
 })
+
+test("comercial: funil de oportunidades, conversão e vendas por vendedor", () => {
+  const result = buildDashboard(data({
+    leads: [
+      { id: "o1", title: "Carreta A", client_id: "c1", salesperson_id: "s1", stage: "Orçamento", estimated_value: 100000, updated_at: "2026-10-05T10:00:00Z" },
+      { id: "o2", title: "Carreta B", client_id: "c1", salesperson_id: "s1", stage: "Ganho", estimated_value: 80000, closed_at: "2026-10-08T10:00:00Z", updated_at: "2026-10-08T10:00:00Z" },
+      { id: "o3", title: "Carreta C", client_id: "c1", salesperson_id: "s2", stage: "Perdido", estimated_value: 50000, closed_at: "2026-10-09T10:00:00Z", updated_at: "2026-10-09T10:00:00Z" },
+      { id: "o4", title: "Carreta D", client_id: "c1", salesperson_id: "s2", stage: "Novo lead", estimated_value: 20000, updated_at: "2026-10-10T10:00:00Z" },
+    ],
+    names: { clients: { c1: "Cliente A" }, providers: {}, vehicles: {}, salespeople: { s1: "Ana", s2: "Beto" } },
+  }), filters)
+  assert.equal(value(result, "comercial", "com.propostas"), 1)
+  assert.equal(value(result, "comercial", "com.conversao"), 50)
+  assert.equal(value(result, "comercial", "com.vendas"), 80000)
+  assert.equal(value(result, "comercial", "com.funil"), 2)
+  const bySeller = (result.sections as any).comercial.charts.find((chart: any) => chart.key === "com.vendedor").series
+  assert.deepEqual(bySeller, [{ vendedor: "Ana", vendas: 80000 }])
+})
