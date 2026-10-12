@@ -45,7 +45,7 @@ export const tenantScopedTables = new Set([
   "service_order_materials", "service_order_signatures", "service_orders", "vehicle_maintenance",
   "bank_accounts", "payment_conditions", "purchase_orders", "purchase_order_items", "purchase_receipts",
   "purchase_receipt_items", "service_order_services", "service_order_time_entries",
-  "service_order_status_history", "fuel_entries", "trips", "opportunities", "opportunity_interactions",
+  "service_order_status_history", "fuel_entries", "trips", "opportunities", "opportunity_interactions", "quotes", "quote_items", "quote_attachments", "quote_events",
 ])
 
 export function mapSystemCompany(row: any): SystemCompany {

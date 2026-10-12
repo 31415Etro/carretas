@@ -46,7 +46,7 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
   return payload as T
 }
 
-const emptyHeader = { opportunityId: "", orderKind: "Manutenção corretiva", clientId: "", customerAssetId: "", vehicleId: "", serviceTypeId: "", description: "", priority: "Media", technicianId: "", teamProviderIds: [] as string[], plannedStart: "", dueDate: "", servicesSummary: "", discountAmount: "0", discountAuthorizedBy: "", warrantyDays: "0", technicalNotes: "", paymentMethod: "", paymentDueDate: "", productionProductId: "", productionQuantity: "1", productionSerial: "" }
+const emptyHeader = { opportunityId: "", quoteId: "", orderKind: "Manutenção corretiva", clientId: "", customerAssetId: "", vehicleId: "", serviceTypeId: "", description: "", priority: "Media", technicianId: "", teamProviderIds: [] as string[], plannedStart: "", dueDate: "", servicesSummary: "", discountAmount: "0", discountAuthorizedBy: "", warrantyDays: "0", technicalNotes: "", paymentMethod: "", paymentDueDate: "", productionProductId: "", productionQuantity: "1", productionSerial: "" }
 
 export function OsDetailPage({ id }: { id: string }) {
   const isNew = id === "nova"
@@ -73,6 +73,20 @@ export function OsDetailPage({ id }: { id: string }) {
     const query = new URLSearchParams(window.location.search)
     const clientId = query.get("clientId")
     if (clientId) setHeader((current) => ({ ...current, clientId, opportunityId: query.get("opportunityId") || "", description: current.description || query.get("description") || "" }))
+    // OS de um orçamento aprovado: serviços, peças, desconto e garantia vêm do orçamento (preços negociados).
+    const quoteId = query.get("quoteId")
+    if (!quoteId) return
+    api<{ number: string; clientId: string; opportunityId: string; discountAmount: number; warrantyDays: number; paymentConditionName: string; services: Array<{ serviceTypeId: string; description: string; quantity: number; unit: string; unitPrice: number }>; materials: Array<{ materialId: string; itemName: string; quantity: number; unit: string; unitPrice: number }> }>(`/api/orcamentos/${quoteId}?forOrder=1`)
+      .then((quote) => {
+        setHeader((current) => ({
+          ...current, quoteId, clientId: quote.clientId, opportunityId: quote.opportunityId || current.opportunityId, serviceTypeId: quote.services[0]?.serviceTypeId || current.serviceTypeId,
+          description: current.description || `Conforme orçamento ${quote.number}`, discountAmount: String(quote.discountAmount || 0), discountAuthorizedBy: quote.discountAmount ? `Orçamento ${quote.number}` : "",
+          warrantyDays: String(quote.warrantyDays || 0), paymentMethod: current.paymentMethod,
+        }))
+        setServices(quote.services.map((item) => ({ key: key(), serviceTypeId: item.serviceTypeId, description: item.description, quantity: String(item.quantity), unit: item.unit, unitPrice: String(item.unitPrice), executed: false })))
+        setMaterials(quote.materials.map((item) => ({ key: key(), materialId: item.materialId, itemName: item.itemName, quantity: String(item.quantity), unit: item.unit, unitPrice: String(item.unitPrice) })))
+      })
+      .catch((reason) => setError(reason instanceof Error ? reason.message : "Não foi possível carregar o orçamento."))
   }, [isNew])
 
   const load = useCallback(async () => {

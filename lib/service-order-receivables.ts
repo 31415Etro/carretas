@@ -36,6 +36,12 @@ export function serviceOrderReceivableId(orderId: string) {
   return uuidFromText(`accounts_receivable:${orderId}`)
 }
 
+async function billedByQuote(admin: AdminClient, order: any) {
+  if (!order?.source_quote_id) return false
+  const { data } = await admin.from("quotes").select("receivables_generated_at").eq("id", order.source_quote_id).maybeSingle()
+  return Boolean(data?.receivables_generated_at)
+}
+
 function receivableFromOrder(order: any) {
   const dueDate = String(order.payment_due_date || order.finished_at || order.scheduled_date || new Date().toISOString()).slice(0, 10)
   return {
@@ -89,6 +95,8 @@ export async function ensureReceivableForFinishedOrder(admin: AdminClient, order
     .maybeSingle()
   if (lookupError) throw new Error(`accounts_receivable lookup: ${lookupError.message}`)
   if (existing?.id) return existing.id
+  // OS de um orçamento formalizado: os títulos já foram gerados pelo orçamento (condição acordada).
+  if (await billedByQuote(admin, order)) return null
 
   const { error } = await admin.from("accounts_receivable").insert(receivableFromOrder(order))
   if (error?.code === "23505") return id
@@ -119,7 +127,7 @@ export async function syncReceivablesForServiceOrders(admin: AdminClient, orders
     .select("*")
     .in("id", finishedIds)
   if (orderLookupError) throw new Error(`service_orders lookup: ${orderLookupError.message}`)
-  const finished = (persistedOrders || []).filter((order) => openedInCurrentMonth(order) || finishedRecently(order))
+  const finished = (await Promise.all((persistedOrders || []).map(async (order) => (openedInCurrentMonth(order) || finishedRecently(order)) && !(await billedByQuote(admin, order)) ? order : null))).filter(Boolean) as any[]
   if (!finished.length) return { created: 0 }
 
   const eligibleOrderIds = finished.map((order) => order.id)

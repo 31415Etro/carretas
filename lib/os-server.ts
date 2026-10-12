@@ -1,3 +1,4 @@
+import { formalizeQuote } from "@/lib/quotes-server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { ensureReceivableForFinishedOrder } from "@/lib/service-order-receivables"
 import { syncStockForServiceOrderSafely } from "@/lib/stock-engine"
@@ -41,6 +42,7 @@ export type OsInput = {
   productionQuantity?: number
   productionSerial?: string
   opportunityId?: string
+  quoteId?: string
 }
 
 export function validateOs(input: OsInput) {
@@ -121,6 +123,7 @@ export async function saveOs(admin: AdminClient, input: OsInput, responsible: st
     order_kind: input.orderKind,
     client_id: input.clientId,
     ...(input.opportunityId ? { opportunity_id: input.opportunityId } : {}),
+    ...(input.quoteId ? { source_quote_id: input.quoteId } : {}),
     customer_asset_id: input.customerAssetId || null,
     vehicle_id: input.vehicleId || null,
     service_type_id: input.serviceTypeId,
@@ -170,6 +173,14 @@ export async function saveOs(admin: AdminClient, input: OsInput, responsible: st
 
   await recalculateOs(admin, saved.id)
   const warnings = await syncStockForServiceOrderSafely(admin, saved.id, responsible)
+  // OS aberta de um orçamento aprovado: formaliza o orçamento (títulos a receber pela condição acordada).
+  if (input.quoteId && !input.id) {
+    try {
+      await formalizeQuote(admin, input.quoteId, { target: "OS", serviceOrderId: saved.id }, responsible)
+    } catch (reason) {
+      warnings.push(`Orçamento não formalizado: ${reason instanceof Error ? reason.message : "erro desconhecido"}`)
+    }
+  }
   return { id: saved.id, orderNumber: saved.order_number, warnings }
 }
 

@@ -1,6 +1,6 @@
 # ERP Carretas
 
-Sistema de gestão (ERP) para uma empresa que **fabrica carretas**: financeiro, estoque, compras, produtos e serviços, ordens de serviço, frota, comercial (clientes, fornecedores, vendedores e funil), dashboard e configurações. Orçamentos, Contratos e Relatórios estão no menu aguardando especificação.
+Sistema de gestão (ERP) para uma empresa que **fabrica carretas**: financeiro, estoque, compras, produtos e serviços, ordens de serviço, frota, comercial (clientes, fornecedores, vendedores e funil), orçamentos, dashboard e configurações. Contratos e Relatórios estão no menu aguardando especificação.
 
 Next.js 16 (App Router) + Supabase + Tailwind.
 
@@ -16,13 +16,14 @@ Next.js 16 (App Router) + Supabase + Tailwind.
 | Ordens de Serviço | `/ordens-servico` | Fluxo de 9 etapas, peças reservadas/baixadas, horas, margem, aceite, fabricação |
 | Frota | `/frota` | Veículos e implementos, motoristas (CNH), manutenção, abastecimento, documentos, alertas de vencimento e, se a empresa faz transporte rodoviário, pneus por posição e viagens |
 | Comercial | `/comercial` | Cadastro único de clientes e fornecedores (CPF/CNPJ sem duplicidade, dados fiscais, consulta de CNPJ), vendedores e funil de oportunidades com histórico (`/clientes` redireciona para cá) |
+| Orçamentos | `/orcamento` | Orçamentos com itens do catálogo, preço negociado preservado, margem, versões, PDF com logotipo, envio por e-mail/WhatsApp, aceite e conversão em venda ou OS com títulos a receber |
 | Configurações | `/configuracoes` | Usuários e permissões, equipe técnica, empresas (CNPJs) |
 
 ## Banco de dados
 
 Os scripts em `scripts/` são executados no SQL Editor do Supabase, em ordem numérica. As migrações do ERP começam em `200_`:
 
-`200` produtos · `201` financeiro · `202` estoque · `203` compras · `204` dashboard · `205` catálogo · `206` ordem de serviço · `207` remoção das estruturas herdadas do sistema anterior · `208` frota (rode depois do 206; o 207 só em banco sem dados do sistema anterior) · `209` comercial.
+`200` produtos · `201` financeiro · `202` estoque · `203` compras · `204` dashboard · `205` catálogo · `206` ordem de serviço · `207` remoção das estruturas herdadas do sistema anterior · `208` frota (rode depois do 206; o 207 só em banco sem dados do sistema anterior) · `209` comercial · `210` orçamentos.
 
 ## Configuração
 
