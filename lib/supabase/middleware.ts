@@ -9,6 +9,7 @@ const publicPaths = [
   "/api/auth/companies",
   // Agendador de contratos: autenticado por CRON_SECRET dentro da própria rota.
   "/api/contratos/cron",
+  "/api/relatorios/cron",
 ]
 
 const pagePermissions = [

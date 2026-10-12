@@ -1,5 +1,5 @@
-import { ModulePlaceholder } from "@/components/shell/module-placeholder"
+import { ReportsPage } from "@/components/reports/reports-page"
 
 export default function Page() {
-  return <ModulePlaceholder title="Relatórios" description="Relatórios gerenciais e operacionais." />
+  return <ReportsPage />
 }
