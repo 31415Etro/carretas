@@ -99,13 +99,11 @@ function toDb(state: OperationalState) {
     clients: valid(state.clients).map((x) => ({ id: x.id, type: x.type, name: x.name, document: x.document, corporate_name: x.corporateName, trade_name: x.tradeName, state_registration: x.stateRegistration, responsible_name: x.responsibleName, phone: x.phone, mobile: x.mobile, email: x.email, zip_code: x.zipCode, street: x.street, number: x.number, complement: x.complement, district: x.district, city: x.city, state: x.state, status: x.status, notes: x.notes })),
     suppliers: valid(state.suppliers || []).map((x) => ({ id: x.id, name: x.name, document: x.document, contact_name: x.contactName, phone: x.phone, email: x.email, category: x.category, category_ids: (x.categoryIds || []).filter(isUuid), city: x.city, state: x.state, status: x.status, notes: x.notes })),
     providers: valid(state.providers).map((x) => ({ id: x.id, full_name: x.fullName, cpf: x.cpf, rg: x.rg, birth_date: x.birthDate || null, phone: x.phone, email: x.email, zip_code: x.zipCode, street: x.street, number: x.number, complement: x.complement, district: x.district, city: x.city, state: x.state, role: x.role, relationship_type: x.relationshipType, status: x.status, notes: x.notes })),
-    vehicles: valid(state.vehicles).map((x) => ({ id: x.id, plate: x.plate, model: x.model, brand: x.brand, year: x.year, color: x.color, current_km: x.currentKm, front_right_tire: x.frontRightTire, front_left_tire: x.frontLeftTire, rear_right_tire: x.rearRightTire, rear_left_tire: x.rearLeftTire, last_oil_change_date: x.lastOilChangeDate || null, last_oil_change_km: x.lastOilChangeKm, status: x.status, renavam: x.renavam, licensing_due_date: x.licensingDueDate || null, insurance_info: x.insuranceInfo, notes: x.notes })),
-    vehicle_maintenance: valid(state.vehicleMaintenance).filter((x) => isUuid(x.vehicleId)).map((x) => ({ id: x.id, vehicle_id: x.vehicleId, type: x.type, start_date: x.date || null, date: x.date || null, km: x.km, cost: x.cost, description: x.description, end_date: x.nextMaintenance || null, next_maintenance: x.nextMaintenance || null, status: x.status, attachment_url: x.attachmentName })),
     audit_logs: valid(state.auditLogs).map((x) => ({ id: x.id, user_id: null, entity_type: x.entityType, entity_id: nullableUuid(x.entityId), action: x.action, description: x.description })),
   }
 }
 
-const writeOrder = ["clients", "suppliers", "providers", "vehicles", "vehicle_maintenance", "audit_logs"] as const
+const writeOrder = ["clients", "suppliers", "providers", "audit_logs"] as const
 
 async function internalUser() {
   const session = await createClient()

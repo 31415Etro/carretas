@@ -31,6 +31,7 @@ export const defaultSystemCompany: SystemCompany = {
 export const sharedMasterTables = new Set([
   "clients", "client_contacts", "suppliers", "materials", "profiles", "providers", "provider_documents",
   "service_types", "service_type_checklist_items", "service_type_materials", "system_users", "vehicles",
+  "fleet_drivers", "vehicle_documents", "vehicle_tires", "fleet_settings",
   "warehouses", "stock_balances", "stock_movements", "stock_reservations", "customer_assets",
 ])
 
@@ -44,7 +45,7 @@ export const tenantScopedTables = new Set([
   "service_order_materials", "service_order_signatures", "service_orders", "vehicle_maintenance",
   "bank_accounts", "payment_conditions", "purchase_orders", "purchase_order_items", "purchase_receipts",
   "purchase_receipt_items", "service_order_services", "service_order_time_entries",
-  "service_order_status_history",
+  "service_order_status_history", "fuel_entries", "trips",
 ])
 
 export function mapSystemCompany(row: any): SystemCompany {

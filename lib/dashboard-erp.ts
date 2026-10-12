@@ -14,6 +14,7 @@ export type DashboardData = {
   orderStarts: Record<string, string>
   vehicles: any[]
   maintenance: any[]
+  fuel: any[]
   leads: any[]
   contracts: any[]
   names: { clients: Record<string, string>; providers: Record<string, string>; vehicles: Record<string, string> }
@@ -209,26 +210,27 @@ export function buildDashboard(raw: DashboardData, filters: DashboardFilters) {
 
   // ---------------- Frota
   {
-    const active = data.vehicles.filter((row) => row.status !== "Inativo")
+    const active = data.vehicles.filter((row) => !["Inativo", "Vendido"].includes(row.status))
     const inMaintenance = active.filter((row) => row.status === "Em manutencao")
     const availableVehicles = active.filter((row) => row.status === "Disponivel")
     const maintenance = data.maintenance.filter((row) => inPeriod(row.start_date, filters))
     const vehiclePayables = data.payables.filter((row) => row.vehicle_id && row.status !== "Cancelada" && inPeriod(row.competence_date || row.due_date, filters))
     const costs = new Map<string, number>()
-    maintenance.forEach((row) => costs.set(row.vehicle_id, (costs.get(row.vehicle_id) || 0) + Number(row.cost || 0)))
+    maintenance.forEach((row) => costs.set(row.vehicle_id, (costs.get(row.vehicle_id) || 0) + Number(row.cost || 0) + Number(row.parts_cost || 0) + Number(row.labor_cost || 0)))
+    data.fuel.filter((row) => inPeriod(row.fuel_date, filters)).forEach((row) => costs.set(row.vehicle_id, (costs.get(row.vehicle_id) || 0) + Number(row.total_amount || 0)))
     vehiclePayables.forEach((row) => costs.set(row.vehicle_id, (costs.get(row.vehicle_id) || 0) + Number(row.expected_amount || 0)))
     const limit = addDays(filters.today, 30)
     const due = [
       ...active.filter((row) => day(row.licensing_due_date) && day(row.licensing_due_date) <= limit).map((row) => ({ vehicle_id: row.id, what: "Licenciamento", date: day(row.licensing_due_date) })),
-      ...data.maintenance.filter((row) => row.status === "Programada" && day(row.next_maintenance || row.start_date) && day(row.next_maintenance || row.start_date) <= limit).map((row) => ({ vehicle_id: row.vehicle_id, what: `Manutenção: ${row.type}`, date: day(row.next_maintenance || row.start_date) })),
+      ...data.maintenance.filter((row) => row.status === "Programada" && day(row.next_date || row.next_maintenance || row.start_date) && day(row.next_date || row.next_maintenance || row.start_date) <= limit).map((row) => ({ vehicle_id: row.vehicle_id, what: `Manutenção: ${row.maintenance_type || row.type || ""} ${row.service_description || ""}`.trim(), date: day(row.next_date || row.next_maintenance || row.start_date) })),
     ].sort((a, b) => a.date.localeCompare(b.date))
     const vehicle = (id: string) => data.names.vehicles[id] || "-"
-    const vehicleRow = (row: any) => [row.plate, `${row.brand || ""} ${row.model || ""}`.trim(), row.status, br(row.licensing_due_date)]
+    const vehicleRow = (row: any) => [row.plate || row.fleet_number, `${row.brand || ""} ${row.model || ""}`.trim(), row.status, br(row.licensing_due_date)]
 
     details["frota.ativos"] = { title: "Veículos ativos", href: "/frota", columns: ["Placa", "Veículo", "Situação", "Licenciamento"], rows: active.map(vehicleRow) }
     details["frota.manutencao"] = { title: "Veículos em manutenção", href: "/frota", columns: ["Placa", "Veículo", "Situação", "Licenciamento"], rows: inMaintenance.map(vehicleRow) }
     details["frota.disponibilidade"] = { title: "Veículos disponíveis", href: "/frota", columns: ["Placa", "Veículo", "Situação", "Licenciamento"], rows: availableVehicles.map(vehicleRow) }
-    details["frota.custos"] = { title: "Custos por veículo no período (manutenções + contas a pagar vinculadas)", href: "/frota", columns: ["Veículo", "Custo"], rows: [...costs.entries()].sort((a, b) => b[1] - a[1]).map(([id, cost]) => [vehicle(id), money(cost)]) }
+    details["frota.custos"] = { title: "Custos por veículo no período (manutenções + combustível + contas a pagar vinculadas)", href: "/frota", columns: ["Veículo", "Custo"], rows: [...costs.entries()].sort((a, b) => b[1] - a[1]).map(([id, cost]) => [vehicle(id), money(cost)]) }
     details["frota.vencimentos"] = { title: "Vencimentos nos próximos 30 dias", href: "/frota", columns: ["Data", "Veículo", "Vencimento"], rows: due.map((row) => [br(row.date), vehicle(row.vehicle_id), row.what]) }
 
     sections.frota = {

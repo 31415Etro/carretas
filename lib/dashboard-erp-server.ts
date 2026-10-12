@@ -50,7 +50,7 @@ export async function loadDashboardData(admin: AdminClient, sections: DashboardS
   const warnings: string[] = []
   const need = (section: DashboardSection) => sections.includes(section)
   const endOfDay = `${end}T23:59:59`
-  const [receivables, payables, transactions, materials, movements, orders, vehicles, maintenance, leads, contracts] = await Promise.all([
+  const [receivables, payables, transactions, materials, movements, orders, vehicles, maintenance, fuel, leads, contracts] = await Promise.all([
     need("financeiro") ? rows(admin, "accounts_receivable", warnings) : [],
     need("financeiro") || need("frota") ? rows(admin, "accounts_payable", warnings) : [],
     need("financeiro") ? rows(admin, "financial_transactions", warnings, (query) => query.eq("status", "Realizado").gte("realized_date", start).lte("realized_date", end)) : [],
@@ -59,6 +59,7 @@ export async function loadDashboardData(admin: AdminClient, sections: DashboardS
     need("os") ? rows(admin, "service_orders", warnings) : [],
     need("frota") ? rows(admin, "vehicles", warnings) : [],
     need("frota") ? rows(admin, "vehicle_maintenance", warnings) : [],
+    need("frota") ? rows(admin, "fuel_entries", warnings) : [],
     need("comercial") ? rows(admin, "commercial_leads", warnings) : [],
     need("comercial") ? rows(admin, "contracts", warnings) : [],
   ])
@@ -87,8 +88,8 @@ export async function loadDashboardData(admin: AdminClient, sections: DashboardS
     const { data } = await admin.from("providers").select("id,full_name").in("id", providerIds.slice(index, index + 200))
     ;(data || []).forEach((row) => { providers[row.id] = row.full_name })
   }
-  const vehicleNames: Record<string, string> = Object.fromEntries(vehicles.map((row) => [row.id, `${row.plate} - ${row.model || ""}`.trim()]))
+  const vehicleNames: Record<string, string> = Object.fromEntries(vehicles.map((row) => [row.id, `${row.fleet_number || ""} ${row.plate || ""} ${row.model || ""}`.replace(/\s+/g, " ").trim()]))
 
-  const data: DashboardData = { receivables, payables, transactions, materials, movements, orders, orderStarts, vehicles, maintenance, leads, contracts, names: { clients, providers, vehicles: vehicleNames } }
+  const data: DashboardData = { receivables, payables, transactions, materials, movements, orders, orderStarts, vehicles, maintenance, fuel, leads, contracts, names: { clients, providers, vehicles: vehicleNames } }
   return { data, warnings }
 }

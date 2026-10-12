@@ -56,7 +56,6 @@ import {
   
   
   type Supplier,
-  type Vehicle,
   
   
   
@@ -95,7 +94,7 @@ import {
   useOperationalStore,
 } from "./shared"
 
-type SheetKind = "client" | "supplier" | "provider" | "vehicle" | "user" | "maintenance" | "usage" | ""
+type SheetKind = "client" | "supplier" | "provider" | "user" | ""
 
 const selectablePagePermissions: PagePermission[] = [
   "dashboard",
@@ -230,25 +229,6 @@ const emptyProvider = {
   notes: "",
 }
 
-const emptyVehicle = {
-  plate: "",
-  model: "",
-  brand: "",
-  year: "",
-  color: "",
-  currentKm: "0",
-  frontRightTire: "Novo",
-  frontLeftTire: "Novo",
-  rearRightTire: "Novo",
-  rearLeftTire: "Novo",
-  lastOilChangeDate: "",
-  lastOilChangeKm: "0",
-  status: "Disponivel",
-  renavam: "",
-  licensingDueDate: "",
-  insuranceInfo: "",
-  notes: "",
-}
 
 
 
@@ -314,7 +294,6 @@ function QuickSheets({
   const [supplierCategoriesLoading, setSupplierCategoriesLoading] = useState(false)
   const [supplierCategoriesError, setSupplierCategoriesError] = useState("")
   const [provider, setProvider] = useState<Record<string, any>>(emptyProvider)
-  const [vehicle, setVehicle] = useState<Record<string, any>>(emptyVehicle)
   const [savingClient, setSavingClient] = useState(false)
   const savingClientRef = useRef(false)
   const [savingSupplier, setSavingSupplier] = useState(false)
@@ -336,10 +315,6 @@ function QuickSheets({
     if (sheet === "provider") {
       const existingProvider = state.providers.find((item) => item.id === preset?.id)
       setProvider(existingProvider ? { ...emptyProvider, ...existingProvider } : emptyProvider)
-    }
-    if (sheet === "vehicle") {
-      const existingVehicle = state.vehicles.find((item) => item.id === preset?.id)
-      setVehicle(existingVehicle ? { ...emptyVehicle, ...existingVehicle } : emptyVehicle)
     }
     if (sheet === "user") {
       const existingUser = state.systemUsers.find((item) => item.id === preset?.id)
@@ -543,29 +518,6 @@ function QuickSheets({
     close()
   }
 
-  function saveVehicle() {
-    if (!requireFields([["Placa", vehicle.plate], ["Modelo", vehicle.model], ["Marca", vehicle.brand]])) return
-    const now = nowIso()
-    const existing = state.vehicles.find((item) => item.id === vehicle.id)
-    const record: Vehicle = {
-      ...(vehicle as any),
-      id: existing?.id || vehicle.id || makeId("vehicle"),
-      currentKm: Number(vehicle.currentKm || 0),
-      lastOilChangeKm: Number(vehicle.lastOilChangeKm || 0),
-      createdAt: existing?.createdAt || now,
-      updatedAt: now,
-    }
-    commit((current) => ({
-      ...current,
-      vehicles: existing
-        ? current.vehicles.map((item) => item.id === record.id ? record : item)
-        : [record, ...current.vehicles],
-      auditLogs: appendAudit(current, "vehicle", record.id, existing ? "Editado" : "Criado", `Veiculo ${record.plate} ${existing ? "editado" : "criado"}`),
-    }))
-    setVehicle(emptyVehicle)
-    toast({ title: existing ? "Veiculo atualizado" : "Veiculo salvo" })
-    close()
-  }
 
 
 
@@ -717,27 +669,7 @@ function QuickSheets({
         <SaveButton onClick={saveProvider}>{provider.id ? "Salvar edições" : "Salvar prestador"}</SaveButton>
       </FormSheet>
 
-      <FormSheet open={sheet === "vehicle"} onOpenChange={(open) => !open && close()} title="Cadastro de Veiculo">
-        <div className="grid gap-4 md:grid-cols-2">
-          <TextField label="Placa" value={vehicle.plate} onChange={(value) => setVehicle({ ...vehicle, plate: value })} />
-          <TextField label="Modelo" value={vehicle.model} onChange={(value) => setVehicle({ ...vehicle, model: value })} />
-          <TextField label="Marca" value={vehicle.brand} onChange={(value) => setVehicle({ ...vehicle, brand: value })} />
-          <TextField label="Ano" value={vehicle.year} onChange={(value) => setVehicle({ ...vehicle, year: value })} />
-          <TextField label="Cor" value={vehicle.color} onChange={(value) => setVehicle({ ...vehicle, color: value })} />
-          <TextField label="KM atual" type="number" value={vehicle.currentKm} onChange={(value) => setVehicle({ ...vehicle, currentKm: value })} />
-          <SelectField label="Status" value={vehicle.status} onChange={(value) => setVehicle({ ...vehicle, status: value })} options={["Disponivel", "Em uso", "Em manutencao", "Inativo"].map((value) => ({ value, label: value }))} />
-          <SelectField label="Pneu dianteiro direito" value={vehicle.frontRightTire} onChange={(value) => setVehicle({ ...vehicle, frontRightTire: value })} options={tireOptions.map((value) => ({ value, label: value }))} />
-          <SelectField label="Pneu dianteiro esquerdo" value={vehicle.frontLeftTire} onChange={(value) => setVehicle({ ...vehicle, frontLeftTire: value })} options={tireOptions.map((value) => ({ value, label: value }))} />
-          <SelectField label="Pneu traseiro direito" value={vehicle.rearRightTire} onChange={(value) => setVehicle({ ...vehicle, rearRightTire: value })} options={tireOptions.map((value) => ({ value, label: value }))} />
-          <SelectField label="Pneu traseiro esquerdo" value={vehicle.rearLeftTire} onChange={(value) => setVehicle({ ...vehicle, rearLeftTire: value })} options={tireOptions.map((value) => ({ value, label: value }))} />
-          <TextField label="Ultima troca de oleo - data" type="date" value={vehicle.lastOilChangeDate} onChange={(value) => setVehicle({ ...vehicle, lastOilChangeDate: value })} />
-          <TextField label="Ultima troca de oleo - KM" type="number" value={vehicle.lastOilChangeKm} onChange={(value) => setVehicle({ ...vehicle, lastOilChangeKm: value })} />
-          <TextField label="Renavam" value={vehicle.renavam} onChange={(value) => setVehicle({ ...vehicle, renavam: value })} />
-          <TextField label="Vencimento licenciamento" type="date" value={vehicle.licensingDueDate} onChange={(value) => setVehicle({ ...vehicle, licensingDueDate: value })} />
-        </div>
-        <TextAreaField label="Seguro/observacoes" value={vehicle.insuranceInfo || vehicle.notes} onChange={(value) => setVehicle({ ...vehicle, insuranceInfo: value, notes: value })} />
-        <SaveButton onClick={saveVehicle}>Salvar veiculo</SaveButton>
-      </FormSheet>
+      
 
       <FormSheet open={sheet === "user"} onOpenChange={(open) => !open && close()} title="Usuario e Permissoes">
         <div className="grid gap-4 md:grid-cols-2">
@@ -885,38 +817,6 @@ export function ClientsPage() {
 
 
 
-
-
-
-export function FleetPage() {
-  const { state, commit } = useOperationalStore()
-  const { sheet, setSheet, preset, openSheet } = useSheetWithPreset()
-  const n = names(state)
-  const [maintenance, setMaintenance] = useState({ vehicleId: "", type: "", date: today(), km: "0", cost: "0", description: "", nextMaintenance: "", attachmentName: "" })
-  function saveMaintenance() {
-    if (!maintenance.vehicleId) return
-    if (maintenance.nextMaintenance && maintenance.nextMaintenance < maintenance.date) {
-      window.alert("A data final da manutencao nao pode ser anterior ao inicio.")
-      return
-    }
-    commit((current) => ({
-      ...current,
-      vehicleMaintenance: [{ id: makeId("maint"), vehicleId: maintenance.vehicleId, type: maintenance.type || "Manutencao", date: maintenance.date, km: Number(maintenance.km), cost: Number(maintenance.cost), description: maintenance.description, nextMaintenance: maintenance.nextMaintenance || maintenance.date, status: "Programada", attachmentName: maintenance.attachmentName }, ...current.vehicleMaintenance],
-      auditLogs: appendAudit(current, "vehicle", maintenance.vehicleId, "Manutencao", `Manutencao programada de ${formatDate(maintenance.date)} ate ${formatDate(maintenance.nextMaintenance || maintenance.date)}`),
-    }))
-    setMaintenance({ vehicleId: "", type: "", date: today(), km: "0", cost: "0", description: "", nextMaintenance: "", attachmentName: "" })
-  }
-  return (
-    <PageShell title="Frota" description="Controle de veiculos, uso da frota e manutencoes." actions={<><Button onClick={() => openSheet("vehicle")}><Plus className="h-4 w-4" />Novo Veiculo</Button><Button variant="outline" onClick={() => window.alert("Exportacao da frota simulada no MVP local.")}>Exportar lista</Button></>}>
-      <Tabs defaultValue="veiculos">
-        <TabsList><TabsTrigger value="veiculos">Veiculos</TabsTrigger><TabsTrigger value="manutencao">Manutencao</TabsTrigger></TabsList>
-        <TabsContent value="veiculos"><SectionCard title="Veiculos"><DataTable headers={["Placa", "Modelo", "KM Atual", "Pneus dianteiros", "Pneus traseiros", "Ultima troca de oleo", "Status", "Acoes"]} empty={!state.vehicles.length}>{state.vehicles.map((vehicle) => <TableRow key={vehicle.id}><TableCell>{vehicle.plate}</TableCell><TableCell>{vehicle.model} / {vehicle.brand}</TableCell><TableCell>{vehicle.currentKm}</TableCell><TableCell>Dir: {(vehicle as any).frontRightTire || "Novo"}<br />Esq: {(vehicle as any).frontLeftTire || "Novo"}</TableCell><TableCell>Dir: {(vehicle as any).rearRightTire || "Novo"}<br />Esq: {(vehicle as any).rearLeftTire || "Novo"}</TableCell><TableCell>{(vehicle as any).lastOilChangeDate ? formatDate((vehicle as any).lastOilChangeDate) : "-"} / {(vehicle as any).lastOilChangeKm || 0} km</TableCell><TableCell><StatusBadge status={vehicle.status} /></TableCell><TableCell><div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => openSheet("vehicle", { id: vehicle.id })}>Editar</Button><ConfirmInline label="Inativar" onConfirm={() => commit((current) => ({ ...current, vehicles: current.vehicles.map((item) => item.id === vehicle.id ? { ...item, status: "Inativo", updatedAt: nowIso() } : item) }))} /></div></TableCell></TableRow>)}</DataTable></SectionCard></TabsContent>
-        <TabsContent value="manutencao"><SectionCard title="Manutencoes"><div className="mb-4 grid gap-3 md:grid-cols-3"><SelectField label="Veiculo" value={maintenance.vehicleId || "nenhum"} onChange={(value) => setMaintenance({ ...maintenance, vehicleId: value === "nenhum" ? "" : value })} options={[{ value: "nenhum", label: "Selecione" }, ...state.vehicles.map((item) => ({ value: item.id, label: `${item.plate} - ${item.model}` }))]} /><TextField label="Tipo" value={maintenance.type} onChange={(value) => setMaintenance({ ...maintenance, type: value })} /><TextField label="Inicio da manutencao" type="date" value={maintenance.date} onChange={(value) => setMaintenance({ ...maintenance, date: value })} /><TextField label="Fim da manutencao" type="date" value={maintenance.nextMaintenance} onChange={(value) => setMaintenance({ ...maintenance, nextMaintenance: value })} /><TextField label="KM" type="number" value={maintenance.km} onChange={(value) => setMaintenance({ ...maintenance, km: value })} /><TextField label="Custo" type="number" value={maintenance.cost} onChange={(value) => setMaintenance({ ...maintenance, cost: value })} /><TextAreaField label="Descricao" value={maintenance.description} onChange={(value) => setMaintenance({ ...maintenance, description: value })} /><Button onClick={saveMaintenance}>Registrar manutencao</Button></div><DataTable headers={["Veiculo", "Tipo", "Inicio", "Fim", "KM", "Custo", "Status"]} empty={!state.vehicleMaintenance.length}>{state.vehicleMaintenance.map((item) => <TableRow key={item.id}><TableCell>{n.vehicle(item.vehicleId)}</TableCell><TableCell>{item.type}</TableCell><TableCell>{formatDate(item.date)}</TableCell><TableCell>{formatDate(item.nextMaintenance || item.date)}</TableCell><TableCell>{item.km}</TableCell><TableCell>{item.cost.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</TableCell><TableCell><StatusBadge status={item.status} /></TableCell></TableRow>)}</DataTable></SectionCard></TabsContent>
-      </Tabs>
-      <QuickSheets state={state} commit={commit} sheet={sheet} setSheet={setSheet} preset={preset} />
-    </PageShell>
-  )
-}
 
 
 

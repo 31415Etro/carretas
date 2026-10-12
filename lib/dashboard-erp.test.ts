@@ -8,7 +8,7 @@ const filters = { start: "2026-10-01", end: "2026-10-31", today: "2026-10-15" }
 function data(patch: Partial<DashboardData> = {}): DashboardData {
   return {
     receivables: [], payables: [], transactions: [], materials: [], movements: [], orders: [], orderStarts: {},
-    vehicles: [], maintenance: [], leads: [], contracts: [],
+    vehicles: [], maintenance: [], fuel: [], leads: [], contracts: [],
     names: { clients: { c1: "Cliente A" }, providers: {}, vehicles: { v1: "ABC1D23 - Carreta" } },
     ...patch,
   }
