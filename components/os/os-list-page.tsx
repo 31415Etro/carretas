@@ -1,11 +1,11 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import Link from "next/link"
-import { useRouter } from "next/navigation"
 import { Plus, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { OsDetailPage } from "@/components/os/os-detail-page"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { DataTable, PageShell, SectionCard, SelectField, StatusBadge } from "@/components/operations/shared"
 import { osKinds, osStatuses } from "@/lib/os-workflow"
@@ -18,7 +18,7 @@ const today = () => new Date().toISOString().slice(0, 10)
 const closed = new Set(["Concluída", "Entregue", "Cancelada", "Finalizada", "Finalizada parcialmente"])
 
 export function OsListPage() {
-  const router = useRouter()
+  const [openId, setOpenId] = useState<string | null>(null)
   const [rows, setRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -52,7 +52,7 @@ export function OsListPage() {
   const late = rows.filter((row) => !closed.has(row.status) && row.dueDate && row.dueDate < today()).length
 
   return (
-    <PageShell title="Ordens de Serviço" description="Manutenção, reparos, instalações e fabricação de carretas, do atendimento à entrega." actions={<Button asChild><Link href="/ordens-servico/nova"><Plus className="h-4 w-4" />Nova OS</Link></Button>}>
+    <PageShell title="Ordens de Serviço" description="Manutenção, reparos, instalações e fabricação de carretas, do atendimento à entrega." actions={<Button onClick={() => setOpenId("nova")}><Plus className="h-4 w-4" />Nova OS</Button>}>
       <div className="flex flex-wrap gap-2">
         {[{ value: "abertas", label: `Em aberto (${rows.filter((row) => !closed.has(row.status)).length})` }, { value: "atrasadas", label: `Atrasadas (${late})` }, ...osStatuses.map((item) => ({ value: item, label: `${item} (${counts[item] || 0})` })), { value: "todas", label: `Todas (${rows.length})` }].map((chip) => (
           <Button key={chip.value} size="sm" variant={status === chip.value ? "default" : "outline"} onClick={() => setStatus(chip.value)}>{chip.label}</Button>
@@ -69,7 +69,7 @@ export function OsListPage() {
           {visible.map((row) => {
             const isLate = !closed.has(row.status) && row.dueDate && row.dueDate < today()
             const margin = row.totalAmount > 0 ? Math.round(((row.totalAmount - row.costAmount) / row.totalAmount) * 1000) / 10 : null
-            return <TableRow key={row.id} className="cursor-pointer" onClick={() => router.push(`/ordens-servico/${row.id}`)}>
+            return <TableRow key={row.id} className="cursor-pointer" onClick={() => setOpenId(row.id)}>
               <TableCell className="font-mono">{row.orderNumber}</TableCell>
               <TableCell>{day(row.openedAt)}</TableCell>
               <TableCell>{row.orderKind || "-"}</TableCell>
@@ -85,6 +85,15 @@ export function OsListPage() {
           })}
         </DataTable>
       </SectionCard>
+      <Sheet open={openId !== null} onOpenChange={(value) => { if (!value) { setOpenId(null); void load() } }}>
+        <SheetContent className="w-full overflow-y-auto sm:max-w-6xl">
+          <SheetHeader className="sr-only">
+            <SheetTitle>{openId === "nova" ? "Nova ordem de serviço" : "Ordem de serviço"}</SheetTitle>
+            <SheetDescription>Cadastro e acompanhamento da ordem de serviço.</SheetDescription>
+          </SheetHeader>
+          {openId ? <div className="pt-8"><OsDetailPage key={openId} id={openId} embedded onClose={() => { setOpenId(null); void load() }} onSaved={(savedId) => { setOpenId(savedId); void load() }} /></div> : null}
+        </SheetContent>
+      </Sheet>
     </PageShell>
   )
 }

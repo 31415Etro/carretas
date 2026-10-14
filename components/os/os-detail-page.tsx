@@ -49,7 +49,21 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
 
 const emptyHeader = { opportunityId: "", quoteId: "", orderKind: "Manutenção corretiva", clientId: "", customerAssetId: "", vehicleId: "", serviceTypeId: "", description: "", priority: "Media", technicianId: "", teamProviderIds: [] as string[], plannedStart: "", dueDate: "", servicesSummary: "", discountAmount: "0", discountAuthorizedBy: "", warrantyDays: "0", technicalNotes: "", paymentMethod: "", paymentDueDate: "", productionProductId: "", productionQuantity: "1", productionSerial: "" }
 
-export function OsDetailPage({ id }: { id: string }) {
+function EmbeddedShell({ title, description, actions, children }: { title: string; description: string; actions?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="space-y-6 px-4 pb-6">
+      <div className="space-y-1 pr-8">
+        <h2 className="text-xl font-bold tracking-tight">{title}</h2>
+        <p className="text-sm text-muted-foreground">{description}</p>
+      </div>
+      {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
+      {children}
+    </div>
+  )
+}
+
+export function OsDetailPage({ id, embedded = false, onClose, onSaved }: { id: string; embedded?: boolean; onClose?: () => void; onSaved?: (id: string) => void }) {
+  const Shell = embedded ? EmbeddedShell : PageShell
   const isNew = id === "nova"
   const router = useRouter()
   const { toast } = useToast()
@@ -155,7 +169,8 @@ export function OsDetailPage({ id }: { id: string }) {
         } }),
       })
       toast({ title: isNew ? `OS ${payload.orderNumber} aberta` : "OS salva", description: payload.warnings.length ? `Estoque: ${payload.warnings.join(" ")}` : "Peças reservadas no estoque." })
-      if (isNew) router.replace(`/ordens-servico/${payload.id}`)
+      if (embedded) { onSaved?.(payload.id); if (!isNew) void load() }
+      else if (isNew) router.replace(`/ordens-servico/${payload.id}`)
       else void load()
     } catch (reason) {
       toast({ title: "OS não salva", description: reason instanceof Error ? reason.message : "Tente novamente.", variant: "destructive" })
@@ -245,11 +260,11 @@ export function OsDetailPage({ id }: { id: string }) {
   const productOptions = options.materials.map((item) => ({ value: item.id, label: `${item.code ? `${item.code} - ` : ""}${item.name}` }))
 
   return (
-    <PageShell
+    <Shell
       title={isNew ? "Nova ordem de serviço" : `OS ${detail?.orderNumber || ""}`}
       description={detail ? `Aberta em ${day(detail.openedAt)} por ${detail.openedBy || "-"}${detail.finishedAt ? ` · concluída em ${day(detail.finishedAt)}` : ""}${detail.deliveredAt ? ` · entregue em ${day(detail.deliveredAt)}` : ""}${detail.warrantyUntil ? ` · garantia até ${day(detail.warrantyUntil)}` : ""}` : "Preencha os dados da solicitação. Número e data de abertura são gerados ao salvar."}
       actions={<>
-        <Button variant="outline" asChild><Link href="/ordens-servico"><ArrowLeft className="h-4 w-4" />Voltar</Link></Button>
+        {embedded ? <Button variant="outline" onClick={onClose}><ArrowLeft className="h-4 w-4" />Fechar</Button> : <Button variant="outline" asChild><Link href="/ordens-servico"><ArrowLeft className="h-4 w-4" />Voltar</Link></Button>}
         {detail ? <Button variant="outline" onClick={() => window.print()}><Printer className="h-4 w-4" />Imprimir</Button> : null}
         {!readOnly ? <Button onClick={save} disabled={saving}><Save className="h-4 w-4" />{saving ? "Salvando..." : isNew ? "Abrir OS" : "Salvar"}</Button> : null}
       </>}
@@ -450,7 +465,7 @@ export function OsDetailPage({ id }: { id: string }) {
           <DialogFooter><Button onClick={saveAsset}>Salvar</Button></DialogFooter>
         </DialogContent>
       </Dialog>
-    </PageShell>
+    </Shell>
   )
 }
 
