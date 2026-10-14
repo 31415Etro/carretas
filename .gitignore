@@ -43,3 +43,9 @@ next-env.d.ts
 
 # logs locais
 *.log
+
+# planilhas financeiras (dados da empresa; nao versionar)
+Planilha_ND*.xlsx
+De-para fornecedores e categorias.xlsx
+__pycache__/
+NotasFiscais_*.zip

@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
+import { demoApiPayload, demoSession, isDemoMode } from "@/lib/demo-mode"
 import { clientIp, logAuditEdge, originFor, sessionIdFromToken, withAuditHeaders } from "@/lib/audit-edge"
 
 const publicPaths = [
@@ -46,6 +47,14 @@ function redirectWithCookies(request: NextRequest, pathname: string, source: Nex
 }
 
 export async function updateSession(request: NextRequest) {
+  // DEMO_MODE=1 (somente desenvolvimento local): sem login e sem Supabase, APIs vazias
+  if (isDemoMode()) {
+    const path = request.nextUrl.pathname
+    if (path === "/api/auth/user") return NextResponse.json(demoSession())
+    if (path.startsWith("/api/")) return NextResponse.json(demoApiPayload(path))
+    if (path === "/" || path === "/login") return NextResponse.redirect(new URL("/dashboard", request.url))
+    return NextResponse.next()
+  }
   let supabaseResponse = NextResponse.next({
     request,
   })
