@@ -411,7 +411,7 @@ async function notifyResponsibles(admin: Admin, alerts: ContractAlert[]) {
   const fresh = alerts.filter((alert) => alert.responsibleEmail && !seen.has(`${alert.contractId}|${alert.key}`))
   const byRecipient = new Map<string, ContractAlert[]>()
   fresh.forEach((alert) => byRecipient.set(alert.responsibleEmail, [...(byRecipient.get(alert.responsibleEmail) || []), alert]))
-  const from = String(process.env.CONTRACT_FROM_EMAIL || process.env.QUOTE_FROM_EMAIL || process.env.SYSTEM_ALERT_FROM_EMAIL || "ERP Carretas <onboarding@resend.dev>").trim()
+  const from = String(process.env.CONTRACT_FROM_EMAIL || process.env.QUOTE_FROM_EMAIL || process.env.SYSTEM_ALERT_FROM_EMAIL || "ND Carretas <onboarding@resend.dev>").trim()
   const escape = (value: string) => value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]!)
   let sent = 0
   for (const [recipient, items] of byRecipient) {

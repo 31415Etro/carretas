@@ -17,7 +17,7 @@ async function handlePOST(request: Request) {
       const webhook = await asaasRequest<Record<string, unknown>>(code, "/webhooks", {
         method: "POST",
         body: JSON.stringify({
-          name: `ERP Carretas - ${config.label}`,
+          name: `ND Carretas - ${config.label}`,
           url: `${origin}/api/integrations/asaas/webhooks/${code}`,
           email,
           enabled: true,

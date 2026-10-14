@@ -413,7 +413,7 @@ export async function sendQuoteEmail(admin: Admin, id: string, input: { to: stri
   const eff = quote.effectiveStatus
   if (!["Rascunho", "Enviado"].includes(eff)) fail(`Orçamento ${eff.toLowerCase()} não pode ser enviado.`)
   const message = text(input.message) || shareMessage({ companyName: input.companyName, clientName: quote.clientName, quoteNumber: quote.number, version: quote.version, total: quote.totalAmount, validUntil: quote.validUntil })
-  const from = String(process.env.QUOTE_FROM_EMAIL || process.env.SYSTEM_ALERT_FROM_EMAIL || "ERP Carretas <onboarding@resend.dev>").trim()
+  const from = String(process.env.QUOTE_FROM_EMAIL || process.env.SYSTEM_ALERT_FROM_EMAIL || "ND Carretas <onboarding@resend.dev>").trim()
   const escape = (value: string) => value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]!)
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",

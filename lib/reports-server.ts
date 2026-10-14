@@ -153,7 +153,7 @@ export async function deliverSaved(admin: Admin, saved: any, companyName: string
     period = run.period
     const format = (reportFormats as readonly string[]).includes(saved.format) ? (saved.format as ReportFormat) : "PDF"
     const file = await buildReportFile(format, run.result, run.meta)
-    const from = String(process.env.REPORT_FROM_EMAIL || process.env.SYSTEM_ALERT_FROM_EMAIL || "ERP Carretas <onboarding@resend.dev>").trim()
+    const from = String(process.env.REPORT_FROM_EMAIL || process.env.SYSTEM_ALERT_FROM_EMAIL || "ND Carretas <onboarding@resend.dev>").trim()
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },

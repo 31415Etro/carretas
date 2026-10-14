@@ -22,7 +22,7 @@ const interMono = Inter({
 })
 
 export const metadata: Metadata = {
-  title: "ERP Carretas",
+  title: "ND Carretas",
   description: "Gestão de fabricação, estoque, compras, vendas, serviços e financeiro de carretas",
   other: {
     google: "notranslate",

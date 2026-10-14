@@ -103,7 +103,7 @@ async function handlePOST(request: Request) {
       payment: body.paymentId || undefined,
       customer: body.paymentId ? undefined : customerId,
       serviceDescription: body.description || order?.description || itemName || `Servicos para ${client.corporate_name || client.name}`,
-      observations: body.observations || "Emissao pelo ERP Carretas.",
+      observations: body.observations || "Emissao pelo ND Carretas.",
       value,
       deductions: Number(body.deductions || 0),
       effectiveDate,

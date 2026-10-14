@@ -350,7 +350,7 @@ export async function runNotificationDigest(admin: Admin, companyName: string) {
   if (!filled.length) return { sent: false, reason: "Nada a avisar hoje." }
   const escape = (value: string) => value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]!)
   const html = `<div style="font-family:Arial,sans-serif;color:#172033;line-height:1.5"><h2>Resumo diário — ${escape(companyName)}</h2>${filled.map((section) => `<h3>${escape(section.title)} (${section.lines.length})</h3><ul>${section.lines.map((line) => `<li>${escape(line)}</li>`).join("")}</ul>`).join("")}</div>`
-  const from = String(process.env.REPORT_FROM_EMAIL || process.env.SYSTEM_ALERT_FROM_EMAIL || "ERP Carretas <onboarding@resend.dev>").trim()
+  const from = String(process.env.REPORT_FROM_EMAIL || process.env.SYSTEM_ALERT_FROM_EMAIL || "ND Carretas <onboarding@resend.dev>").trim()
   const response = await fetch("https://api.resend.com/emails", { method: "POST", headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" }, body: JSON.stringify({ from, to: settings.digestRecipients, subject: `[${companyName}] Resumo diário: ${filled.reduce((sum, section) => sum + section.lines.length, 0)} item(ns) pedem atenção`, html }) })
   if (!response.ok) return { sent: false, reason: `Falha no envio (HTTP ${response.status}).` }
   return { sent: true, reason: "", items: filled.reduce((sum, section) => sum + section.lines.length, 0) }
