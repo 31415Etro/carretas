@@ -118,7 +118,7 @@ def main():
                 update["name"] = data["razao_social"]
             previous = row.get("cnpj_source") or ""
             update["cnpj_source"] = "BrasilAPI + cnpj.ws (Receita Federal)" if "cnpj.ws" in previous else "BrasilAPI (Receita Federal)"
-            update["cnpj_consulted_at"] = datetime.datetime.utcnow().isoformat() + "Z"
+            update["cnpj_consulted_at"] = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None).isoformat() + "Z"
             db.call(f"{table}?id=eq.{row['id']}", "PATCH", update)
             done += 1
             progressed = True
