@@ -22,6 +22,8 @@ import { createClient as createSupabaseBrowserClient } from "@/lib/supabase/clie
 import { makeId, nowIso, type Supplier } from "@/lib/operational-storage"
 import { cnpjRegistrationNotes, cleanCpfCnpj, formatCpfCnpjDocument, type CnpjCompany } from "@/lib/cnpj-lookup"
 import type { BankStatementItem, BankStatementResult } from "@/lib/bank-statement-parser"
+import { ReconciliationTab } from "@/components/finance/bank-reconciliation"
+import { amountOf as reconAmount, findCandidates, levelLabel, reconciledNotes, statementKeyFromNotes, type MatchCandidate, type TxLike } from "@/lib/bank-reconciliation"
 import {
   DataTable,
   FormSheet,
@@ -1765,7 +1767,7 @@ export default function FinanceiroPage() {
     <FinanceErrorBoundary>
     <PageShell title="Financeiro" description="Controle financeiro da empresa com previsto, realizado, contas, DRE, cartoes e importacao de fatura." actions={<><Button variant="outline" asChild><Link href="/financeiro/importar-nf"><FileUp className="h-4 w-4" />Importar NF</Link></Button>{activeTab === "lancamentos" ? <><Button onClick={() => setSheet("entrada")}><Plus className="h-4 w-4" />Nova Entrada</Button><Button variant="secondary" onClick={() => setSheet("saida")}>Nova Saida</Button><Button variant="secondary" onClick={() => openNewAccount("pagar")}>Nova Conta a Pagar</Button><Button variant="secondary" onClick={() => openNewAccount("receber")}>Nova Conta a Receber</Button></> : null}</>}>
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="flex flex-wrap"><TabsTrigger value="visao">Visao Geral</TabsTrigger><TabsTrigger value="lancamentos">Entradas e Saidas</TabsTrigger><TabsTrigger value="pagar">Contas a Pagar</TabsTrigger><TabsTrigger value="receber">Contas a Receber</TabsTrigger><TabsTrigger value="emitir-nf">Emitir NF</TabsTrigger><TabsTrigger value="dre">DRE</TabsTrigger><TabsTrigger value="cartao">Cartao de Credito</TabsTrigger><TabsTrigger value="importar">Importar</TabsTrigger><TabsTrigger value="regras">Regras de Categoria</TabsTrigger><TabsTrigger value="cadastros">Cadastros</TabsTrigger><TabsTrigger value="asaas">Integracao Asaas</TabsTrigger></TabsList>
+        <TabsList className="flex flex-wrap"><TabsTrigger value="visao">Visao Geral</TabsTrigger><TabsTrigger value="lancamentos">Entradas e Saidas</TabsTrigger><TabsTrigger value="pagar">Contas a Pagar</TabsTrigger><TabsTrigger value="receber">Contas a Receber</TabsTrigger><TabsTrigger value="emitir-nf">Emitir NF</TabsTrigger><TabsTrigger value="dre">DRE</TabsTrigger><TabsTrigger value="cartao">Cartao de Credito</TabsTrigger><TabsTrigger value="importar">Importar</TabsTrigger><TabsTrigger value="conciliacao">Conciliacao</TabsTrigger><TabsTrigger value="regras">Regras de Categoria</TabsTrigger><TabsTrigger value="cadastros">Cadastros</TabsTrigger><TabsTrigger value="asaas">Integracao Asaas</TabsTrigger></TabsList>
         {activeTab === "pagar" ? <div className="my-4 flex flex-wrap gap-2"><AsaasSupplierPaymentButton state={operational.state} /></div> : null}
         <TabsContent value="visao" className="space-y-4">
           <div className="flex flex-col gap-3 rounded-md border bg-background p-4 sm:flex-row sm:items-end sm:justify-between">
@@ -1847,6 +1849,7 @@ export default function FinanceiroPage() {
         <TabsContent value="emitir-nf"><NotaAsInvoicePanel state={operational.state} /></TabsContent>
         <TabsContent value="cartao"><CreditCardTab state={state} commit={commit} openCard={() => setSheet("cartao")} /></TabsContent>
         <TabsContent value="importar"><ImportInvoiceTab state={state} commit={commit} save={save} preview={preview} setPreview={setPreview} processInvoice={processInvoice} confirmInvoice={confirmInvoice} ocrStatus={ocrStatus} /></TabsContent>
+        <TabsContent value="conciliacao"><ReconciliationTab state={state} refresh={refresh} /></TabsContent>
         <TabsContent value="regras"><RulesTab state={state} openRule={() => setSheet("regra")} processRules={processRules} rulePreview={rulePreview} setRulePreview={setRulePreview} confirmRulePreview={confirmRulePreview} /></TabsContent>
         <TabsContent value="asaas"><AsaasIntegrationTab /></TabsContent>
         <TabsContent value="cadastros"><FinanceRegistriesTab state={state} commit={commit} /></TabsContent>
@@ -2843,15 +2846,30 @@ function BankStatementImport({ state, save }: { state: FinancialState; save: (ne
   const [preview, setPreview] = useState<BankStatementPreview | null>(null)
   const [status, setStatus] = useState("")
   const [busy, setBusy] = useState(false)
+  // linha do extrato (sourceKey) -> id do lancamento ja existente com o qual conciliar ("" = criar lancamento novo)
+  const [matches, setMatches] = useState<Record<string, string>>({})
+  const txById = useMemo(() => new Map(state.transactions.map((item) => [item.id, item])), [state.transactions])
+  const importedKeys = useMemo(() => new Set(state.transactions.map((item) => statementKeyFromNotes(item.notes)).filter(Boolean)), [state.transactions])
 
   const totals = useMemo(() => {
-    const selected = preview?.items.filter((item) => item.selected) || []
+    const selected = (preview?.items.filter((item) => item.selected && !importedKeys.has(item.sourceKey))) || []
+    const fresh = selected.filter((item) => !matches[item.sourceKey])
+    const reconciled = selected.filter((item) => matches[item.sourceKey])
     return {
-      entries: selected.filter((item) => item.type === "Entrada").reduce((sum, item) => sum + item.amount, 0),
-      outputs: selected.filter((item) => item.type === "Saida").reduce((sum, item) => sum + item.amount, 0),
+      entries: fresh.filter((item) => item.type === "Entrada").reduce((sum, item) => sum + item.amount, 0),
+      outputs: fresh.filter((item) => item.type === "Saida").reduce((sum, item) => sum + item.amount, 0),
       count: selected.length,
+      freshCount: fresh.length,
+      reconciledCount: reconciled.length,
+      reconciledAmount: reconciled.reduce((sum, item) => sum + item.amount, 0),
     }
-  }, [preview])
+  }, [preview, matches, importedKeys])
+
+  /** Candidatos de cada linha, sem repetir um lancamento escolhido em outra linha. */
+  const candidatesFor = (item: BankStatementItem): MatchCandidate[] => {
+    const usedByOthers = new Set(Object.entries(matches).filter(([key, id]) => id && key !== item.sourceKey).map(([, id]) => id))
+    return findCandidates({ type: item.type, date: item.date, amount: item.amount, description: item.description }, state.transactions as TxLike[], usedByOthers).slice(0, 8)
+  }
 
   const processStatement = async () => {
     if (!file) {
@@ -2868,7 +2886,17 @@ function BankStatementImport({ state, save }: { state: FinancialState; save: (ne
       if (!response.ok) throw new Error(payload.error || "Falha ao processar o extrato.")
       const parsed = payload as BankStatementResult & { pages: number; fileName: string }
       setPreview({ ...parsed, items: parsed.items.map((item) => ({ ...item, selected: true })) })
-      setStatus(`${parsed.items.length} movimentacoes encontradas em ${parsed.pages} pagina(s). Confira antes de salvar.`)
+      // sugestao automatica: so o que casa com confianca ALTA (mesmo valor, data proxima e nome parecido) ja vem marcado
+      const used = new Set<string>()
+      const initial: Record<string, string> = {}
+      for (const item of parsed.items) {
+        if (importedKeys.has(item.sourceKey)) continue
+        const best = findCandidates({ type: item.type, date: item.date, amount: item.amount, description: item.description }, state.transactions as TxLike[], used)[0]
+        if (best?.level === "Alta") { initial[item.sourceKey] = best.id; used.add(best.id) }
+      }
+      setMatches(initial)
+      const suggested = Object.keys(initial).length
+      setStatus(`${parsed.items.length} movimentacoes encontradas em ${parsed.pages} pagina(s).${suggested ? ` ${suggested} ja parecem estar lancadas e vieram marcadas para conciliar (nao somam duas vezes).` : ""} Confira antes de salvar.`)
     } catch (error) {
       setPreview(null)
       setStatus(error instanceof Error ? error.message : "Falha ao processar o extrato.")
@@ -2893,13 +2921,19 @@ function BankStatementImport({ state, save }: { state: FinancialState; save: (ne
     setBusy(true)
     setStatus("Salvando movimentacoes em Entradas e Saidas...")
     try {
-      const existingKeys = new Set(state.transactions.flatMap((item) => {
-        const match = item.notes?.match(/Chave do extrato:\s*([^\s]+)/i)
-        return match?.[1] ? [match[1]] : []
-      }))
+      const existingKeys = importedKeys
       const now = financeNow()
       const selected = preview.items.filter((item) => item.selected)
-      const fresh = selected.filter((item) => !existingKeys.has(item.sourceKey))
+      const toReconcile = selected.filter((item) => !existingKeys.has(item.sourceKey) && matches[item.sourceKey])
+      const fresh = selected.filter((item) => !existingKeys.has(item.sourceKey) && !matches[item.sourceKey])
+      const statementNotes = (item: BankStatementItem) => `Chave do extrato: ${item.sourceKey}\nBanco: ${preview.bank}\nConta: ${preview.accountNumber}\nTitular: ${preview.accountName}\nLinha original: ${item.rawLine}`
+      const reconcileById = new Map(toReconcile.map((item) => [matches[item.sourceKey], item]))
+      const reconciledState = state.transactions.map((tx) => {
+        const item = reconcileById.get(tx.id)
+        if (!item) return tx
+        // o lancamento que ja existia passa a carregar a data/valor do banco e a chave do extrato: conta UMA vez
+        return { ...tx, realizedDate: item.date, realizedAmount: item.amount, status: "Realizado" as const, notes: reconciledNotes(tx.notes, statementNotes(item), financeToday()), attachmentName: tx.attachmentName || preview.fileName, updatedAt: now }
+      })
       const transactions: FinancialTransaction[] = fresh.map((item) => {
         const category = categorizeTransaction(state, item.description)
         return {
@@ -2932,11 +2966,12 @@ function BankStatementImport({ state, save }: { state: FinancialState; save: (ne
           updatedAt: now,
         }
       })
-      if (transactions.length) await save({ ...state, transactions: [...transactions, ...state.transactions] })
-      const skipped = selected.length - transactions.length
+      if (transactions.length || toReconcile.length) await save({ ...state, transactions: [...transactions, ...reconciledState] })
+      const skipped = selected.length - transactions.length - toReconcile.length
       setPreview(null)
       setFile(null)
-      setStatus(`${transactions.length} lancamento(s) salvo(s) em Entradas e Saidas.${skipped ? ` ${skipped} duplicado(s) ignorado(s).` : ""}`)
+      setMatches({})
+      setStatus(`${transactions.length} lancamento(s) novo(s) em Entradas e Saidas e ${toReconcile.length} conciliado(s) com lancamentos que ja existiam (contados uma vez so).${skipped ? ` ${skipped} ja importado(s) antes, ignorado(s).` : ""}`)
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Erro ao salvar o extrato no Supabase.")
     } finally {
@@ -2958,16 +2993,28 @@ function BankStatementImport({ state, save }: { state: FinancialState; save: (ne
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div><p className="text-xs text-muted-foreground">Banco e conta</p><strong>{preview.bank} {preview.accountNumber || ""}</strong><p className="text-xs text-muted-foreground">{preview.accountName || "Titular nao identificado"}</p></div>
         <div><p className="text-xs text-muted-foreground">Periodo</p><strong>{formatDate(preview.periodStart)} a {formatDate(preview.periodEnd)}</strong></div>
-        <div><p className="text-xs text-muted-foreground">Entradas selecionadas</p><strong className="text-emerald-700">{money(totals.entries)}</strong></div>
-        <div><p className="text-xs text-muted-foreground">Saidas selecionadas</p><strong className="text-red-700">{money(totals.outputs)}</strong></div>
+        <div><p className="text-xs text-muted-foreground">Entradas novas (selecionadas)</p><strong className="text-emerald-700">{money(totals.entries)}</strong></div>
+        <div><p className="text-xs text-muted-foreground">Saidas novas (selecionadas)</p><strong className="text-red-700">{money(totals.outputs)}</strong></div>
       </div>
+      {totals.reconciledCount ? <p className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-800">{totals.reconciledCount} linha(s) ({money(totals.reconciledAmount)}) serao conciliadas com lancamentos que voce ja tinha feito: o valor conta uma vez so e nao entra nos totais acima.</p> : null}
       {preview.ignoredCount ? <p className="text-sm text-muted-foreground">{preview.ignoredCount} linha(s) de saldo ou aplicacao/resgate automatico foram ignoradas.</p> : null}
       {preview.warnings?.length ? <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-800">{preview.warnings.join(" ")}</div> : null}
       <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => toggleAll(true)}>Selecionar tudo</Button><Button size="sm" variant="outline" onClick={() => toggleAll(false)}>Limpar selecao</Button></div>
-      <DataTable headers={["Importar", "Data", "Tipo", "Descricao", "Valor"]} empty={!preview.items.length} stickyHeader viewportClassName={financeTableViewport} tableClassName={`min-w-[900px] ${financeTableRows}`}>
-        {preview.items.map((item) => <TableRow key={item.sourceKey}><TableCell><Checkbox checked={item.selected} onCheckedChange={(checked) => toggleItem(item.sourceKey, Boolean(checked))} /></TableCell><TableCell>{formatDate(item.date)}</TableCell><TableCell><StatusBadge status={item.type} /></TableCell><TableCell>{item.description}</TableCell><TableCell>{money(item.amount)}</TableCell></TableRow>)}
+      <DataTable headers={["Importar", "Data", "Tipo", "Descricao", "Valor", "Conciliacao"]} empty={!preview.items.length} stickyHeader viewportClassName={financeTableViewport} tableClassName={`min-w-[1100px] ${financeTableRows}`}>
+        {preview.items.map((item) => {
+          const already = importedKeys.has(item.sourceKey)
+          const options = already ? [] : candidatesFor(item)
+          const current = matches[item.sourceKey] || ""
+          const currentTx = current ? txById.get(current) : undefined
+          return <TableRow key={item.sourceKey}><TableCell><Checkbox checked={item.selected} onCheckedChange={(checked) => toggleItem(item.sourceKey, Boolean(checked))} /></TableCell><TableCell>{formatDate(item.date)}</TableCell><TableCell><StatusBadge status={item.type} /></TableCell><TableCell>{item.description}</TableCell><TableCell>{money(item.amount)}</TableCell>
+            <TableCell>{already ? <span className="text-xs text-muted-foreground">Ja importado antes</span> : <select className="h-9 w-full max-w-[26rem] rounded-md border bg-background px-2 text-sm" value={current} onChange={(event) => setMatches((currentMatches) => ({ ...currentMatches, [item.sourceKey]: event.target.value }))}>
+              <option value="">Criar lancamento novo</option>
+              {currentTx && !options.some((option) => option.id === current) ? <option value={current}>{`Conciliar com: ${formatDate(currentTx.realizedDate || currentTx.dueDate)} - ${currentTx.description} - ${money(reconAmount(currentTx))}`}</option> : null}
+              {options.map((option) => { const tx = txById.get(option.id); return tx ? <option key={option.id} value={option.id}>{`Conciliar com: ${formatDate(tx.realizedDate || tx.dueDate)} - ${tx.description} - ${money(reconAmount(tx))} (confianca ${levelLabel[option.level]})`}</option> : null })}
+            </select>}</TableCell></TableRow>
+        })}
       </DataTable>
-      <Button disabled={busy || !totals.count} onClick={confirmStatement}>{busy ? "Salvando..." : `Salvar ${totals.count} lancamento(s)`}</Button>
+      <Button disabled={busy || !totals.count} onClick={confirmStatement}>{busy ? "Salvando..." : `Salvar ${totals.freshCount} novo(s) e conciliar ${totals.reconciledCount}`}</Button>
     </div> : null}
   </>
 }
