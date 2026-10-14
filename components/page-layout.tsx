@@ -20,6 +20,7 @@ import {
   ShoppingCart,
   Wrench,
   Activity,
+  Users,
 } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
@@ -93,6 +94,12 @@ function SidebarContent() {
       href: "/frota",
       permission: "frota" as const,
       icon: <Car className="text-sidebar-foreground h-5 w-5 flex-shrink-0" />,
+    },
+    {
+      label: "Clientes & Fornecedores",
+      href: "/clientes",
+      permission: "comercial" as const,
+      icon: <Users className="text-sidebar-foreground h-5 w-5 flex-shrink-0" />,
     },
     {
       label: "Comercial",
@@ -200,6 +207,7 @@ export function PageLayout({ children }: { children: React.ReactNode }) {
       { href: "/servicos", permission: "produtos_servicos" },
       { href: "/ordens-servico", permission: "ordens_servico" },
       { href: "/frota", permission: "frota" },
+      { href: "/clientes", permission: "comercial" },
       { href: "/comercial", permission: "comercial" },
       { href: "/orcamento", permission: "orcamento" },
       { href: "/contratos", permission: "contratos" },
