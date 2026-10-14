@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useEffect, useMemo, useState } from "react"
+import Link from "next/link"
 import * as XLSX from "xlsx"
 import { AlertTriangle, BarChart3, BellRing, CalendarRange, CheckCircle2, CreditCard, FileText, FileUp, Landmark, Pencil, PlugZap, Plus, Receipt, RefreshCw, Search, Trash2, TrendingDown, TrendingUp, Wallet, XCircle } from "lucide-react"
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
@@ -1762,7 +1763,7 @@ export default function FinanceiroPage() {
 
   return (
     <FinanceErrorBoundary>
-    <PageShell title="Financeiro" description="Controle financeiro da empresa com previsto, realizado, contas, DRE, cartoes e importacao de fatura." actions={activeTab === "lancamentos" ? <><Button onClick={() => setSheet("entrada")}><Plus className="h-4 w-4" />Nova Entrada</Button><Button variant="secondary" onClick={() => setSheet("saida")}>Nova Saida</Button><Button variant="secondary" onClick={() => openNewAccount("pagar")}>Nova Conta a Pagar</Button><Button variant="secondary" onClick={() => openNewAccount("receber")}>Nova Conta a Receber</Button></> : null}>
+    <PageShell title="Financeiro" description="Controle financeiro da empresa com previsto, realizado, contas, DRE, cartoes e importacao de fatura." actions={<><Button variant="outline" asChild><Link href="/financeiro/importar-nf"><FileUp className="h-4 w-4" />Importar NF</Link></Button>{activeTab === "lancamentos" ? <><Button onClick={() => setSheet("entrada")}><Plus className="h-4 w-4" />Nova Entrada</Button><Button variant="secondary" onClick={() => setSheet("saida")}>Nova Saida</Button><Button variant="secondary" onClick={() => openNewAccount("pagar")}>Nova Conta a Pagar</Button><Button variant="secondary" onClick={() => openNewAccount("receber")}>Nova Conta a Receber</Button></> : null}</>}>
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="flex flex-wrap"><TabsTrigger value="visao">Visao Geral</TabsTrigger><TabsTrigger value="lancamentos">Entradas e Saidas</TabsTrigger><TabsTrigger value="pagar">Contas a Pagar</TabsTrigger><TabsTrigger value="receber">Contas a Receber</TabsTrigger><TabsTrigger value="emitir-nf">Emitir NF</TabsTrigger><TabsTrigger value="dre">DRE</TabsTrigger><TabsTrigger value="cartao">Cartao de Credito</TabsTrigger><TabsTrigger value="importar">Importar</TabsTrigger><TabsTrigger value="regras">Regras de Categoria</TabsTrigger><TabsTrigger value="cadastros">Cadastros</TabsTrigger><TabsTrigger value="asaas">Integracao Asaas</TabsTrigger></TabsList>
         {activeTab === "pagar" ? <div className="my-4 flex flex-wrap gap-2"><AsaasSupplierPaymentButton state={operational.state} /></div> : null}
