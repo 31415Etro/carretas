@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { counterpartOf, dedupeKey, parseInvoicePdfText, parseInvoiceXml, roleWarnings } from "./nfe-parser.ts"
+import { counterpartOf, dedupeKey, invoiceTitles, parseInvoicePdfText, parseInvoiceXml, roleWarnings } from "./nfe-parser.ts"
 
 const key = "42251011222333000181550010000012341123456780"
 const nfe = `<?xml version="1.0" encoding="UTF-8"?>
@@ -72,4 +72,11 @@ test("PDF: chave de acesso dá o emitente e o outro CNPJ é o destinatário", ()
 test("rejeita XML que não é nota e CT-e", () => {
   assert.throws(() => parseInvoiceXml("<a><b>1</b></a>"), /Não reconheci/)
   assert.throws(() => parseInvoiceXml("<cteProc><CTe><infCte/></CTe></cteProc>"), /CT-e/)
+})
+
+test("parcelas a lançar: duplicatas da nota ou uma parcela com o total", () => {
+  const invoice = parseInvoiceXml(nfe)
+  assert.deepEqual(invoiceTitles(invoice).map((item) => [item.number, item.count, item.dueDate, item.amount]), [[1, 2, "2025-11-05", 150.5], [2, 2, "2025-12-05", 150.5]])
+  assert.deepEqual(invoiceTitles({ installments: [], total: 99.9, issuedAt: "2025-10-05T10:00:00-03:00" }), [{ number: 1, count: 1, dueDate: "2025-10-05", amount: 99.9 }])
+  assert.deepEqual(invoiceTitles({ installments: [], total: 0, issuedAt: "2025-10-05" }), [])
 })

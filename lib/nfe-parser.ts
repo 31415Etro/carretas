@@ -287,3 +287,15 @@ export function dedupeKey(invoice: ParsedInvoice) {
   if (invoice.accessKey.length === 44) return invoice.accessKey
   return [invoice.kind, cleanDocument(invoice.issuer?.document), invoice.series, invoice.number, invoice.accessKey].join(":")
 }
+
+export type InvoiceTitle = { number: number; count: number; dueDate: string; amount: number }
+
+/** Parcelas a lançar em Contas a Pagar/Receber: as duplicatas da nota; sem duplicatas, uma parcela com o total vencendo na emissão. */
+export function invoiceTitles(invoice: Pick<ParsedInvoice, "installments" | "total" | "issuedAt">): InvoiceTitle[] {
+  const issued = String(invoice.issuedAt || "").slice(0, 10)
+  const installments = invoice.installments.filter((item) => item.amount > 0)
+  if (installments.length) {
+    return installments.map((item, index) => ({ number: index + 1, count: installments.length, dueDate: String(item.dueDate || issued).slice(0, 10) || issued, amount: Math.round(item.amount * 100) / 100 }))
+  }
+  return invoice.total > 0 && issued ? [{ number: 1, count: 1, dueDate: issued, amount: Math.round(invoice.total * 100) / 100 }] : []
+}

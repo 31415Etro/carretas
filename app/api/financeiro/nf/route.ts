@@ -37,11 +37,12 @@ export async function POST(request: Request) {
     const role = String(form.get("role") || "")
     const action = String(form.get("action") || "ler")
     const registerAs = String(form.get("registerAs") || "")
+    const launch = String(form.get("launch") ?? "1") !== "0"
     if (!(file instanceof File)) return NextResponse.json({ error: "Envie o arquivo da nota (XML ou PDF)." }, { status: 400 })
     if (role !== "remetente" && role !== "destinatario") return NextResponse.json({ error: "Escolha se você é o remetente ou o destinatário da nota." }, { status: 400 })
     if (!["", "cliente", "fornecedor"].includes(registerAs)) return NextResponse.json({ error: "Opção de cadastro inválida." }, { status: 400 })
     const companyId = await getSelectedSystemCompanyId()
-    if (action === "importar") return NextResponse.json({ result: await importInvoice(context.admin, file, role, companyId, registerAs as "" | "cliente" | "fornecedor", context.responsible) })
+    if (action === "importar") return NextResponse.json({ result: await importInvoice(context.admin, file, role, companyId, registerAs as "" | "cliente" | "fornecedor", context.responsible, launch) })
     return NextResponse.json(await previewInvoice(context.admin, file, role, companyId))
   } catch (error) {
     return bad(error, "Erro ao ler a nota.")

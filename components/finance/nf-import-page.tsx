@@ -52,6 +52,7 @@ export function NfImportPage() {
   const [preview, setPreview] = useState<Preview | null>(null)
   const [registerAs, setRegisterAs] = useState<RegisterAs>("")
   const [busy, setBusy] = useState<"" | "ler" | "importar">("")
+  const [launch, setLaunch] = useState(true)
   const [error, setError] = useState("")
   const [done, setDone] = useState("")
   const [history, setHistory] = useState<Imported[]>([])
@@ -68,6 +69,7 @@ export function NfImportPage() {
     form.set("role", role)
     form.set("action", action)
     form.set("registerAs", registerAs)
+    form.set("launch", launch ? "1" : "0")
     return form
   }
 
@@ -87,9 +89,10 @@ export function NfImportPage() {
     if (!file || !role || !preview) return
     setBusy("importar"); setError("")
     try {
-      const { result } = await send<{ result: { registered: string | null; created: boolean; counterpartName: string } }>("/api/financeiro/nf", { method: "POST", body: body("importar") })
+      const { result } = await send<{ result: { registered: string | null; created: boolean; counterpartName: string; titles: { kind: "pagar" | "receber"; count: number; total: number } | null; titlesNote: string } }>("/api/financeiro/nf", { method: "POST", body: body("importar") })
       const text = result.registered ? (result.created ? `${result.counterpartName || "Parte contrária"} cadastrado como ${result.registered.toLowerCase()}.` : `${result.registered} já estava cadastrado; vinculado à nota.`) : "Parte contrária não foi cadastrada."
-      setDone(`NF importada. ${text}`)
+      const titleText = result.titles ? ` Lançada em Contas a ${result.titles.kind === "pagar" ? "Pagar" : "Receber"}: ${result.titles.count} parcela(s), ${brl(result.titles.total)}.` : result.titlesNote ? ` ${result.titlesNote}` : ""
+      setDone(`NF importada. ${text}${titleText}`)
       toast({ title: "NF importada", description: text })
       setPreview(null); setFile(null); setRegisterAs("")
       if (input.current) input.current.value = ""
@@ -174,6 +177,7 @@ export function NfImportPage() {
           </div>
           {registerAs && exists?.[registerAs === "cliente" ? "supplier" : "client"] && !exists?.[registerAs === "cliente" ? "client" : "supplier"] ? <p className="mt-3 text-sm text-muted-foreground">Esta empresa já é {registerAs === "cliente" ? "fornecedora" : "cliente"}: o novo cadastro será vinculado ao existente, sem duplicar a empresa.</p> : null}
           {registerAs ? <p className="mt-3 text-sm text-muted-foreground">O cadastro entra como Ativo, com os dados da nota. Telefone e demais campos podem ser completados depois em Clientes & Fornecedores.</p> : null}
+          <label className="mt-4 flex items-center gap-2 text-sm"><input type="checkbox" checked={launch} onChange={(event) => setLaunch(event.target.checked)} />Lançar também em {role === "destinatario" ? "Contas a Pagar" : "Contas a Receber"} ({preview.invoice.installments.length ? `${preview.invoice.installments.length} duplicata(s) da nota` : preview.invoice.total ? `1 parcela de ${brl(preview.invoice.total)} vencendo na emissão` : "sem valor na nota: não será lançado"})</label>
           <div className="mt-4"><Button onClick={() => void importNf()} disabled={busy !== "" || Boolean(preview.duplicate)}>{busy === "importar" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Importar NF{registerAs ? ` e cadastrar ${registerAs}` : ""}</Button></div>
         </SectionCard>
       </> : null}

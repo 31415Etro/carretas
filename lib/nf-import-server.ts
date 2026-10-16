@@ -3,7 +3,8 @@ import { cleanDocument, formatDocument, isValidCnpj } from "@/lib/commercial"
 import { companyToForm } from "@/lib/registry"
 import { mapBrasilApiCnpj } from "@/lib/cnpj-lookup"
 import { findByDocument, saveRegistry } from "@/lib/registry-server"
-import { counterpartOf, dedupeKey, parseInvoicePdfText, parseInvoiceXml, roleWarnings, type InvoiceParty, type MyRole, type ParsedInvoice } from "@/lib/nfe-parser"
+import { randomUUID } from "node:crypto"
+import { counterpartOf, dedupeKey, invoiceTitles, parseInvoicePdfText, parseInvoiceXml, roleWarnings, type InvoiceParty, type MyRole, type ParsedInvoice } from "@/lib/nfe-parser"
 import { extractPdfText } from "@/lib/pdf-text-extractor"
 
 type Admin = ReturnType<typeof createAdminClient>
@@ -68,7 +69,7 @@ export async function previewInvoice(admin: Admin, file: File, role: MyRole, com
   return { invoice, counterpart: enriched, existing, duplicate: duplicate.data || null, warnings: [...invoice.warnings, ...roleWarnings(invoice, role, company?.cnpj || "")], dedupeKey: key }
 }
 
-export async function importInvoice(admin: Admin, file: File, role: MyRole, companyId: string, registerAs: "" | "cliente" | "fornecedor", responsible: string) {
+export async function importInvoice(admin: Admin, file: File, role: MyRole, companyId: string, registerAs: "" | "cliente" | "fornecedor", responsible: string, launch = true) {
   const preview = await previewInvoice(admin, file, role, companyId)
   if (preview.duplicate) throw new Error("Esta nota já foi importada.")
   const { invoice, counterpart, existing } = preview
@@ -107,5 +108,35 @@ export async function importInvoice(admin: Admin, file: File, role: MyRole, comp
   }
   const { data, error } = await admin.from("imported_invoices").insert(row).select("id").single()
   if (error) throw error
-  return { id: data.id as string, registered: counterpartKind, created, counterpartName: counterpart.name, document: formatDocument(counterpart.document) }
+
+  // A nota também vira conta: recebida (destinatário) -> Contas a Pagar; emitida (remetente) -> Contas a Receber.
+  let titles: { kind: "pagar" | "receber"; count: number; total: number } | null = null
+  let titlesNote = ""
+  if (launch) {
+    const parcels = invoiceTitles(invoice)
+    if (!parcels.length) {
+      titlesNote = "A nota não traz valor ou data de emissão (PDF?): lance a conta manualmente."
+    } else {
+      const kind = role === "destinatario" ? "pagar" : "receber"
+      const group = parcels.length > 1 ? randomUUID() : null
+      const number = `${invoice.number || ""}${invoice.series ? `/${invoice.series}` : ""}`
+      const base = (parcel: (typeof parcels)[number]) => ({
+        id: randomUUID(), description: `NF ${number || invoice.kind} - ${counterpart.name || counterpart.document}`, competence_date: String(invoice.issuedAt || "").slice(0, 10) || parcel.dueDate, due_date: parcel.dueDate,
+        expected_amount: parcel.amount, status: "Aberta", origin: "Importacao NF", attachment_url: file.name,
+        notes: `Importacao NF | ${preview.dedupeKey}\nNF ${number} (${invoice.kind}) emitida em ${String(invoice.issuedAt || "").slice(0, 10)}${invoice.nature ? `\nNatureza: ${invoice.nature}` : ""}\nParte contrária: ${counterpart.name} (${counterpart.document})`,
+        document_number: invoice.number || null, installment_number: parcels.length > 1 ? parcel.number : null, installment_count: parcels.length > 1 ? parcel.count : null, installment_group_id: group,
+        source_type: kind === "pagar" ? "Compra" : "Venda", source_reference: invoice.accessKey || `NF ${number}`, created_by: responsible,
+      })
+      const rows = parcels.map((parcel) => kind === "pagar"
+        ? { ...base(parcel), supplier_id: supplierId, supplier_name: counterpart.name, paid_amount: 0 }
+        : { ...base(parcel), client_id: clientId, received_amount: 0 })
+      const inserted = await admin.from(kind === "pagar" ? "accounts_payable" : "accounts_receivable").insert(rows)
+      if (inserted.error) {
+        await admin.from("imported_invoices").delete().eq("id", data.id) // não deixa a nota importada sem a conta
+        throw new Error(`Contas a ${kind === "pagar" ? "Pagar" : "Receber"}: ${inserted.error.message}`)
+      }
+      titles = { kind, count: rows.length, total: Math.round(parcels.reduce((sum, parcel) => sum + parcel.amount, 0) * 100) / 100 }
+    }
+  }
+  return { id: data.id as string, registered: counterpartKind, created, counterpartName: counterpart.name, document: formatDocument(counterpart.document), titles, titlesNote }
 }
