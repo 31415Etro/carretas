@@ -61,11 +61,23 @@ export type CnpjLookup =
   | { ok: true; company: CnpjCompany; source: string; consultedAt: string }
   | { ok: false; status: number; error: string }
 
+// Resultado guardado por 30 min: ler a nota e depois importá-la não repete as consultas.
+const lookupCache = new Map<string, { at: number; result: CnpjLookup & { ok: true } }>()
+const LOOKUP_TTL_MS = 30 * 60_000
+
 export async function lookupCnpj(raw: string): Promise<CnpjLookup> {
   const cnpj = cleanCnpj(raw)
+  const cached = lookupCache.get(cnpj)
+  if (cached && Date.now() - cached.at < LOOKUP_TTL_MS) return cached.result
+  const result = await lookupCnpjFresh(cnpj)
+  if (result.ok) lookupCache.set(cnpj, { at: Date.now(), result })
+  return result
+}
+
+async function lookupCnpjFresh(cnpj: string): Promise<CnpjLookup> {
   const [brasil, ws] = await Promise.allSettled([
-    getJson(`https://brasilapi.com.br/api/cnpj/v1/${encodeURIComponent(cnpj)}`, 12_000),
-    wsAllowed() ? getJson(`https://publica.cnpj.ws/cnpj/${encodeURIComponent(cnpj)}`, 12_000) : Promise.reject(new Error("limite")),
+    getJson(`https://brasilapi.com.br/api/cnpj/v1/${encodeURIComponent(cnpj)}`, 7_000),
+    wsAllowed() ? getJson(`https://publica.cnpj.ws/cnpj/${encodeURIComponent(cnpj)}`, 7_000) : Promise.reject(new Error("limite")),
   ])
   const brasilOk = brasil.status === "fulfilled" && brasil.value.ok && brasil.value.payload
   const wsOk = ws.status === "fulfilled" && ws.value.ok && ws.value.payload?.estabelecimento

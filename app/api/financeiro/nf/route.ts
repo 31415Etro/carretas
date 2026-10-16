@@ -14,7 +14,7 @@ const bad = (error: unknown, fallback: string) => {
   return NextResponse.json({ error: registryError(error, fallback).message }, { status: 400 })
 }
 
-/** Notas já importadas (mais recentes primeiro). */
+/** Notas já importadas (mais recentes primeiro). `?warm=1` também deixa o OCR carregado para a primeira leitura. */
 export async function GET() {
   const context = await stockContext()
   if ("error" in context) return context.error
@@ -33,17 +33,20 @@ export async function POST(request: Request) {
   if ("error" in context) return context.error
   try {
     const form = await request.formData()
-    const file = form.get("file")
+    const fileEntry = form.get("file")
+    const ocrText = String(form.get("ocrText") || "")
+    const file = fileEntry instanceof File ? fileEntry : undefined
+    const fileName = String(form.get("fileName") || file?.name || "nota")
     const role = String(form.get("role") || "")
     const action = String(form.get("action") || "ler")
     const registerAs = String(form.get("registerAs") || "")
     const launch = String(form.get("launch") ?? "1") !== "0"
-    if (!(file instanceof File)) return NextResponse.json({ error: "Envie o arquivo da nota (XML ou PDF)." }, { status: 400 })
+    if (!file && !ocrText.trim()) return NextResponse.json({ error: "Envie o arquivo da nota (XML, PDF ou foto)." }, { status: 400 })
     if (role !== "remetente" && role !== "destinatario") return NextResponse.json({ error: "Escolha se você é o remetente ou o destinatário da nota." }, { status: 400 })
     if (!["", "cliente", "fornecedor"].includes(registerAs)) return NextResponse.json({ error: "Opção de cadastro inválida." }, { status: 400 })
     const companyId = await getSelectedSystemCompanyId()
-    if (action === "importar") return NextResponse.json({ result: await importInvoice(context.admin, file, role, companyId, registerAs as "" | "cliente" | "fornecedor", context.responsible, launch) })
-    return NextResponse.json(await previewInvoice(context.admin, file, role, companyId))
+    if (action === "importar") return NextResponse.json({ result: await importInvoice(context.admin, { file, ocrText, fileName }, role, companyId, registerAs as "" | "cliente" | "fornecedor", context.responsible, launch) })
+    return NextResponse.json(await previewInvoice(context.admin, { file, ocrText, fileName }, role, companyId))
   } catch (error) {
     return bad(error, "Erro ao ler a nota.")
   }

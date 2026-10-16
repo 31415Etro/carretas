@@ -35,6 +35,8 @@ export type ParsedInvoice = {
   items: InvoiceItem[]
   installments: InvoiceInstallment[]
   warnings: string[]
+  /** Leitura de foto/PDF: o total veio do campo VALOR TOTAL (e nao da soma das parcelas). */
+  totalFromLabel?: boolean
 }
 export type MyRole = "remetente" | "destinatario"
 
@@ -354,7 +356,8 @@ export function parseInvoicePdfText(rawText: string, options: { ocr?: boolean } 
     return 0
   }
   const installmentsTotal = Math.round(installments.reduce((sum, item) => sum + item.amount, 0) * 100) / 100
-  let total = amountAfter(/VALOR TOTAL DA NOTA/i) || amountAfter(/VALOR TOTAL DOS PRODUTOS/i) || installmentsTotal
+  const labeledTotal = amountAfter(/VALOR TOTAL DA NOTA/i) || amountAfter(/VALOR TOTAL DOS PRODUTOS/i)
+  let total = labeledTotal || installmentsTotal
   if (installments.length && total && Math.abs(installmentsTotal - total) > 0.01) {
     warnings.push(`A soma das parcelas (${installmentsTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}) não bate com o valor da nota lido (${total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}). Confira.`)
     if (!amountAfter(/VALOR TOTAL DA NOTA/i)) total = installmentsTotal
@@ -401,6 +404,7 @@ export function parseInvoicePdfText(rawText: string, options: { ocr?: boolean } 
     items,
     installments,
     warnings,
+    totalFromLabel: labeledTotal > 0,
   }
 }
 
@@ -441,4 +445,19 @@ export function invoiceTitles(invoice: Pick<ParsedInvoice, "installments" | "tot
     return installments.map((item, index) => ({ number: index + 1, count: installments.length, dueDate: String(item.dueDate || issued).slice(0, 10) || issued, amount: Math.round(item.amount * 100) / 100 }))
   }
   return invoice.total > 0 && issued ? [{ number: 1, count: 1, dueDate: issued, amount: Math.round(invoice.total * 100) / 100 }] : []
+}
+
+/**
+ * A leitura por OCR é confiável? Chave de acesso válida, valor total encontrado, parcelas somando o total e nenhum valor maior que
+ * o total solto no texto (sinal de que o OCR perdeu uma parcela ou o campo do total). Quando não é, a leitura é refeita com a
+ * página inteira.
+ */
+export function isReliableReading(text: string, invoice?: ParsedInvoice) {
+  const parsed = invoice || parseInvoicePdfText(text, { ocr: true })
+  if (!findAccessKey(text) || parsed.total <= 0) return false
+  const sum = parsed.installments.reduce((total, item) => total + item.amount, 0)
+  if (parsed.installments.length && Math.abs(sum - parsed.total) > 0.01) return false
+  const largest = Array.from(text.matchAll(moneyPattern), (match) => toMoney(match[1])).reduce((max, value) => Math.max(max, value), 0)
+  if (largest > parsed.total + 0.01) return false
+  return Boolean(parsed.totalFromLabel) || parsed.installments.length > 0
 }

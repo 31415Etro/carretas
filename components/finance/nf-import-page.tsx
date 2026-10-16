@@ -6,6 +6,7 @@ import { ArrowLeft, CheckCircle2, FileUp, Loader2, TriangleAlert, UserPlus } fro
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { TableCell, TableRow } from "@/components/ui/table"
+import { needsOcr, ocrInvoiceFile, warmClientOcr } from "@/lib/ocr-client"
 import { DataTable, PageShell, SectionCard, StatusBadge, useCrudFeedback } from "@/components/operations/shared"
 
 type Party = { document: string; personType: string; name: string; tradeName: string; stateRegistration: string; email: string; phone: string; zipCode: string; street: string; number: string; complement: string; district: string; city: string; state: string }
@@ -54,6 +55,8 @@ export function NfImportPage() {
   const [registerAs, setRegisterAs] = useState<RegisterAs>("")
   const [busy, setBusy] = useState<"" | "ler" | "importar">("")
   const [launch, setLaunch] = useState(true)
+  const [stage, setStage] = useState("")
+  const [ocrText, setOcrText] = useState("")
   const [error, setError] = useState("")
   const [done, setDone] = useState("")
   const [history, setHistory] = useState<Imported[]>([])
@@ -64,9 +67,10 @@ export function NfImportPage() {
   }, [])
   useEffect(() => { void loadHistory() }, [loadHistory])
 
-  function body(action: string) {
+  function body(action: string, text = ocrText) {
     const form = new FormData()
-    form.set("file", file as File)
+    // foto/escaneamento: o navegador já leu (OCR) e manda só o texto; XML e PDF com texto vão como arquivo
+    if (text) { form.set("ocrText", text); form.set("fileName", (file as File).name) } else form.set("file", file as File)
     form.set("role", role)
     form.set("action", action)
     form.set("registerAs", registerAs)
@@ -76,13 +80,20 @@ export function NfImportPage() {
 
   async function read() {
     if (!file || !role) return
-    setBusy("ler"); setError(""); setDone(""); setPreview(null); setRegisterAs("")
+    setBusy("ler"); setError(""); setDone(""); setPreview(null); setRegisterAs(""); setOcrText(""); setStage("")
     try {
-      setPreview(await send<Preview>("/api/financeiro/nf", { method: "POST", body: body("ler") }))
+      let text = ""
+      if (await needsOcr(file)) {
+        text = await ocrInvoiceFile(file, setStage)
+        setOcrText(text)
+      }
+      setStage("Conferindo a nota...")
+      setPreview(await send<Preview>("/api/financeiro/nf", { method: "POST", body: body("ler", text) }))
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Não foi possível ler a nota.")
     } finally {
       setBusy("")
+      setStage("")
     }
   }
 
@@ -95,7 +106,7 @@ export function NfImportPage() {
       const titleText = result.titles ? ` Lançada em Contas a ${result.titles.kind === "pagar" ? "Pagar" : "Receber"}: ${result.titles.count} parcela(s), ${brl(result.titles.total)}.` : result.titlesNote ? ` ${result.titlesNote}` : ""
       setDone(`NF importada. ${text}${titleText}`)
       toast({ title: "NF importada", description: text })
-      setPreview(null); setFile(null); setRegisterAs("")
+      setPreview(null); setFile(null); setRegisterAs(""); setOcrText("")
       if (input.current) input.current.value = ""
       await loadHistory()
     } catch (reason) {
@@ -129,10 +140,10 @@ export function NfImportPage() {
         </div>
         <div className="mt-4 flex flex-wrap items-end gap-3">
           <div className="space-y-2"><Label>Arquivo da nota</Label>
-            <input ref={input} type="file" accept=".xml,.pdf,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,image/*,application/xml,text/xml,application/pdf" className="block w-full max-w-md text-sm file:mr-3 file:rounded-md file:border file:bg-background file:px-3 file:py-2" onChange={(event) => { setFile(event.target.files?.[0] || null); setPreview(null); setDone("") }} /></div>
+            <input ref={input} type="file" accept=".xml,.pdf,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,image/*,application/xml,text/xml,application/pdf" className="block w-full max-w-md text-sm file:mr-3 file:rounded-md file:border file:bg-background file:px-3 file:py-2" onChange={(event) => { const chosen = event.target.files?.[0] || null; setFile(chosen); setPreview(null); setDone(""); setOcrText(""); if (chosen && !/\.xml$/i.test(chosen.name)) warmClientOcr() }} /></div>
           <Button onClick={() => void read()} disabled={!file || !role || busy !== ""}>{busy === "ler" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}Ler nota</Button>
         </div>
-        {busy === "ler" && file && !/\.xml$/i.test(file.name) ? <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Lendo a foto/PDF por OCR: pode levar até 1 minuto.</p> : null}
+        {busy === "ler" && stage ? <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />{stage}</p> : null}
         {!role ? <p className="mt-2 text-sm text-muted-foreground">Escolha primeiro se você é remetente ou destinatário.</p> : null}
         {error ? <p className="mt-3 flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive"><TriangleAlert className="h-4 w-4 shrink-0" />{error}</p> : null}
         {done ? <p className="mt-3 flex items-center gap-2 rounded-md border border-green-600/40 bg-green-600/10 p-3 text-sm"><CheckCircle2 className="h-4 w-4 shrink-0" />{done} <Link href="/clientes" className="underline">Ver Clientes & Fornecedores</Link></p> : null}

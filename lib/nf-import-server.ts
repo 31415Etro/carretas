@@ -2,8 +2,8 @@ import type { createAdminClient } from "@/lib/supabase/server"
 import { cleanDocument, formatDocument, isValidCnpj } from "@/lib/commercial"
 import { companyToForm, namesMatch } from "@/lib/registry"
 import { lookupCnpj } from "@/lib/cnpj-server"
-import { ocrImage } from "@/lib/ocr-server"
-import { extractJpegImages } from "@/lib/pdf-images"
+import { ocrInvoiceImage } from "@/lib/ocr-server"
+import { extractJpegImages, looksScanned } from "@/lib/pdf-images"
 import { findByDocument, saveRegistry } from "@/lib/registry-server"
 import { createHash, randomUUID } from "node:crypto"
 import { counterpartOf, dedupeKey, findAccessKey, invoiceTitles, parseInvoicePdfText, parseInvoiceXml, roleWarnings, type InvoiceParty, type MyRole, type ParsedInvoice } from "@/lib/nfe-parser"
@@ -29,6 +29,27 @@ const MAX_BYTES = 12 * 1024 * 1024
 const readCache = new Map<string, { at: number; invoice: ParsedInvoice }>()
 const CACHE_MS = 15 * 60_000
 
+export type InvoiceInput = { file?: File; ocrText?: string; fileName: string }
+
+/** Guarda de tempo: o OCR no servidor é só reserva; o normal é o navegador ler a foto e mandar o texto (evita erro 504 da hospedagem). */
+function withTimeout<T>(work: Promise<T>, ms: number, message: string): Promise<T> {
+  return Promise.race([work, new Promise<never>((_, reject) => setTimeout(() => reject(new Error(message)), ms))])
+}
+const SERVER_OCR_MESSAGE = "A leitura da foto no servidor demorou demais. Atualize a página e envie de novo: a leitura é feita no seu navegador."
+
+/** Texto já lido por OCR no navegador. */
+export function readOcrText(text: string): ParsedInvoice {
+  if (text.length > 300_000) throw new Error("Texto lido da nota grande demais.")
+  const hash = createHash("sha256").update(text).digest("hex")
+  const cached = readCache.get(hash)
+  if (cached && Date.now() - cached.at < CACHE_MS) return structuredClone(cached.invoice)
+  const invoice = parseInvoicePdfText(text, { ocr: true })
+  readCache.set(hash, { at: Date.now(), invoice: structuredClone(invoice) })
+  return invoice
+}
+
+const readInput = (input: InvoiceInput) => (input.ocrText ? readOcrText(input.ocrText) : readInvoiceFile(input.file as File))
+
 /** Lê a nota de um XML, de um PDF com texto, ou de uma foto/escaneamento (JPG, PNG, WEBP... e PDF escaneado) por OCR. */
 export async function readInvoiceFile(file: File): Promise<ParsedInvoice> {
   const name = file.name.toLowerCase()
@@ -43,7 +64,9 @@ export async function readInvoiceFile(file: File): Promise<ParsedInvoice> {
   if (HEIC_NAME.test(name) || /heic|heif/i.test(file.type)) {
     throw new Error("Fotos HEIC (iPhone) não são lidas. Envie em JPG ou PNG (no iPhone: Ajustes > Câmera > Formatos > Mais Compatível) ou tire um print.")
   } else if (name.endsWith(".pdf") || file.type === "application/pdf") {
-    const { text } = await extractPdfText(file)
+    // PDF de scanner/CamScanner: uma foto grande e nenhuma fonte de texto. Pula a leitura de texto (mais lenta) e vai direto ao OCR.
+    const scanned = looksScanned(bytes)
+    const { text } = scanned ? { text: "" } : await extractPdfText(file)
     if (findAccessKey(text)) {
       invoice = parseInvoicePdfText(text) // DANFE com texto selecionável
     } else {
@@ -53,12 +76,12 @@ export async function readInvoiceFile(file: File): Promise<ParsedInvoice> {
         invoice = parseInvoicePdfText(text)
       } else {
         const texts: string[] = []
-        for (const page of pages) texts.push(await ocrImage(page))
+        for (const page of pages) texts.push(await withTimeout(ocrInvoiceImage(Buffer.from(page)), 40_000, SERVER_OCR_MESSAGE))
         invoice = parseInvoicePdfText(texts.join("\n"), { ocr: true })
       }
     }
   } else if (IMAGE_NAME.test(name) || file.type.startsWith("image/")) {
-    invoice = parseInvoicePdfText(await ocrImage(bytes), { ocr: true })
+    invoice = parseInvoicePdfText(await withTimeout(ocrInvoiceImage(bytes), 40_000, SERVER_OCR_MESSAGE), { ocr: true })
   } else {
     const text = decodeXml(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer)
     if (!/^\s*(\uFEFF)?\s*</.test(text)) throw new Error("Envie o XML da nota, ou o PDF/foto (JPG, PNG) do DANFE.")
@@ -113,11 +136,15 @@ async function completeExisting(admin: Admin, entity: "client" | "supplier", row
   if (error) throw error
 }
 
-export async function previewInvoice(admin: Admin, file: File, role: MyRole, companyId: string) {
-  const invoice = await readInvoiceFile(file)
+export async function previewInvoice(admin: Admin, input: InvoiceInput, role: MyRole, companyId: string) {
+  const invoice = await readInput(input)
   // foto/PDF: o OCR lê o CNPJ, não o nome; a Receita completa o emitente e o destinatário
-  if (invoice.issuer && !invoice.issuer.name) invoice.issuer = await enrichParty(invoice.issuer)
-  if (invoice.recipient && !invoice.recipient.name) invoice.recipient = await enrichParty(invoice.recipient)
+  const [issuer, recipient] = await Promise.all([
+    invoice.issuer && !invoice.issuer.name ? enrichParty(invoice.issuer) : invoice.issuer,
+    invoice.recipient && !invoice.recipient.name ? enrichParty(invoice.recipient) : invoice.recipient,
+  ])
+  invoice.issuer = issuer
+  invoice.recipient = recipient
   const counterpart = counterpartOf(invoice, role)
   if (!counterpart || !cleanDocument(counterpart.document)) {
     throw new Error(role === "remetente" ? "Esta nota não traz CNPJ/CPF do destinatário (parte contrária)." : "Esta nota não traz CNPJ/CPF do emitente (parte contrária).")
@@ -137,8 +164,9 @@ export async function previewInvoice(admin: Admin, file: File, role: MyRole, com
   return { invoice, counterpart: enriched, existing, similar: { client: similarClient, supplier: similarSupplier }, duplicate: duplicate.data || null, warnings: [...invoice.warnings, ...roleWarnings(invoice, role, company?.cnpj || "")], dedupeKey: key }
 }
 
-export async function importInvoice(admin: Admin, file: File, role: MyRole, companyId: string, registerAs: "" | "cliente" | "fornecedor", responsible: string, launch = true) {
-  const preview = await previewInvoice(admin, file, role, companyId)
+export async function importInvoice(admin: Admin, input: InvoiceInput, role: MyRole, companyId: string, registerAs: "" | "cliente" | "fornecedor", responsible: string, launch = true) {
+  const file = { name: input.fileName }
+  const preview = await previewInvoice(admin, input, role, companyId)
   if (preview.duplicate) throw new Error("Esta nota já foi importada.")
   const { invoice, counterpart, existing } = preview
   let clientId: string | null = existing.client?.id || null
