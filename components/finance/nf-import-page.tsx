@@ -14,6 +14,7 @@ type Preview = {
   invoice: { kind: string; accessKey: string; number: string; series: string; issuedAt: string; nature: string; total: number; issuer: Party | null; recipient: Party | null; items: Array<{ code: string; description: string; ncm: string; cfop: string; unit: string; quantity: number; unitPrice: number; total: number }>; installments: Array<{ number: string; dueDate: string; amount: number }> }
   counterpart: Party
   existing: { client: Found; supplier: Found }
+  similar?: { client: { id: string; code: string; name: string } | null; supplier: { id: string; code: string; name: string } | null }
   duplicate: { id: string; created_at: string; created_by: string } | null
   warnings: string[]
 }
@@ -121,16 +122,17 @@ export function NfImportPage() {
   return (
     <PageShell title="Importar NF" description="Leia o XML (ou PDF) de uma nota fiscal, informe se você é o remetente ou o destinatário e escolha se a parte contrária deve ser cadastrada."
       actions={<Button variant="outline" asChild><Link href="/financeiro"><ArrowLeft className="h-4 w-4" />Voltar ao Financeiro</Link></Button>}>
-      <SectionCard title="1. Nota fiscal" description="XML de NF-e, NFC-e ou NFS-e (recomendado). O PDF do DANFE também funciona, mas lê só a chave de acesso e os CNPJs.">
+      <SectionCard title="1. Nota fiscal" description="XML de NF-e, NFC-e ou NFS-e (recomendado). Também aceita PDF do DANFE e FOTO ou escaneamento da nota (JPG, PNG, PDF de scanner/CamScanner): nesses casos o sistema lê por OCR e você confere os dados antes de importar.">
         <div className="grid gap-3 md:grid-cols-2">
           {roleButton("remetente", "Sou o remetente", "Eu emiti a nota (venda/serviço). A parte contrária é o destinatário, meu possível cliente.")}
           {roleButton("destinatario", "Sou o destinatário", "Eu recebi a nota (compra). A parte contrária é o emitente, meu possível fornecedor.")}
         </div>
         <div className="mt-4 flex flex-wrap items-end gap-3">
           <div className="space-y-2"><Label>Arquivo da nota</Label>
-            <input ref={input} type="file" accept=".xml,.pdf,application/xml,text/xml,application/pdf" className="block w-full max-w-md text-sm file:mr-3 file:rounded-md file:border file:bg-background file:px-3 file:py-2" onChange={(event) => { setFile(event.target.files?.[0] || null); setPreview(null); setDone("") }} /></div>
+            <input ref={input} type="file" accept=".xml,.pdf,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,image/*,application/xml,text/xml,application/pdf" className="block w-full max-w-md text-sm file:mr-3 file:rounded-md file:border file:bg-background file:px-3 file:py-2" onChange={(event) => { setFile(event.target.files?.[0] || null); setPreview(null); setDone("") }} /></div>
           <Button onClick={() => void read()} disabled={!file || !role || busy !== ""}>{busy === "ler" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}Ler nota</Button>
         </div>
+        {busy === "ler" && file && !/\.xml$/i.test(file.name) ? <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Lendo a foto/PDF por OCR: pode levar até 1 minuto.</p> : null}
         {!role ? <p className="mt-2 text-sm text-muted-foreground">Escolha primeiro se você é remetente ou destinatário.</p> : null}
         {error ? <p className="mt-3 flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive"><TriangleAlert className="h-4 w-4 shrink-0" />{error}</p> : null}
         {done ? <p className="mt-3 flex items-center gap-2 rounded-md border border-green-600/40 bg-green-600/10 p-3 text-sm"><CheckCircle2 className="h-4 w-4 shrink-0" />{done} <Link href="/clientes" className="underline">Ver Clientes & Fornecedores</Link></p> : null}
@@ -175,6 +177,7 @@ export function NfImportPage() {
               </button>
             ))}
           </div>
+          {registerAs && !exists?.[registerAs === "cliente" ? "client" : "supplier"] && preview.similar?.[registerAs === "cliente" ? "client" : "supplier"] ? <p className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">Já existe o cadastro “{preview.similar[registerAs === "cliente" ? "client" : "supplier"]!.name}” ({preview.similar[registerAs === "cliente" ? "client" : "supplier"]!.code}) sem CNPJ: ele será completado com o CNPJ e os dados desta nota, sem criar outro.</p> : null}
           {registerAs && exists?.[registerAs === "cliente" ? "supplier" : "client"] && !exists?.[registerAs === "cliente" ? "client" : "supplier"] ? <p className="mt-3 text-sm text-muted-foreground">Esta empresa já é {registerAs === "cliente" ? "fornecedora" : "cliente"}: o novo cadastro será vinculado ao existente, sem duplicar a empresa.</p> : null}
           {registerAs ? <p className="mt-3 text-sm text-muted-foreground">O cadastro entra como Ativo, com os dados da nota. Telefone e demais campos podem ser completados depois em Clientes & Fornecedores.</p> : null}
           <label className="mt-4 flex items-center gap-2 text-sm"><input type="checkbox" checked={launch} onChange={(event) => setLaunch(event.target.checked)} />Lançar também em {role === "destinatario" ? "Contas a Pagar" : "Contas a Receber"} ({preview.invoice.installments.length ? `${preview.invoice.installments.length} duplicata(s) da nota` : preview.invoice.total ? `1 parcela de ${brl(preview.invoice.total)} vencendo na emissão` : "sem valor na nota: não será lançado"})</label>

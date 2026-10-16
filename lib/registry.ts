@@ -223,3 +223,25 @@ export function applyCompany(current: Record<string, string>, company: Record<st
 }
 
 export { cleanDocument, formatDocument }
+
+const NAME_NOISE = new Set(["LTDA", "ME", "EPP", "EIRELI", "SA", "S/A", "DE", "DA", "DO", "DAS", "DOS", "E", "&", "CIA", "COMPANHIA"])
+const nameTokens = (value: string) => value.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/[^A-Z0-9 ]/g, " ").split(/\s+/).filter((word) => word && !NAME_NOISE.has(word))
+
+/**
+ * O nome curto de um cadastro antigo (ex.: "JG COM. TINTAS") é a razão social abreviada (ex.: "JG COMERCIO DE TINTAS LTDA ME")?
+ * Cada palavra do nome curto precisa ser o começo de uma palavra da razão social, na mesma ordem.
+ */
+export function namesMatch(shortName: string, legalName: string) {
+  const short = nameTokens(shortName)
+  const legal = nameTokens(legalName)
+  if (!short.length || !legal.length) return false
+  if (short.length === 1 && short[0].length < 4) return false
+  if (!legal[0].startsWith(short[0])) return false // a marca (primeira palavra) tem de ser a mesma
+  let position = 0
+  for (const word of short) {
+    const found = legal.findIndex((candidate, index) => index >= position && candidate.startsWith(word))
+    if (found < 0) return false
+    position = found + 1
+  }
+  return true
+}

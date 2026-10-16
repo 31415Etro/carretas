@@ -1,10 +1,12 @@
 import type { createAdminClient } from "@/lib/supabase/server"
 import { cleanDocument, formatDocument, isValidCnpj } from "@/lib/commercial"
-import { companyToForm } from "@/lib/registry"
-import { mapBrasilApiCnpj } from "@/lib/cnpj-lookup"
+import { companyToForm, namesMatch } from "@/lib/registry"
+import { lookupCnpj } from "@/lib/cnpj-server"
+import { ocrImage } from "@/lib/ocr-server"
+import { extractJpegImages } from "@/lib/pdf-images"
 import { findByDocument, saveRegistry } from "@/lib/registry-server"
-import { randomUUID } from "node:crypto"
-import { counterpartOf, dedupeKey, invoiceTitles, parseInvoicePdfText, parseInvoiceXml, roleWarnings, type InvoiceParty, type MyRole, type ParsedInvoice } from "@/lib/nfe-parser"
+import { createHash, randomUUID } from "node:crypto"
+import { counterpartOf, dedupeKey, findAccessKey, invoiceTitles, parseInvoicePdfText, parseInvoiceXml, roleWarnings, type InvoiceParty, type MyRole, type ParsedInvoice } from "@/lib/nfe-parser"
 import { extractPdfText } from "@/lib/pdf-text-extractor"
 
 type Admin = ReturnType<typeof createAdminClient>
@@ -19,41 +21,103 @@ function decodeXml(bytes: ArrayBuffer) {
   }
 }
 
+const IMAGE_NAME = /\.(png|jpe?g|webp|bmp|tiff?|gif)$/i
+const HEIC_NAME = /\.(heic|heif)$/i
+const MAX_BYTES = 12 * 1024 * 1024
+
+// A leitura por OCR leva alguns segundos: guarda o resultado para a etapa "Importar" não repetir o trabalho.
+const readCache = new Map<string, { at: number; invoice: ParsedInvoice }>()
+const CACHE_MS = 15 * 60_000
+
+/** Lê a nota de um XML, de um PDF com texto, ou de uma foto/escaneamento (JPG, PNG, WEBP... e PDF escaneado) por OCR. */
 export async function readInvoiceFile(file: File): Promise<ParsedInvoice> {
   const name = file.name.toLowerCase()
-  if (file.size > 4 * 1024 * 1024) throw new Error("Arquivo muito grande: envie até 4 MB.")
-  if (name.endsWith(".pdf") || file.type === "application/pdf") {
+  if (file.size > MAX_BYTES) throw new Error("Arquivo muito grande: envie até 12 MB (reduza a resolução da foto).")
+  const bytes = Buffer.from(await file.arrayBuffer())
+  const hash = createHash("sha256").update(bytes).digest("hex")
+  const cached = readCache.get(hash)
+  if (cached && Date.now() - cached.at < CACHE_MS) return structuredClone(cached.invoice)
+  for (const [key, entry] of readCache) if (Date.now() - entry.at >= CACHE_MS) readCache.delete(key)
+
+  let invoice: ParsedInvoice
+  if (HEIC_NAME.test(name) || /heic|heif/i.test(file.type)) {
+    throw new Error("Fotos HEIC (iPhone) não são lidas. Envie em JPG ou PNG (no iPhone: Ajustes > Câmera > Formatos > Mais Compatível) ou tire um print.")
+  } else if (name.endsWith(".pdf") || file.type === "application/pdf") {
     const { text } = await extractPdfText(file)
-    return parseInvoicePdfText(text)
+    if (findAccessKey(text)) {
+      invoice = parseInvoicePdfText(text) // DANFE com texto selecionável
+    } else {
+      const pages = extractJpegImages(bytes).filter((image) => image.length > 20_000).slice(0, 3)
+      if (!pages.length) {
+        if (!text.trim()) throw new Error("Este PDF não tem texto nem imagem JPEG que eu consiga ler. Envie o XML, ou a nota como foto JPG/PNG.")
+        invoice = parseInvoicePdfText(text)
+      } else {
+        const texts: string[] = []
+        for (const page of pages) texts.push(await ocrImage(page))
+        invoice = parseInvoicePdfText(texts.join("\n"), { ocr: true })
+      }
+    }
+  } else if (IMAGE_NAME.test(name) || file.type.startsWith("image/")) {
+    invoice = parseInvoicePdfText(await ocrImage(bytes), { ocr: true })
+  } else {
+    const text = decodeXml(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer)
+    if (!/^\s*(\uFEFF)?\s*</.test(text)) throw new Error("Envie o XML da nota, ou o PDF/foto (JPG, PNG) do DANFE.")
+    invoice = parseInvoiceXml(text)
   }
-  const text = decodeXml(await file.arrayBuffer())
-  if (!/^\s*(﻿)?\s*</.test(text)) throw new Error("Envie o XML (ou PDF) da nota fiscal.")
-  return parseInvoiceXml(text)
+  readCache.set(hash, { at: Date.now(), invoice: structuredClone(invoice) })
+  return invoice
 }
 
-/** Completa o que a nota não trouxe (nome, endereço) pela Receita Federal quando é CNPJ válido. Falha em silêncio. */
+/** Completa o que a nota não trouxe (nome, endereço, IE, contato) pela Receita Federal (BrasilAPI + cnpj.ws). Falha em silêncio. */
 export async function enrichParty(party: InvoiceParty): Promise<InvoiceParty> {
   const clean = cleanDocument(party.document)
   if (party.personType !== "PJ" || !isValidCnpj(clean)) return party
-  if (party.name && party.street && party.zipCode) return party
+  if (party.name && party.street && party.zipCode && party.stateRegistration) return party
   try {
-    const response = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${clean}`, { headers: { Accept: "application/json", "User-Agent": "ERP-Carretas/1.0" }, signal: AbortSignal.timeout(10_000), cache: "no-store" })
-    if (!response.ok) return party
-    const form = companyToForm(mapBrasilApiCnpj(await response.json()) as any)
+    const result = await lookupCnpj(clean)
+    if (!result.ok) return party
+    const form = companyToForm(result.company as any)
     const pick = (own: string, key: string) => own || form[key] || ""
     return {
       ...party,
       name: pick(party.name, "name"), tradeName: pick(party.tradeName, "tradeName"), phone: pick(party.phone, "phone"), email: pick(party.email, "email"),
       zipCode: pick(party.zipCode, "zipCode"), street: pick(party.street, "street"), number: pick(party.number, "number"), complement: pick(party.complement, "complement"),
       district: pick(party.district, "district"), city: pick(party.city, "city"), state: pick(party.state, "state"),
+      stateRegistration: pick(party.stateRegistration, "stateRegistration"), icmsIndicator: party.stateRegistration ? party.icmsIndicator : form.icmsIndicator || party.icmsIndicator,
     }
   } catch {
     return party
   }
 }
 
+/** Cadastro antigo SEM CNPJ cujo nome curto é a razão social da nota (ex.: "JG COM. TINTAS" x "JG COMERCIO DE TINTAS LTDA ME"). */
+async function findSimilarWithoutDocument(admin: Admin, entity: "client" | "supplier", name: string) {
+  const { data, error } = await admin.from(entity === "client" ? "clients" : "suppliers").select("id,code,name,trade_name,document,phone,email").or("document.is.null,document.eq.").limit(2000)
+  if (error) throw error
+  const matches = (data || []).filter((row) => namesMatch(String(row.name || ""), name))
+  return matches.length === 1 ? { id: String(matches[0].id), code: String(matches[0].code || ""), name: String(matches[0].name), phone: String(matches[0].phone || ""), email: String(matches[0].email || "") } : null
+}
+
+/** Preenche o CNPJ e os dados da nota num cadastro que já existia sem CNPJ, sem apagar o que ele já tinha. */
+async function completeExisting(admin: Admin, entity: "client" | "supplier", row: { id: string; name: string; phone: string; email: string }, party: InvoiceParty) {
+  const update: Record<string, unknown> = {
+    document: party.document, person_type: party.personType, name: party.name || row.name, trade_name: row.name, state_registration: party.stateRegistration || null,
+    zip_code: party.zipCode || null, street: party.street || null, number: party.number || null, complement: party.complement || null, district: party.district || null,
+    city: party.city || null, state: party.state || null, country: party.country || "Brasil", icms_indicator: party.icmsIndicator || "9",
+  }
+  if (entity === "client") { update.type = party.personType; update.corporate_name = party.name || row.name; delete update.person_type }
+  if (!row.phone && party.phone) update.phone = party.phone
+  if (!row.email && party.email) update.email = party.email
+  for (const key of Object.keys(update)) if (update[key] === null || update[key] === "") delete update[key]
+  const { error } = await admin.from(entity === "client" ? "clients" : "suppliers").update(update).eq("id", row.id)
+  if (error) throw error
+}
+
 export async function previewInvoice(admin: Admin, file: File, role: MyRole, companyId: string) {
   const invoice = await readInvoiceFile(file)
+  // foto/PDF: o OCR lê o CNPJ, não o nome; a Receita completa o emitente e o destinatário
+  if (invoice.issuer && !invoice.issuer.name) invoice.issuer = await enrichParty(invoice.issuer)
+  if (invoice.recipient && !invoice.recipient.name) invoice.recipient = await enrichParty(invoice.recipient)
   const counterpart = counterpartOf(invoice, role)
   if (!counterpart || !cleanDocument(counterpart.document)) {
     throw new Error(role === "remetente" ? "Esta nota não traz CNPJ/CPF do destinatário (parte contrária)." : "Esta nota não traz CNPJ/CPF do emitente (parte contrária).")
@@ -66,7 +130,11 @@ export async function previewInvoice(admin: Admin, file: File, role: MyRole, com
     admin.from("imported_invoices").select("id,created_at,created_by").eq("dedupe_key", key).maybeSingle(),
   ])
   if (duplicate.error) throw new Error(/does not exist|Could not find|schema cache/i.test(duplicate.error.message) ? NF_MIGRATION_HINT : duplicate.error.message)
-  return { invoice, counterpart: enriched, existing, duplicate: duplicate.data || null, warnings: [...invoice.warnings, ...roleWarnings(invoice, role, company?.cnpj || "")], dedupeKey: key }
+  const [similarClient, similarSupplier] = await Promise.all([
+    existing.client ? null : findSimilarWithoutDocument(admin, "client", enriched.name),
+    existing.supplier ? null : findSimilarWithoutDocument(admin, "supplier", enriched.name),
+  ])
+  return { invoice, counterpart: enriched, existing, similar: { client: similarClient, supplier: similarSupplier }, duplicate: duplicate.data || null, warnings: [...invoice.warnings, ...roleWarnings(invoice, role, company?.cnpj || "")], dedupeKey: key }
 }
 
 export async function importInvoice(admin: Admin, file: File, role: MyRole, companyId: string, registerAs: "" | "cliente" | "fornecedor", responsible: string, launch = true) {
@@ -83,7 +151,13 @@ export async function importInvoice(admin: Admin, file: File, role: MyRole, comp
     const own = entity === "client" ? existing.client : existing.supplier
     const other = entity === "client" ? existing.supplier : existing.client
     counterpartKind = entity === "client" ? "Cliente" : "Fornecedor"
-    if (!own) {
+    const similar = entity === "client" ? preview.similar.client : preview.similar.supplier
+    if (!own && similar) {
+      // já existia cadastrado sem CNPJ: só completa o CNPJ e os dados, não cria outro
+      await completeExisting(admin, entity, similar, counterpart)
+      if (entity === "client") clientId = similar.id
+      else supplierId = similar.id
+    } else if (!own) {
       const saved = await saveRegistry(admin, entity, {
         personType: counterpart.personType, status: "Ativo", document: counterpart.document, name: counterpart.name, tradeName: counterpart.tradeName === counterpart.name ? "" : counterpart.tradeName,
         stateRegistration: counterpart.stateRegistration, icmsIndicator: counterpart.icmsIndicator, phone: counterpart.phone, email: counterpart.email,

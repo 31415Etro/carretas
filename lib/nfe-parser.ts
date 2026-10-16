@@ -238,26 +238,169 @@ export function validDocument(value: string) {
   return clean.length === 14 ? isValidCnpj(clean) : clean.length === 11 ? isValidCpf(clean) : false
 }
 
-export function parseInvoicePdfText(rawText: string): ParsedInvoice {
-  const text = rawText.replace(/\s+/g, " ")
-  const warnings = ["Leitura de PDF é parcial (chave de acesso e CNPJ/CPF). Prefira o XML da nota para ler tudo."]
-  const keyMatch = text.match(/(?:\d{4}\s?){10}\d{4}/g)?.map((value) => value.replace(/\s/g, "")).find((value) => value.length === 44 && isValidCnpj(value.slice(6, 20)))
-  const documents = Array.from(text.matchAll(/\b(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}|\d{3}\.\d{3}\.\d{3}-\d{2}|[0-9A-Z]{2}\.[0-9A-Z]{3}\.[0-9A-Z]{3}\/[0-9A-Z]{4}-\d{2})\b/g), (match) => match[1]).filter(validDocument)
-  const issuerDocument = keyMatch ? keyMatch.slice(6, 20) : documents[0] || ""
-  const recipientDocument = documents.map(cleanDocument).find((value) => value !== cleanDocument(issuerDocument)) || ""
-  if (!issuerDocument) warnings.push("Não encontrei a chave de acesso nem CNPJ válido no PDF. Se for PDF escaneado, envie o XML.")
-  const model = keyMatch ? keyMatch.slice(20, 22) : ""
+/** Dígito verificador (módulo 11, pesos 2 a 9 da direita para a esquerda) da chave de acesso de 44 dígitos. */
+export function accessKeyDigit(first43: string) {
+  let sum = 0
+  let weight = 2
+  for (let index = first43.length - 1; index >= 0; index--) {
+    sum += Number(first43[index]) * weight
+    weight = weight === 9 ? 2 : weight + 1
+  }
+  const rest = sum % 11
+  return rest < 2 ? 0 : 11 - rest
+}
+
+export const isValidAccessKey = (key: string) => /^\d{44}$/.test(key) && accessKeyDigit(key.slice(0, 43)) === Number(key[43]) && isValidCnpj(key.slice(6, 20))
+
+/**
+ * Acha a chave de acesso no texto (digitado, de PDF ou de OCR). O dígito verificador e o CNPJ embutido na chave confirmam a
+ * leitura; se o OCR errou UM dígito, a correção é testada dígito a dígito.
+ */
+export function findAccessKey(text: string): { key: string; repaired: boolean } | null {
+  const candidates: string[] = []
+  for (const match of text.matchAll(/(?:\d[\s.\-|]*){40,48}/g)) {
+    const digits = match[0].replace(/\D/g, "")
+    if (digits.length >= 44) for (let start = 0; start + 44 <= digits.length; start++) candidates.push(digits.slice(start, start + 44))
+    else if (digits.length >= 42) candidates.push(digits)
+  }
+  const valid = candidates.find((candidate) => isValidAccessKey(candidate))
+  if (valid) return { key: valid, repaired: false }
+  // O OCR errou UM dígito: o dígito verificador sozinho aceitaria uma troca em qualquer posição, então só vale a troca que
+  // também bate com o número da nota ("N. 000.002.347") e com o mês/ano das datas que aparecem no texto.
+  const numbers = new Set(Array.from(text.matchAll(/N\s*[º°o.:]*\s*(\d{3}\.?\d{3}\.?\d{3})(?!\d)/gi), (match) => match[1].replace(/\D/g, "")))
+  const months = new Set(Array.from(text.matchAll(/(?<![\d/])\d{2}\/(\d{2})\/(\d{4})(?![\d/])/g), (match) => `${match[2].slice(2)}${match[1]}`))
+  if (!numbers.size && !months.size) return null
+  for (const candidate of candidates.filter((item) => item.length === 44)) {
+    const fixes: string[] = []
+    for (let index = 0; index < 44; index++) {
+      for (let digit = 0; digit <= 9; digit++) {
+        if (String(digit) === candidate[index]) continue
+        const attempt = `${candidate.slice(0, index)}${digit}${candidate.slice(index + 1)}`
+        if (!isValidAccessKey(attempt)) continue
+        if (numbers.size && !numbers.has(attempt.slice(25, 34))) continue
+        if (months.size && !months.has(attempt.slice(2, 6))) continue
+        fixes.push(attempt)
+      }
+    }
+    if (fixes.length === 1) return { key: fixes[0], repaired: true }
+  }
+  return null
+}
+
+const moneyPattern = /(?<![\d.,])(\d{1,3}(?:\.\d{3})*,\d{2}|\d+\.\d{2})(?![\d])/g
+const toMoney = (value: string) => {
+  const clean = value.includes(",") ? value.replace(/\./g, "").replace(",", ".") : value
+  const parsed = Number(clean)
+  return Number.isFinite(parsed) ? Math.round(parsed * 100) / 100 : 0
+}
+const brToIso = (value: string) => { const [day, month, year] = value.split("/"); return `${year}-${month}-${day}` }
+const validDate = (iso: string) => { const time = Date.parse(`${iso}T12:00:00Z`); return Number.isFinite(time) && Number(iso.slice(0, 4)) >= 2000 }
+const lettersOnly = (value: string) => value.replace(/[^A-Za-zÀ-ÿ0-9&.\-/ ]/g, " ").replace(/\s+/g, " ").trim()
+
+/**
+ * Lê o texto de um DANFE (PDF com texto ou foto/escaneamento com OCR). A chave de acesso dá emitente, número, série e mês;
+ * o restante (data, valor, duplicatas, destinatário, itens) é lido do texto e conferido entre si, com avisos quando não bate.
+ */
+export function parseInvoicePdfText(rawText: string, options: { ocr?: boolean } = {}): ParsedInvoice {
+  const warnings = [options.ocr
+    ? "Leitura por OCR de uma foto/escaneamento: confira os valores, as parcelas e o destinatário antes de importar. Prefira o XML quando tiver."
+    : "Leitura de PDF é parcial. Prefira o XML da nota para ler tudo."]
+  const lines = rawText.split(/\r?\n/).map((line) => line.replace(/\s+/g, " ").trim()).filter(Boolean)
+  const flat = lines.join("\n")
+
+  const found = findAccessKey(rawText)
+  const key = found?.key || ""
+  if (found?.repaired) warnings.push("A chave de acesso foi corrigida pelo dígito verificador (o OCR errou um dígito). Confira com o XML/DANFE.")
+  if (!key) warnings.push("Não consegui ler uma chave de acesso válida (44 dígitos). Os dados abaixo podem estar incompletos; tente uma foto mais nítida ou envie o XML.")
+
+  // CNPJ/CPF válidos que aparecem no texto, com a posição
+  const documents = Array.from(flat.matchAll(/(?<![\d])(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}|\d{3}\.\d{3}\.\d{3}-\d{2})(?![\d])/g), (match) => ({ value: match[1], index: match.index ?? 0 })).filter((item) => validDocument(item.value))
+  const issuerDocument = key ? key.slice(6, 20) : documents[0]?.value || ""
+  const issuerClean = cleanDocument(issuerDocument)
+  const destIndex = flat.search(/DESTINAT|REMETENTE/i)
+  const recipientMatch = documents.find((item) => cleanDocument(item.value) !== issuerClean && (destIndex < 0 || item.index >= destIndex - 20)) || documents.find((item) => cleanDocument(item.value) !== issuerClean)
+  const recipientLine = recipientMatch ? lines.find((line) => line.includes(recipientMatch.value)) || "" : ""
+
+  // data de emissão: a data da linha do destinatário (campo "Data da emissão"); senão a data mais repetida
+  const dates = Array.from(flat.matchAll(/(?<![\d/])(\d{2}\/\d{2}\/\d{4})(?![\d/])/g), (match) => brToIso(match[1])).filter(validDate)
+  const lineDate = recipientLine.match(/(\d{2}\/\d{2}\/\d{4})/)?.[1]
+  const counts = new Map<string, number>()
+  for (const date of dates) counts.set(date, (counts.get(date) || 0) + 1)
+  const mostCommon = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || ""
+  let issuedAt = lineDate && validDate(brToIso(lineDate)) ? brToIso(lineDate) : mostCommon
+  if (key && issuedAt && issuedAt.slice(2, 4) + issuedAt.slice(5, 7) !== key.slice(2, 6)) {
+    warnings.push(`A data lida (${issuedAt.split("-").reverse().join("/")}) não bate com o mês da chave de acesso (${key.slice(4, 6)}/20${key.slice(2, 4)}). Confira a data.`)
+  }
+  if (!issuedAt && key) issuedAt = `20${key.slice(2, 4)}-${key.slice(4, 6)}-01`
+
+  // parcelas (fatura/duplicatas): "001 05/11/2026 1.555,00"
+  const installments: InvoiceInstallment[] = []
+  const faturaStart = flat.search(/FATURA|DUPLICATA/i)
+  const faturaEnd = flat.search(/C[ÁA]LCULO DO IMPOSTO|CALCULO DO|BASE DE C/i)
+  const faturaText = faturaStart >= 0 ? flat.slice(faturaStart, faturaEnd > faturaStart ? faturaEnd : faturaStart + 600) : flat.slice(0, faturaEnd > 0 ? faturaEnd : flat.length) // o OCR às vezes estraga o título "FATURA"
+  for (const match of faturaText.matchAll(/(\d{3})\s+(\d{2}\/\d{2}\/\d{4})\s+((?:\d{1,3}\.)*\d{1,3},\d{2})/g)) {
+    const dueDate = brToIso(match[2])
+    if (validDate(dueDate)) installments.push({ number: match[1], dueDate, amount: toMoney(match[3]) })
+  }
+
+  // valor total: linha seguinte a "VALOR TOTAL DA NOTA" / "VALOR TOTAL DOS PRODUTOS"; senão soma das parcelas
+  const amountAfter = (label: RegExp) => {
+    const index = lines.findIndex((line) => label.test(line))
+    if (index < 0) return 0
+    for (const line of lines.slice(index, index + 3)) {
+      const values = Array.from(line.matchAll(moneyPattern), (match) => toMoney(match[1])).filter((value) => value > 0)
+      if (values.length) return values[values.length - 1]
+    }
+    return 0
+  }
+  const installmentsTotal = Math.round(installments.reduce((sum, item) => sum + item.amount, 0) * 100) / 100
+  let total = amountAfter(/VALOR TOTAL DA NOTA/i) || amountAfter(/VALOR TOTAL DOS PRODUTOS/i) || installmentsTotal
+  if (installments.length && total && Math.abs(installmentsTotal - total) > 0.01) {
+    warnings.push(`A soma das parcelas (${installmentsTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}) não bate com o valor da nota lido (${total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}). Confira.`)
+    if (!amountAfter(/VALOR TOTAL DA NOTA/i)) total = installmentsTotal
+  }
+  if (!total) warnings.push("Não consegui ler o valor total da nota.")
+
+  // itens (melhor esforço): descrição NCM CSOSN CFOP UN quantidade unitário total
+  const items: InvoiceItem[] = []
+  const money2 = String.raw`(\d[\d.]*[.,]\d{2})`
+  const itemPattern = new RegExp(String.raw`([A-ZÀ-Ý0-9][A-ZÀ-Ý0-9 ,.\-/]{3,60}?)\s+(\d{8})\s*[|\]]?\s*\S{3,6}\s*[|\]]?\s*(\d{4})\s*[|\]]?\s*(UN|KG|PC|PÇ|CX|MT|M|L|LT|SC|JG|PAR|M2|M3)\s*[|\]]?\s*(\d+[.,]?\d{4})\s+${money2}\)?\s+\[?${money2}`)
+  for (const line of lines) {
+    const match = line.match(itemPattern)
+    if (!match) continue
+    const quantity = Number(match[5].includes(",") || match[5].includes(".") ? match[5].replace(",", ".") : `${match[5].slice(0, -4)}.${match[5].slice(-4)}`)
+    const unitPrice = toMoney(match[6])
+    const lineTotal = toMoney(match[7])
+    if (Math.abs(quantity * unitPrice - lineTotal) > 0.06) continue // linha com dígito errado no OCR: melhor não listar do que listar errado
+    items.push({ code: "", description: match[1].replace(/^[|\s\]]+/, "").trim(), ncm: match[2], cfop: match[3], unit: match[4], quantity, unitPrice, total: lineTotal })
+  }
+  const itemsTotal = Math.round(items.reduce((sum, item) => sum + item.total, 0) * 100) / 100
+  if (items.length && total && Math.abs(itemsTotal - total) > 0.5) warnings.push(`Só consegui ler ${items.length} item(ns) por OCR (${itemsTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} dos ${total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} da nota): a lista de itens está incompleta.`)
+  else if (options.ocr && items.length) warnings.push(`Itens lidos por OCR (${items.length}): confira.`)
+
+  const nature = lines.find((line, index) => /NATUREZA DA OPERA/i.test(lines[index - 1] || "") || false) || (lines[lines.findIndex((line) => /NATUREZA DA OPERA/i.test(line)) + 1] || "")
+  const model = key ? key.slice(20, 22) : ""
+  const number = key ? String(Number(key.slice(25, 34))) : (flat.match(/N\s*[º°o.]*\s*(\d{3}\.?\d{3}\.?\d{3})/i)?.[1] || "").replace(/\D/g, "").replace(/^0+/, "")
+  const series = key ? String(Number(key.slice(22, 25))) : (flat.match(/S[ÉE]RIE\s*[:\-]?\s*(\d{1,3})/i)?.[1] || "")
+  // nome do destinatário só quando é pessoa física (para CNPJ a Receita informa o nome certo)
+  const recipientIsCpf = recipientMatch ? cleanDocument(recipientMatch.value).length === 11 : false
+  const recipientName = recipientIsCpf ? lettersOnly(recipientLine.replace(recipientMatch!.value, "").replace(/\d{2}\/\d{2}\/\d{4}/g, "")) : ""
+  if (!issuerDocument) warnings.push("Não encontrei CNPJ válido do emitente.")
+  if (!recipientMatch) warnings.push("Não encontrei o CNPJ/CPF do destinatário.")
+
   return {
     kind: "PDF",
-    accessKey: keyMatch || "",
-    number: keyMatch ? String(Number(keyMatch.slice(25, 34))) : "",
-    series: keyMatch ? String(Number(keyMatch.slice(22, 25))) : "",
-    issuedAt: keyMatch ? `20${keyMatch.slice(2, 4)}-${keyMatch.slice(4, 6)}-01` : "",
-    nature: model === "65" ? "NFC-e" : model === "55" ? "NF-e" : "",
-    total: 0,
+    accessKey: key,
+    number,
+    series,
+    issuedAt,
+    nature: nature && !/^\d/.test(nature) ? lettersOnly(nature.split(/\d/)[0]).slice(0, 80) : model === "65" ? "NFC-e" : model === "55" ? "NF-e" : "",
+    total,
     issuer: issuerDocument ? partyFromDocument(issuerDocument, {}) : null,
-    recipient: recipientDocument ? partyFromDocument(recipientDocument, {}) : null,
-    items: [], installments: [], warnings,
+    recipient: recipientMatch ? partyFromDocument(recipientMatch.value, { name: recipientName }) : null,
+    items,
+    installments,
+    warnings,
   }
 }
 

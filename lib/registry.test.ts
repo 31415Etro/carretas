@@ -42,3 +42,14 @@ test("consulta não sobrescreve o que o usuário editou sem confirmação", () =
   assert.equal(applyCompany(current, company, touched, true).next.name, "ACME LTDA")
   assert.equal(applyCompany({ tradeName: "Meu" }, { tradeName: "" }, new Set()).next.tradeName, "Meu") // ausente na API: não escreve
 })
+
+test("nome curto do cadastro antigo casa com a razão social completa", async () => {
+  const { namesMatch } = await import("./registry.ts")
+  assert.equal(namesMatch("JG COM. TINTAS", "JG COMERCIO DE TINTAS LTDA ME"), true)
+  assert.equal(namesMatch("KIFERRO", "KIFERRO COMERCIO DE FERRO E ACO LTDA - FILIAL JGS"), true)
+  assert.equal(namesMatch("MEGAÇO", "MEGACO COMERCIO DE FERROS E METAIS LTDA"), true)
+  assert.equal(namesMatch("W. GARBOS", "W. GARBOS BANDEIRA DA SILVA - SERVICO E COMERCIO DE PNEUS"), true)
+  assert.equal(namesMatch("JG COM. TINTAS", "MIX TINTAS LTDA"), false)
+  assert.equal(namesMatch("FG", "FGTS COMERCIO LTDA"), false) // nome de uma palavra só e curto demais
+  assert.equal(namesMatch("TINTAS", "JG COMERCIO DE TINTAS LTDA"), false) // palavra do meio sem começar a razão social
+})
