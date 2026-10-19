@@ -1,5 +1,6 @@
 "use client"
 
+import { StatStrip } from "@/components/finance/overview-summary"
 import { useEffect, useMemo, useState } from "react"
 import { Download, FileCheck2, Loader2, RefreshCw, TrendingDown, TrendingUp, WalletCards } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -163,9 +164,9 @@ export function AsaasBalanceCards() {
   const serviceBalance = Number(data?.accounts?.find((item: any) => item.code === "services")?.balance || 0)
   const materialBalance = Number(data?.accounts?.find((item: any) => item.code === "materials")?.balance || 0)
   return <SectionCard title="Saldos das contas Asaas" description="Posicao atual das contas de servicos e materiais, consultada diretamente no Asaas.">
-    <div className="mb-3 flex justify-end"><Button size="sm" variant="outline" onClick={load} disabled={loading}><RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />Atualizar</Button></div>
+    <div className="mb-2 flex justify-end"><Button size="sm" variant="outline" onClick={load} disabled={loading}><RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />Atualizar</Button></div>
     {error ? <p className="mb-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
-    <div className="grid gap-3 md:grid-cols-3"><MetricCard title="Conta de servicos" value={loading ? "..." : money(serviceBalance)} note="Disponivel no Asaas" icon={TrendingUp} /><MetricCard title="Conta de materiais" value={loading ? "..." : money(materialBalance)} note="Disponivel no Asaas" icon={TrendingDown} /><MetricCard title="Saldo consolidado" value={loading ? "..." : money(Number(data?.consolidatedBalance ?? serviceBalance + materialBalance))} note="Soma das duas contas" icon={WalletCards} /></div>
+    <StatStrip items={[{ label: "Conta de serviços", value: loading ? "..." : money(serviceBalance), note: "Disponível no Asaas" }, { label: "Conta de materiais", value: loading ? "..." : money(materialBalance), note: "Disponível no Asaas" }, { label: "Saldo consolidado", value: loading ? "..." : money(Number(data?.consolidatedBalance ?? serviceBalance + materialBalance)), note: "Soma das duas contas" }]} />
   </SectionCard>
 }
 
