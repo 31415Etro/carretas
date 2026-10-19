@@ -85,7 +85,7 @@ function LoginForm() {
           <BrandMark className="text-3xl" />
         </div>
         <div className="relative max-w-md space-y-4">
-          <h1 className="text-4xl font-semibold leading-tight">Gestão completa da sua fábrica de carretas.</h1>
+          <h1 className="text-4xl font-semibold leading-tight">Gestão completa da sua empresa.</h1>
           <p className="text-base text-blue-100">Financeiro, estoque, compras, ordens de serviço, frota e comercial em um só lugar, para todas as suas empresas.</p>
         </div>
         <p className="relative flex items-center gap-2 text-sm text-blue-100">
