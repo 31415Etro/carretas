@@ -17,13 +17,26 @@ export type DashboardData = {
   fuel: any[]
   leads: any[]
   contracts: any[]
+  categories?: Array<{ id: string; name: string }>
   names: { clients: Record<string, string>; providers: Record<string, string>; vehicles: Record<string, string>; salespeople?: Record<string, string> }
 }
 
 export type Indicator = { key: string; label: string; value: number; format: "money" | "number" | "percent" | "hours" | "times"; hint?: string; tone?: "good" | "bad" | "neutral" }
 export type DetailTable = { title: string; columns: string[]; rows: Array<Array<string | number>>; href: string }
 export type SeriesPoint = Record<string, string | number>
-export type SectionResult = { indicators: Indicator[]; charts: Array<{ key: string; title: string; series: SeriesPoint[]; bars: Array<{ key: string; label: string }> }>; notes: string[] }
+export type DashboardChart = {
+  key: string
+  title: string
+  series: SeriesPoint[]
+  bars: Array<{ key: string; label: string }>
+  /** "bar" (padrão: segue a preferência do usuário), "hbar" (barras horizontais, ranking) ou "pie" (composição). */
+  kind?: "bar" | "hbar" | "pie"
+  /** Valores em reais ou contagens (define o formato dos eixos e dicas). */
+  format?: "money" | "number"
+  /** Ocupa a largura toda (séries de tempo com várias barras). */
+  wide?: boolean
+}
+export type SectionResult = { indicators: Indicator[]; charts: DashboardChart[]; notes: string[] }
 
 // Fluxo da OS das carretas + situações do sistema anterior.
 const doneOrderStatuses = new Set(["Concluída", "Entregue", "Finalizada", "Finalizada parcialmente"])
@@ -118,6 +131,35 @@ export function buildDashboard(raw: DashboardData, filters: DashboardFilters) {
       saidasPrevistas: sum(openPayables.filter((row) => day(row.due_date).startsWith(key)), (row) => openBalance(row, "paid_amount")),
     }))
 
+    // composição das despesas por categoria (as 7 maiores + "Outras")
+    const categoryName = (id?: string) => data.categories?.find((item) => item.id === id)?.name || "Sem categoria"
+    const expenseByCategory = new Map<string, number>()
+    expenses.forEach((row) => { const name = categoryName(row.category_id); expenseByCategory.set(name, (expenseByCategory.get(name) || 0) + Number(row.realized_amount || 0)) })
+    const rankedCategories = [...expenseByCategory.entries()].sort((a, b) => b[1] - a[1])
+    const topCategories = rankedCategories.slice(0, 7).map(([categoria, valor]) => ({ categoria, valor: round2(valor) }))
+    const otherCategories = round2(rankedCategories.slice(7).reduce((total, [, value]) => total + value, 0))
+    if (otherCategories > 0) topCategories.push({ categoria: "Outras", valor: otherCategories })
+
+    // contas em aberto por faixa de vencimento (a pagar x a receber)
+    const bucketOf = (due: string) => {
+      if (due < filters.today) return "Vencidas"
+      if (due <= addDays(filters.today, 7)) return "Até 7 dias"
+      if (due <= addDays(filters.today, 30)) return "8 a 30 dias"
+      if (due <= addDays(filters.today, 60)) return "31 a 60 dias"
+      return "Mais de 60 dias"
+    }
+    const bucketNames = ["Vencidas", "Até 7 dias", "8 a 30 dias", "31 a 60 dias", "Mais de 60 dias"]
+    const dueChart = bucketNames.map((faixa) => ({
+      faixa,
+      pagar: sum(openPayables.filter((row) => day(row.due_date) && bucketOf(day(row.due_date)) === faixa), (row) => openBalance(row, "paid_amount")),
+      receber: sum(openReceivables.filter((row) => day(row.due_date) && bucketOf(day(row.due_date)) === faixa), (row) => openBalance(row, "received_amount")),
+    }))
+
+    // faturamento por cliente (os 8 maiores)
+    const billedByClient = new Map<string, number>()
+    billed.forEach((row) => billedByClient.set(client(row.client_id), (billedByClient.get(client(row.client_id)) || 0) + Number(row.expected_amount || 0)))
+    const topClients = [...billedByClient.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([cliente, valor]) => ({ cliente: cliente.slice(0, 26), valor: round2(valor) }))
+
     sections.financeiro = {
       indicators: [
         { key: "fin.faturamento", label: "Faturamento", value: billedTotal, format: "money", hint: "Contas a receber emitidas no período" },
@@ -128,7 +170,11 @@ export function buildDashboard(raw: DashboardData, filters: DashboardFilters) {
         { key: "fin.vencidas_receber", label: "A receber vencidas", value: sum(overdueReceivables, (row) => openBalance(row, "received_amount")), format: "money", hint: `${overdueReceivables.length} título(s)`, tone: overdueReceivables.length ? "bad" : "neutral" },
         { key: "fin.vencidas_pagar", label: "A pagar vencidas", value: sum(overduePayables, (row) => openBalance(row, "paid_amount")), format: "money", hint: `${overduePayables.length} título(s)`, tone: overduePayables.length ? "bad" : "neutral" },
       ],
-      charts: [{ key: "fin.fluxo", title: "Fluxo de caixa: previsto x realizado", series: flow, bars: [{ key: "entradasRealizadas", label: "Entradas realizadas" }, { key: "entradasPrevistas", label: "Entradas previstas" }, { key: "saidasRealizadas", label: "Saídas realizadas" }, { key: "saidasPrevistas", label: "Saídas previstas" }] }],
+      charts: [{ key: "fin.fluxo", title: "Fluxo de caixa: previsto x realizado", series: flow, format: "money", wide: true, bars: [{ key: "entradasRealizadas", label: "Entradas realizadas" }, { key: "entradasPrevistas", label: "Entradas previstas" }, { key: "saidasRealizadas", label: "Saídas realizadas" }, { key: "saidasPrevistas", label: "Saídas previstas" }] },
+        { key: "fin.vencimentos", title: "Contas em aberto por vencimento", series: dueChart, format: "money", bars: [{ key: "pagar", label: "A pagar" }, { key: "receber", label: "A receber" }] },
+        { key: "fin.categorias", title: "Despesas realizadas por categoria", kind: "pie", format: "money", series: topCategories, bars: [{ key: "valor", label: "Despesas" }] },
+        { key: "fin.clientes", title: "Faturamento por cliente (maiores)", kind: "hbar", format: "money", series: topClients, bars: [{ key: "valor", label: "Faturamento" }] },
+      ],
       notes: [],
     }
   }
@@ -157,6 +203,12 @@ export function buildDashboard(raw: DashboardData, filters: DashboardFilters) {
     details["est.giro"] = { title: "Saídas do período (base do giro)", href: "/estoque", columns: ["Data", "Item", "Tipo", "Quantidade", "Custo"], rows: consumption.map((row) => [br(row.occurred_at), material(row.material_id)?.name || "-", row.movement_type, row.quantity, money(row.total_cost)]) }
     details["est.consumo"] = { title: "Materiais com maior consumo", href: "/estoque", columns: ["Item", "Quantidade", "Custo"], rows: top.map(([id, totals]) => [material(id)?.name || "-", `${round2(totals.quantity)} ${material(id)?.unit || ""}`, money(totals.cost)]) }
 
+    const stockFlow = monthsBetween(filters.start, filters.end).map((key) => ({
+      mes: monthLabel(key),
+      entradas: sum(data.movements.filter((row) => day(row.occurred_at).startsWith(key) && String(row.movement_type || "").startsWith("Entrada")), (row) => row.total_cost),
+      saidas: sum(data.movements.filter((row) => day(row.occurred_at).startsWith(key) && (consumptionTypes.has(row.movement_type) || String(row.movement_type || "").startsWith("Saida"))), (row) => row.total_cost),
+    }))
+
     sections.estoque = {
       indicators: [
         { key: "est.valor", label: "Valor do estoque", value, format: "money" },
@@ -164,7 +216,9 @@ export function buildDashboard(raw: DashboardData, filters: DashboardFilters) {
         { key: "est.giro", label: "Giro do estoque", value: value > 0 ? round2(consumedCost / value) : 0, format: "times", hint: `Custo das saídas ${money(consumedCost)} / valor do estoque` },
         { key: "est.consumo", label: "Custo consumido", value: consumedCost, format: "money", hint: "Consumo em OS, kits e vendas no período" },
       ],
-      charts: [{ key: "est.top", title: "Materiais com maior consumo (custo)", series: top.map(([id, totals]) => ({ item: String(material(id)?.name || "-").slice(0, 24), custo: round2(totals.cost) })), bars: [{ key: "custo", label: "Custo" }] }],
+      charts: [{ key: "est.top", title: "Materiais com maior consumo (custo)", series: top.map(([id, totals]) => ({ item: String(material(id)?.name || "-").slice(0, 24), custo: round2(totals.cost) })), kind: "hbar", format: "money", bars: [{ key: "custo", label: "Custo" }] },
+        { key: "est.mensal", title: "Entradas x saídas de estoque (R$)", wide: true, format: "money", series: stockFlow, bars: [{ key: "entradas", label: "Entradas" }, { key: "saidas", label: "Saídas" }] },
+      ],
       notes: [],
     }
   }
@@ -193,6 +247,12 @@ export function buildDashboard(raw: DashboardData, filters: DashboardFilters) {
     const statusCounts = new Map<string, number>()
     orders.filter((row) => !finalOrderStatuses.has(row.status) || inPeriod(row.finished_at || row.cancelled_at, filters)).forEach((row) => statusCounts.set(row.status, (statusCounts.get(row.status) || 0) + 1))
 
+    const osFlow = monthsBetween(filters.start, filters.end).map((key) => ({
+      mes: monthLabel(key),
+      abertas: orders.filter((row) => day(row.created_at).startsWith(key)).length,
+      concluidas: orders.filter((row) => doneOrderStatuses.has(row.status) && day(row.finished_at).startsWith(key)).length,
+    }))
+
     sections.os = {
       indicators: [
         { key: "os.abertas", label: "OS abertas", value: open.length, format: "number" },
@@ -202,7 +262,9 @@ export function buildDashboard(raw: DashboardData, filters: DashboardFilters) {
         { key: "os.ticket", label: "Ticket médio", value: done.length ? round2(sum(done, (row) => row.total_amount) / done.length) : 0, format: "money" },
         { key: "os.tempo", label: "Tempo médio de execução", value: durations.length ? round2(durations.reduce((a, b) => a + b, 0) / durations.length) : 0, format: "hours", hint: "Do início do serviço à finalização" },
       ],
-      charts: [{ key: "os.status", title: "OS por situação", series: [...statusCounts.entries()].map(([status, total]) => ({ situacao: status, total })), bars: [{ key: "total", label: "OS" }] }],
+      charts: [{ key: "os.status", title: "OS por situação", series: [...statusCounts.entries()].map(([status, total]) => ({ situacao: status, total })), kind: "pie", format: "number", bars: [{ key: "total", label: "OS" }] },
+        { key: "os.mensal", title: "OS abertas x concluídas por mês", wide: true, format: "number", series: osFlow, bars: [{ key: "abertas", label: "Abertas" }, { key: "concluidas", label: "Concluídas" }] },
+      ],
       notes: [],
     }
   }
@@ -232,6 +294,13 @@ export function buildDashboard(raw: DashboardData, filters: DashboardFilters) {
     details["frota.custos"] = { title: "Custos por veículo no período (manutenções + combustível + contas a pagar vinculadas)", href: "/frota", columns: ["Veículo", "Custo"], rows: [...costs.entries()].sort((a, b) => b[1] - a[1]).map(([id, cost]) => [vehicle(id), money(cost)]) }
     details["frota.vencimentos"] = { title: "Vencimentos nos próximos 30 dias", href: "/frota", columns: ["Data", "Veículo", "Vencimento"], rows: due.map((row) => [br(row.date), vehicle(row.vehicle_id), row.what]) }
 
+    const fleetFlow = monthsBetween(filters.start, filters.end).map((key) => ({
+      mes: monthLabel(key),
+      manutencao: sum(maintenance.filter((row) => day(row.start_date).startsWith(key)), (row) => Number(row.cost || 0) + Number(row.parts_cost || 0) + Number(row.labor_cost || 0)),
+      combustivel: sum(data.fuel.filter((row) => day(row.fuel_date).startsWith(key)), (row) => row.total_amount),
+      contas: sum(vehiclePayables.filter((row) => day(row.competence_date || row.due_date).startsWith(key)), (row) => row.expected_amount),
+    }))
+
     sections.frota = {
       indicators: [
         { key: "frota.ativos", label: "Veículos ativos", value: active.length, format: "number" },
@@ -240,7 +309,9 @@ export function buildDashboard(raw: DashboardData, filters: DashboardFilters) {
         { key: "frota.custos", label: "Custo da frota", value: round2([...costs.values()].reduce((a, b) => a + b, 0)), format: "money" },
         { key: "frota.vencimentos", label: "Vencimentos (30 dias)", value: due.length, format: "number", tone: due.length ? "bad" : "neutral" },
       ],
-      charts: [{ key: "frota.custos", title: "Custo por veículo", series: [...costs.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([id, cost]) => ({ veiculo: vehicle(id), custo: round2(cost) })), bars: [{ key: "custo", label: "Custo" }] }],
+      charts: [{ key: "frota.custos", title: "Custo por veículo", series: [...costs.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([id, cost]) => ({ veiculo: vehicle(id), custo: round2(cost) })), kind: "hbar", format: "money", bars: [{ key: "custo", label: "Custo" }] },
+        { key: "frota.mensal", title: "Custo da frota por mês", wide: true, format: "money", series: fleetFlow, bars: [{ key: "manutencao", label: "Manutenção" }, { key: "combustivel", label: "Combustível" }, { key: "contas", label: "Contas vinculadas" }] },
+      ],
       notes: [],
     }
   }
@@ -260,6 +331,11 @@ export function buildDashboard(raw: DashboardData, filters: DashboardFilters) {
     details["com.vendas"] = { title: "Oportunidades ganhas no período", href: "/comercial", columns: leadColumns, rows: won.map(leadRow) }
     details["com.funil"] = { title: "Oportunidades no funil", href: "/comercial", columns: leadColumns, rows: pipeline.map(leadRow) }
 
+    const salesByMonth = monthsBetween(filters.start, filters.end).map((key) => ({
+      mes: monthLabel(key),
+      vendas: sum(won.filter((row) => day(row.closed_at || row.updated_at).startsWith(key)), (row) => row.estimated_value),
+    }))
+
     sections.comercial = {
       indicators: [
         { key: "com.propostas", label: "Propostas enviadas", value: proposals.length + sentContracts.length, format: "number" },
@@ -267,7 +343,7 @@ export function buildDashboard(raw: DashboardData, filters: DashboardFilters) {
         { key: "com.vendas", label: "Vendas ganhas", value: sum(won, (row) => row.estimated_value), format: "money" },
         { key: "com.funil", label: "Oportunidades no funil", value: pipeline.length, format: "number", hint: money(sum(pipeline, (row) => row.estimated_value)) },
       ],
-      charts: [{ key: "com.vendedor", title: "Vendas ganhas por vendedor (R$)", series: [...new Set(won.map((row) => row.salesperson_id))].map((id) => ({ vendedor: data.names.salespeople?.[id] || "-", vendas: round2(sum(won.filter((row) => row.salesperson_id === id), (item) => item.estimated_value)) })), bars: [{ key: "vendas", label: "Vendas" }] }, { key: "com.funil", title: "Funil de vendas", series: leadStages.map((stage) => ({ etapa: stage, oportunidades: leads.filter((row) => row.stage === stage).length })), bars: [{ key: "oportunidades", label: "Oportunidades" }] }],
+      charts: [{ key: "com.vendedor", title: "Vendas ganhas por vendedor (R$)", series: [...new Set(won.map((row) => row.salesperson_id))].map((id) => ({ vendedor: data.names.salespeople?.[id] || "-", vendas: round2(sum(won.filter((row) => row.salesperson_id === id), (item) => item.estimated_value)) })), kind: "hbar", format: "money", bars: [{ key: "vendas", label: "Vendas" }] }, { key: "com.mensal", title: "Vendas ganhas por mês (R$)", wide: true, format: "money", series: salesByMonth, bars: [{ key: "vendas", label: "Vendas" }] }, { key: "com.funil", title: "Funil de vendas", series: leadStages.map((stage) => ({ etapa: stage, oportunidades: leads.filter((row) => row.stage === stage).length })), kind: "hbar", format: "number", bars: [{ key: "oportunidades", label: "Oportunidades" }] }],
       notes: [],
     }
   }

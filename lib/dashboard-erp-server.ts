@@ -49,7 +49,7 @@ export async function loadDashboardData(admin: AdminClient, sections: DashboardS
   const warnings: string[] = []
   const need = (section: DashboardSection) => sections.includes(section)
   const endOfDay = `${end}T23:59:59`
-  const [receivables, payables, transactions, materials, movements, orders, vehicles, maintenance, fuel, leads, contracts] = await Promise.all([
+  const [receivables, payables, transactions, materials, movements, orders, vehicles, maintenance, fuel, leads, contracts, categories] = await Promise.all([
     need("financeiro") ? rows(admin, "accounts_receivable", warnings) : [],
     need("financeiro") || need("frota") ? rows(admin, "accounts_payable", warnings) : [],
     need("financeiro") ? rows(admin, "financial_transactions", warnings, (query) => query.eq("status", "Realizado").gte("realized_date", start).lte("realized_date", end)) : [],
@@ -61,6 +61,7 @@ export async function loadDashboardData(admin: AdminClient, sections: DashboardS
     need("frota") ? rows(admin, "fuel_entries", warnings) : [],
     need("comercial") ? rows(admin, "opportunities", warnings) : [],
     need("comercial") ? rows(admin, "contracts", warnings) : [],
+    need("financeiro") ? rows(admin, "financial_categories", warnings) : [],
   ])
 
   // Início do serviço = evento "Iniciar serviço" das OS finalizadas no período.
@@ -94,6 +95,6 @@ export async function loadDashboardData(admin: AdminClient, sections: DashboardS
   }
   const vehicleNames: Record<string, string> = Object.fromEntries(vehicles.map((row) => [row.id, `${row.fleet_number || ""} ${row.plate || ""} ${row.model || ""}`.replace(/\s+/g, " ").trim()]))
 
-  const data: DashboardData = { receivables, payables, transactions, materials, movements, orders, orderStarts, vehicles, maintenance, fuel, leads, contracts, names: { clients, providers, vehicles: vehicleNames, salespeople } }
+  const data: DashboardData = { receivables, payables, transactions, materials, movements, orders, orderStarts, vehicles, maintenance, fuel, leads, contracts, categories: categories.map((row) => ({ id: row.id, name: row.name })), names: { clients, providers, vehicles: vehicleNames, salespeople } }
   return { data, warnings }
 }

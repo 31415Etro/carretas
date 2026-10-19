@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
-import { ExternalLink, RefreshCw, Settings2 } from "lucide-react"
-import { Area, AreaChart, Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+import { ChevronRight, ExternalLink, RefreshCw, Settings2 } from "lucide-react"
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { DataTable, PageShell, SelectField } from "@/components/operations/shared"
 import { useAuth } from "@/lib/auth-context"
-import type { DashboardSection, DetailTable, Indicator, SectionResult } from "@/lib/dashboard-erp"
+import type { DashboardChart, DashboardSection, DetailTable, Indicator, SectionResult } from "@/lib/dashboard-erp"
 
 type ChartType = "bar" | "line" | "area"
 type PeriodPreset = "mes" | "mes-anterior" | "trimestre" | "ano" | "personalizado"
@@ -22,7 +22,7 @@ type Payload = { period: { start: string; end: string; today: string }; allowedS
 
 const sectionTitles: Record<DashboardSection, string> = { financeiro: "Financeiro", estoque: "Estoque", os: "Ordens de Serviço", frota: "Frota", comercial: "Comercial" }
 const sectionOrder: DashboardSection[] = ["financeiro", "os", "estoque", "frota", "comercial"]
-const chartColors = ["#2563eb", "#93c5fd", "#1e3a8a", "#38bdf8", "#16a34a", "#64748b"]
+const chartColors = ["#2563eb", "#38bdf8", "#1e3a8a", "#16a34a", "#f59e0b", "#64748b", "#93c5fd", "#a78bfa"]
 
 function iso(date: Date) {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
@@ -183,19 +183,16 @@ export function ErpDashboard() {
       {visibleSections.map((section) => {
         const result = payload!.sections[section]!
         const indicators = result.indicators.filter((indicator) => !config.hiddenIndicators.includes(indicator.key))
+        const charts = result.charts.filter((chart) => chart.series.length)
         return <section key={section} className="space-y-3">
           <h2 className="flex items-center gap-2 text-base font-semibold text-foreground"><span aria-hidden className="h-4 w-1 rounded-full bg-primary" />{sectionTitles[section]}</h2>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {indicators.map((indicator) => (
-              <button key={indicator.key} type="button" onClick={() => void openDetail(indicator)} className="relative overflow-hidden rounded-2xl border bg-card py-3.5 pl-6 pr-4 text-left shadow-[var(--shadow-card)] transition-shadow duration-150 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-                <span aria-hidden className="absolute inset-y-0 left-0 w-1 bg-primary" />
-                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{indicator.label}</p>
-                <p className={`mt-2 text-[1.75rem] font-semibold leading-none tracking-tight tabular-nums ${indicator.tone === "bad" ? "text-destructive" : indicator.tone === "good" ? "text-emerald-600" : ""}`}>{formatValue(indicator)}</p>
-                {indicator.hint ? <p className="mt-2 text-xs text-muted-foreground">{indicator.hint}</p> : null}
-              </button>
-            ))}
+          <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,19rem)_minmax(0,1fr)]">
+            <IndicatorList indicators={indicators} onOpen={(indicator) => void openDetail(indicator)} />
+            <div className="grid gap-4 md:grid-cols-2">
+              {charts.map((chart) => <Card key={chart.key} className={chart.wide ? "md:col-span-2" : ""}><CardHeader className="pb-1"><CardTitle className="text-sm font-semibold">{chart.title}</CardTitle></CardHeader><CardContent><ChartView type={config.chartType} chart={chart} /></CardContent></Card>)}
+              {!charts.length ? <p className="rounded-2xl border bg-card p-6 text-sm text-muted-foreground md:col-span-2">Sem gráficos para este módulo no período.</p> : null}
+            </div>
           </div>
-          {result.charts.filter((chart) => chart.series.length).map((chart) => <Card key={chart.key}><CardHeader className="pb-2"><CardTitle className="text-base">{chart.title}</CardTitle></CardHeader><CardContent><ChartView type={config.chartType} series={chart.series} bars={chart.bars} /></CardContent></Card>)}
           {result.notes.map((note) => <p key={note} className="text-xs text-muted-foreground">{note}</p>)}
         </section>
       })}
@@ -218,17 +215,76 @@ export function ErpDashboard() {
   )
 }
 
-function ChartView({ type, series, bars }: { type: ChartType; series: Array<Record<string, string | number>>; bars: Array<{ key: string; label: string }> }) {
+/** Indicadores de um módulo numa lista compacta (um só cartão): cada linha abre os registros por trás do número. */
+function IndicatorList({ indicators, onOpen }: { indicators: Indicator[]; onOpen: (indicator: Indicator) => void }) {
+  return (
+    <Card className="overflow-hidden py-0">
+      <ul className="divide-y divide-border">
+        {indicators.map((indicator) => (
+          <li key={indicator.key}>
+            <button type="button" onClick={() => onOpen(indicator)} className="group flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--row-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary">
+              <span className="min-w-0 flex-1">
+                <span className="block text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{indicator.label}</span>
+                {indicator.hint ? <span className="mt-0.5 block truncate text-xs text-muted-foreground" title={indicator.hint}>{indicator.hint}</span> : null}
+              </span>
+              <span className={`text-lg font-semibold tabular-nums tracking-tight ${indicator.tone === "bad" ? "text-destructive" : indicator.tone === "good" ? "text-emerald-600" : "text-foreground"}`}>{formatValue(indicator)}</span>
+              <ChevronRight aria-hidden className="h-4 w-4 shrink-0 text-slate-300 transition-colors group-hover:text-primary" />
+            </button>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  )
+}
+
+function ChartView({ type, chart }: { type: ChartType; chart: DashboardChart }) {
+  const { series, bars } = chart
   const xKey = Object.keys(series[0] || {}).find((key) => !bars.some((bar) => bar.key === key)) || "x"
-  const money = bars.some((bar) => /custo|entradas|saidas|valor/i.test(bar.key))
-  const tick = (value: number) => money ? Number(value).toLocaleString("pt-BR", { notation: "compact", style: "currency", currency: "BRL" }) : String(value)
-  const tooltip = (value: number) => money ? Number(value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : value
-  const common = <><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey={xKey} /><YAxis tickFormatter={tick} /><Tooltip formatter={(value) => tooltip(Number(value))} />{bars.length > 1 ? <Legend /> : null}</>
+  const isMoney = chart.format ? chart.format === "money" : bars.some((bar) => /custo|entradas|saidas|valor/i.test(bar.key))
+  const compact = (value: number) => isMoney ? Number(value).toLocaleString("pt-BR", { notation: "compact", style: "currency", currency: "BRL" }) : Number(value).toLocaleString("pt-BR")
+  const full = (value: number) => isMoney ? Number(value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : Number(value).toLocaleString("pt-BR")
+  const hasData = series.some((row) => bars.some((bar) => Number(row[bar.key] || 0) !== 0))
+  if (!hasData) return <div className="grid h-24 place-items-center rounded-lg border border-dashed text-sm text-muted-foreground">Sem dados no período</div>
+
+  if (chart.kind === "pie") {
+    const valueKey = bars[0].key
+    const rows = series.filter((row) => Number(row[valueKey] || 0) > 0)
+    const total = rows.reduce((sum, row) => sum + Number(row[valueKey] || 0), 0)
+    return <div className="h-[260px] w-full"><ResponsiveContainer width="100%" height="100%">
+      <PieChart>
+        <Pie data={rows} dataKey={valueKey} nameKey={xKey} innerRadius="52%" outerRadius="82%" paddingAngle={2} stroke="none">{rows.map((row, index) => <Cell key={String(row[xKey])} fill={chartColors[index % chartColors.length]} />)}</Pie>
+        <Tooltip formatter={(value, name) => [`${full(Number(value))} (${total ? Math.round((Number(value) / total) * 100) : 0}%)`, String(name)]} />
+        <Legend layout="vertical" align="right" verticalAlign="middle" iconType="circle" wrapperStyle={{ fontSize: 12, maxWidth: "45%" }} />
+      </PieChart>
+    </ResponsiveContainer></div>
+  }
+
+  if (chart.kind === "hbar") {
+    const height = Math.min(360, Math.max(180, series.length * 34 + 40))
+    return <div style={{ height }} className="w-full"><ResponsiveContainer width="100%" height="100%">
+      <BarChart data={series} layout="vertical" margin={{ left: 8, right: 16 }}>
+        <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+        <XAxis type="number" tickFormatter={compact} tick={{ fontSize: 11 }} />
+        <YAxis type="category" dataKey={xKey} width={118} tick={{ fontSize: 11 }} />
+        <Tooltip formatter={(value) => full(Number(value))} />
+        {bars.map((bar, index) => <Bar key={bar.key} dataKey={bar.key} name={bar.label} fill={chartColors[index % chartColors.length]} radius={[0, 4, 4, 0]} />)}
+      </BarChart>
+    </ResponsiveContainer></div>
+  }
+
+  // elementos em lista (com key) e não dentro de um fragmento: o Recharts 3 só enxerga eixos e legenda que são filhos diretos
+  const common = [
+    <CartesianGrid key="grid" strokeDasharray="3 3" vertical={false} />,
+    <XAxis key="x" dataKey={xKey} tick={{ fontSize: 11 }} />,
+    <YAxis key="y" tickFormatter={compact} tick={{ fontSize: 11 }} />,
+    <Tooltip key="tip" formatter={(value) => full(Number(value))} />,
+    ...(bars.length > 1 ? [<Legend key="legend" iconType="circle" wrapperStyle={{ fontSize: 12 }} />] : []),
+  ]
   return <div className="h-[280px] w-full"><ResponsiveContainer width="100%" height="100%">
     {type === "line"
       ? <LineChart data={series}>{common}{bars.map((bar, index) => <Line key={bar.key} type="monotone" dataKey={bar.key} name={bar.label} stroke={chartColors[index % chartColors.length]} strokeWidth={2} />)}</LineChart>
       : type === "area"
         ? <AreaChart data={series}>{common}{bars.map((bar, index) => <Area key={bar.key} type="monotone" dataKey={bar.key} name={bar.label} stroke={chartColors[index % chartColors.length]} fill={chartColors[index % chartColors.length]} fillOpacity={0.2} />)}</AreaChart>
-        : <BarChart data={series}>{common}{bars.map((bar, index) => <Bar key={bar.key} dataKey={bar.key} name={bar.label} fill={chartColors[index % chartColors.length]} />)}</BarChart>}
+        : <BarChart data={series}>{common}{bars.map((bar, index) => <Bar key={bar.key} dataKey={bar.key} name={bar.label} fill={chartColors[index % chartColors.length]} radius={[4, 4, 0, 0]} />)}</BarChart>}
   </ResponsiveContainer></div>
 }
