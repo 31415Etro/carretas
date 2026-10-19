@@ -3,21 +3,23 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ---- Design system ND Carretas: azul e branco ----
+   Para mudar a aparência do sistema inteiro, edite estes tokens (e os componentes em components/ui e components/operations/shared). */
 :root {
-  --background: #ffffff;
-  --foreground: #0f172a;
-  --card: #f8fafc;
-  --card-foreground: #0f172a;
+  --background: #f6f8fc;
+  --foreground: #172033;
+  --card: #ffffff;
+  --card-foreground: #172033;
   --popover: #ffffff;
-  --popover-foreground: #0f172a;
+  --popover-foreground: #172033;
   --primary: #2563eb;
   --primary-foreground: #ffffff;
   --secondary: #f1f5f9;
-  --secondary-foreground: #0f172a;
-  --muted: #f8fafc;
-  --muted-foreground: #475569;
+  --secondary-foreground: #172033;
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
   --accent: #dbeafe;
-  --accent-foreground: #2563eb;
+  --accent-foreground: #1e3a8a;
   --destructive: #dc2626;
   --destructive-foreground: #ffffff;
   --border: #e2e8f0;
@@ -30,15 +32,27 @@
   --chart-3: #16a34a;
   --chart-4: #f59e0b;
   --chart-5: #dc2626;
-  --radius: 1rem;
+  --radius: 0.75rem;
   --sidebar: #ffffff;
-  --sidebar-foreground: #0f172a;
+  --sidebar-foreground: #172033;
   --sidebar-primary: #2563eb;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #f8fafc;
-  --sidebar-accent-foreground: #0f172a;
+  --sidebar-accent: #dbeafe;
+  --sidebar-accent-foreground: #1e3a8a;
   --sidebar-border: #e2e8f0;
   --sidebar-ring: #2563eb;
+
+  /* marca ND Carretas */
+  --brand: #2563eb;
+  --brand-dark: #1e3a8a;
+  --brand-soft: #dbeafe;
+  --brand-softer: #eff6ff;
+  --table-head: #1e3a8a;
+  --table-head-foreground: #ffffff;
+  --row-hover: #f5f8ff;
+  --shadow-card: 0 1px 2px rgba(23, 32, 51, 0.04), 0 1px 1px rgba(23, 32, 51, 0.03);
+  --sidebar-width: 17rem;
+  --sidebar-width-collapsed: 4.75rem;
 }
 
 .dark {
@@ -137,7 +151,47 @@ html[data-user-role]:not([data-user-role="admin"]) [data-delete-action="true"] {
   position: fixed;
   inset: 0;
   z-index: -1;
-  background: radial-gradient(1200px 800px at 10% 10%, #e6f0ff, transparent 60%),
-    radial-gradient(1000px 600px at 90% 20%, #f5faff, transparent 60%),
-    radial-gradient(900px 700px at 50% 90%, #eaf2ff, transparent 60%), linear-gradient(180deg, #ffffff 0%, #f9fbff 100%);
+  background: var(--background);
+}
+
+/* ---- Cabeçalho azul das páginas (PageShell): botões legíveis sobre o fundo azul ---- */
+.page-banner [data-slot="button"][data-variant="default"] {
+  background: #ffffff;
+  color: var(--brand-dark);
+  border-color: transparent;
+}
+.page-banner [data-slot="button"][data-variant="default"]:hover {
+  background: var(--brand-soft);
+}
+.page-banner [data-slot="button"][data-variant="outline"],
+.page-banner [data-slot="button"][data-variant="secondary"],
+.page-banner [data-slot="button"][data-variant="ghost"] {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.35);
+  box-shadow: none;
+}
+.page-banner [data-slot="button"][data-variant="outline"]:hover,
+.page-banner [data-slot="button"][data-variant="secondary"]:hover,
+.page-banner [data-slot="button"][data-variant="ghost"]:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+}
+.page-banner [data-slot="button"][data-variant="destructive"] {
+  background: #ef4444;
+  color: #ffffff;
+}
+
+/* ---- Tabelas: rolagem horizontal discreta ---- */
+[data-slot="table-container"] {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+@media print {
+  .app-sidebar,
+  .app-mobilebar,
+  .page-banner {
+    display: none !important;
+  }
 }

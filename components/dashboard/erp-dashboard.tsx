@@ -22,7 +22,7 @@ type Payload = { period: { start: string; end: string; today: string }; allowedS
 
 const sectionTitles: Record<DashboardSection, string> = { financeiro: "Financeiro", estoque: "Estoque", os: "Ordens de Serviço", frota: "Frota", comercial: "Comercial" }
 const sectionOrder: DashboardSection[] = ["financeiro", "os", "estoque", "frota", "comercial"]
-const chartColors = ["#2563eb", "#93c5fd", "#f97316", "#fdba74", "#16a34a", "#64748b"]
+const chartColors = ["#2563eb", "#93c5fd", "#1e3a8a", "#38bdf8", "#16a34a", "#64748b"]
 
 function iso(date: Date) {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
@@ -184,13 +184,14 @@ export function ErpDashboard() {
         const result = payload!.sections[section]!
         const indicators = result.indicators.filter((indicator) => !config.hiddenIndicators.includes(indicator.key))
         return <section key={section} className="space-y-3">
-          <h2 className="text-lg font-semibold">{sectionTitles[section]}</h2>
+          <h2 className="flex items-center gap-2 text-base font-semibold text-foreground"><span aria-hidden className="h-4 w-1 rounded-full bg-primary" />{sectionTitles[section]}</h2>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {indicators.map((indicator) => (
-              <button key={indicator.key} type="button" onClick={() => void openDetail(indicator)} className="rounded-lg border bg-card p-4 text-left transition hover:border-primary/60 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-                <p className="text-sm text-muted-foreground">{indicator.label}</p>
-                <p className={`mt-1 text-2xl font-bold ${indicator.tone === "bad" ? "text-destructive" : indicator.tone === "good" ? "text-emerald-600" : ""}`}>{formatValue(indicator)}</p>
-                {indicator.hint ? <p className="mt-1 text-xs text-muted-foreground">{indicator.hint}</p> : null}
+              <button key={indicator.key} type="button" onClick={() => void openDetail(indicator)} className="relative overflow-hidden rounded-2xl border bg-card py-3.5 pl-6 pr-4 text-left shadow-[var(--shadow-card)] transition-shadow duration-150 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                <span aria-hidden className="absolute inset-y-0 left-0 w-1 bg-primary" />
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{indicator.label}</p>
+                <p className={`mt-2 text-[1.75rem] font-semibold leading-none tracking-tight tabular-nums ${indicator.tone === "bad" ? "text-destructive" : indicator.tone === "good" ? "text-emerald-600" : ""}`}>{formatValue(indicator)}</p>
+                {indicator.hint ? <p className="mt-2 text-xs text-muted-foreground">{indicator.hint}</p> : null}
               </button>
             ))}
           </div>

@@ -24,7 +24,12 @@ type Role = "remetente" | "destinatario"
 type RegisterAs = "" | "cliente" | "fornecedor"
 
 const brl = (value: unknown) => Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
-const day = (value?: string) => (value ? new Date(value).toLocaleDateString("pt-BR") : "-")
+// data sem hora ("2026-10-09") não pode passar por new Date(): vira meia-noite UTC e mostra o dia anterior no Brasil
+const day = (value?: string) => {
+  if (!value) return "-"
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value.split("-").reverse().join("/")
+  return new Date(value).toLocaleDateString("pt-BR")
+}
 const address = (party: Party) => [[party.street, party.number, party.complement].filter(Boolean).join(", "), party.district, [party.city, party.state].filter(Boolean).join("/"), party.zipCode].filter(Boolean).join(" · ")
 
 async function send<T>(url: string, init?: RequestInit): Promise<T> {

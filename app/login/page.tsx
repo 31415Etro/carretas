@@ -85,7 +85,7 @@ function LoginForm() {
         <div className="bg-white border border-gray-200 rounded-2xl shadow-2xl p-6 md:p-8 lg:p-10">
           <div className="mb-6 md:mb-8 text-center">
             <div className="flex justify-center mb-4 md:mb-6">
-              <BrandMark className="text-5xl md:text-6xl" />
+              <BrandMark className="text-4xl md:text-5xl" />
             </div>
             <p className="text-sm text-gray-600">
               {availableCompanies.length ? "Escolha o CNPJ que deseja acessar." : "Entre com o usuario cadastrado no sistema."}

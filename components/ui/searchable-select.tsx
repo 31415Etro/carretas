@@ -81,7 +81,7 @@ export function SearchableSelect({
           role="combobox"
           aria-expanded={open}
           disabled={disabled}
-          className={cn('w-full justify-between bg-background font-normal', triggerClassName)}
+          className={cn('w-full justify-between bg-white font-normal', triggerClassName)}
         >
           <span className="truncate">{selectedOption?.label || placeholder}</span>
           <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />

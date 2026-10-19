@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { AlertTriangle, Save } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -94,17 +94,32 @@ export function useOperationalStore(options?: { skipInitialLoad?: boolean }) {
   return { state, commit, loading: isLoading || stateLoading }
 }
 
+/** Nome do módulo mostrado em letras pequenas no cabeçalho (pelo caminho da página). */
+const moduleNames: Array<[string, string]> = [
+  ["/dashboard", "Dashboard"], ["/financeiro", "Financeiro"], ["/estoque", "Estoque"], ["/compras", "Compras"], ["/servicos", "Produtos / Serviços"],
+  ["/ordens-servico", "Ordens de Serviço"], ["/frota", "Frota"], ["/clientes", "Clientes & Fornecedores"], ["/comercial", "Comercial"],
+  ["/orcamento", "Orçamentos"], ["/contratos", "Contratos"], ["/relatorios", "Relatórios"], ["/logs-sistema", "Log do Sistema"], ["/configuracoes", "Configurações"],
+]
+
+/** Estrutura padrão de toda página do ERP: cabeçalho azul (módulo, título, subtítulo e ações) e o conteúdo abaixo. */
 export function PageShell({ title, description, actions, children }: { title: string; description: string; actions?: React.ReactNode; children: React.ReactNode }) {
+  const pathname = usePathname() || ""
+  const moduleName = moduleNames.find(([prefix]) => pathname === prefix || pathname.startsWith(`${prefix}/`))?.[1] || ""
   return (
     <PageLayout>
-      <div className="space-y-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight md:text-3xl">{title}</h1>
-            <p className="mt-1 max-w-3xl text-sm text-muted-foreground md:text-base">{description}</p>
+      <div className="mx-auto w-full max-w-[1680px] space-y-6">
+        <header className="page-banner relative overflow-hidden rounded-2xl bg-[var(--brand-dark)] px-5 py-5 text-white md:px-8 md:py-6">
+          <span aria-hidden className="pointer-events-none absolute -right-14 -top-20 h-56 w-56 rounded-full border-solid" style={{ borderWidth: 24, borderColor: "rgba(255,255,255,0.05)" }} />
+          <span aria-hidden className="pointer-events-none absolute -bottom-28 right-44 hidden h-48 w-48 rounded-full border-solid md:block" style={{ borderWidth: 20, borderColor: "rgba(255,255,255,0.04)" }} />
+          <div className="relative flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-blue-200/80">ND Carretas{moduleName ? ` · ${moduleName}` : ""}</p>
+              <h1 className="mt-1.5 text-2xl font-semibold tracking-tight md:text-[1.75rem] md:leading-tight">{title}</h1>
+              <p className="mt-1 max-w-3xl text-sm text-blue-100/80">{description}</p>
+            </div>
+            {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
           </div>
-          {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
-        </div>
+        </header>
         {children}
       </div>
     </PageLayout>
@@ -115,7 +130,7 @@ export function SectionCard({ title, description, children }: { title: string; d
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{title}</CardTitle>
+        <CardTitle className="text-base">{title}</CardTitle>
         {description ? <CardDescription>{description}</CardDescription> : null}
       </CardHeader>
       <CardContent>{children}</CardContent>
@@ -125,14 +140,15 @@ export function SectionCard({ title, description, children }: { title: string; d
 
 export function MetricCard({ title, value, note, icon: Icon, onClick }: { title: string; value: string | number; note: string; icon: React.ComponentType<{ className?: string }>; onClick?: () => void }) {
   return (
-    <Card onClick={onClick} className={onClick ? "cursor-pointer transition hover:border-primary/50 hover:shadow-md" : ""}>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
-        <Icon className="h-5 w-5 text-primary" />
-      </CardHeader>
-      <CardContent>
-        <div className="text-3xl font-bold">{value}</div>
-        <p className="mt-1 text-xs text-muted-foreground">{note}</p>
+    <Card onClick={onClick} className={`relative overflow-hidden ${onClick ? "cursor-pointer transition-shadow duration-150 hover:shadow-md" : ""}`}>
+      <span aria-hidden className="absolute inset-y-0 left-0 w-1 bg-primary" />
+      <CardContent className="py-3 pl-6 pr-5">
+        <div className="flex items-start justify-between gap-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{title}</p>
+          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[var(--brand-soft)] text-primary"><Icon className="h-4 w-4" /></span>
+        </div>
+        <div className="mt-2 text-[1.75rem] font-semibold leading-none tracking-tight tabular-nums">{value}</div>
+        <p className="mt-2 text-xs text-muted-foreground">{note}</p>
       </CardContent>
     </Card>
   )
@@ -160,11 +176,11 @@ export function StatusBadge({ status }: { status: string }) {
       Obrigatoria: "Obrigatória",
     }[status] || status
   const classes: Record<string, string> = {
-    default: "border-primary/20 bg-primary/10 text-primary",
-    success: "border-emerald-500/20 bg-emerald-500/10 text-emerald-700",
-    warning: "border-amber-500/20 bg-amber-500/10 text-amber-700",
-    danger: "border-red-500/20 bg-red-500/10 text-red-700",
-    muted: "border-border bg-muted text-muted-foreground",
+    default: "border-blue-200 bg-blue-50 text-blue-700",
+    success: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    warning: "border-amber-200 bg-amber-50 text-amber-700",
+    danger: "border-red-200 bg-red-50 text-red-700",
+    muted: "border-slate-200 bg-slate-100 text-slate-600",
   }
   return <Badge variant="outline" className={classes[tone]}>{label}</Badge>
 }
@@ -186,7 +202,7 @@ export function DataTable({
 }) {
   return (
     <Table containerClassName={viewportClassName} className={tableClassName}>
-      <TableHeader className={stickyHeader ? "sticky top-0 z-20 bg-card shadow-[0_1px_0_hsl(var(--border))]" : undefined}>
+      <TableHeader className={stickyHeader ? "sticky top-0 z-20" : undefined}>
         <TableRow>{headers.map((header) => <TableHead key={header}>{header}</TableHead>)}</TableRow>
       </TableHeader>
       <TableBody>
