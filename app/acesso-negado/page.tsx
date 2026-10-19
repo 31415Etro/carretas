@@ -2,6 +2,7 @@
 
 import { LockKeyhole } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { AppFooter } from "@/components/shell/app-footer"
 import { useAuth } from "@/lib/auth-context"
 
 export default function AccessDeniedPage() {
@@ -14,6 +15,7 @@ export default function AccessDeniedPage() {
         <p className="mt-2 text-sm text-muted-foreground">Este usuario nao possui nenhuma pagina selecionada. Solicite a um administrador que ajuste as permissoes.</p>
         <Button className="mt-5" variant="outline" onClick={logout}>Sair</Button>
       </section>
+      <AppFooter className="absolute inset-x-0 bottom-4 px-4" />
     </main>
   )
 }

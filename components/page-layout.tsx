@@ -4,6 +4,7 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { DesktopSidebar, MobileBar, useSidebarCollapsed } from "@/components/shell/app-sidebar"
+import { AppFooter } from "@/components/shell/app-footer"
 import { useAuth } from "@/lib/auth-context"
 
 export function PageLayout({ children }: { children: React.ReactNode }) {
@@ -71,6 +72,7 @@ export function PageLayout({ children }: { children: React.ReactNode }) {
       <MobileBar />
       <main className={`min-w-0 p-4 transition-[margin] duration-200 ease-out md:p-6 lg:p-8 ${collapsed ? "md:ml-[var(--sidebar-width-collapsed)]" : "md:ml-[var(--sidebar-width)]"}`}>
         {children}
+        <AppFooter className="mt-8 border-t border-slate-200 pt-4" />
       </main>
     </div>
   )
