@@ -31,6 +31,7 @@ export function PageLayout({ children }: { children: React.ReactNode }) {
       { href: "/compras", permission: "compras" },
       { href: "/servicos", permission: "produtos_servicos" },
       { href: "/materias-primas", permission: "produtos_servicos" },
+      { href: "/kits", permission: "produtos_servicos" },
       { href: "/ordens-servico", permission: "ordens_servico" },
       { href: "/frota", permission: "frota" },
       { href: "/maquinas", permission: "maquinas" },

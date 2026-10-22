@@ -29,6 +29,8 @@ No **SQL Editor** do staging, na ordem, copie e rode cada arquivo de `scripts/su
 | 7 | `scripts/217_itens_estrutura.sql` |
 | 8 | `scripts/218_kits_e_estrutura_de_produto.sql` |
 | 9 | `scripts/219_vendas_producao_mrp.sql` |
+| 10 | `scripts/220_materia_prima_consultas.sql` |
+| 11 | `scripts/221_kits_consultas_e_conversao.sql` |
 
 Cada script é **idempotente**: se rodar duas vezes, não duplica nada.
 
@@ -45,7 +47,7 @@ Crie o usuário de teste em Authentication > Users e rode `scripts/supabase/` (a
 ### 4.1 Sem staging, em Postgres local descartável (já funciona hoje)
 ```
 npm install
-npm run test:sql      # 17 testes de SQL em Postgres local (PGlite): carrega o schema inteiro + 217–219
+npm run test:sql      # 36 testes de SQL em Postgres local (PGlite): carrega o schema inteiro + 217–219
 npm test              # testes das bibliotecas (inclui o NCM)
 ```
 O teste sobe um Postgres em memória, aplica todo o schema do projeto e as migrações novas, e executa o fluxo completo (matéria-prima → kit → produto → pedido → ordem → MRP → compra → consumo → conclusão), concorrência por estoque, duplicidade de ordens, cancelamento, isolamento entre empresas, idempotência dos scripts e o comportamento em banco com SKU repetido.

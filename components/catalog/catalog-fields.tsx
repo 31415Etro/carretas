@@ -58,7 +58,7 @@ export function Num({ label, value, onChange, error, hint, suffix, placeholder }
 
 /** SKU: automático (MP-000001) ou manual. Em edição fica travado; item com histórico só troca informando o motivo. */
 export function SkuField({ form, set, error, reasonError, editing, hasHistory, originalSku, prefix = "MP" }: {
-  form: Pick<RawMaterialForm, "sku" | "autoSku" | "skuChangeReason">; set: (patch: Partial<RawMaterialForm>) => void; error?: string; reasonError?: string
+  form: { sku: string; autoSku: boolean; skuChangeReason?: string }; set: (patch: { sku?: string; autoSku?: boolean; skuChangeReason?: string }) => void; error?: string; reasonError?: string
   editing?: boolean; hasHistory?: boolean; originalSku?: string; prefix?: string
 }) {
   const [unlocked, setUnlocked] = useState(false)

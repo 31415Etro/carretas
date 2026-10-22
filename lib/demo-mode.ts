@@ -41,8 +41,52 @@ const demoRawMaterialDetail = (id: string) => {
   }
 }
 
+/** Kits FICTÍCIOS só para visualizar as telas no modo de demonstração. */
+const demoKits = [
+  { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1", sku: "KIT-000001", name: "Kit Chassi FZ 1E (DEMO)", category: "Chassi", status: "Ativo", photo_url: null, updated_at: "2026-10-20T12:00:00Z", version_id: "v2", version: 2, version_status: "Ativa", components_count: 3, cost: 215.4, products_count: 2, last_change: "2026-10-21T15:30:00Z", total_count: 3 },
+  { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2", sku: "KIT-000002", name: "Kit Elétrica (DEMO)", category: "Elétrica", status: "Ativo", photo_url: null, updated_at: "2026-10-19T12:00:00Z", version_id: "v1", version: 1, version_status: "Ativa", components_count: 5, cost: 88.9, products_count: 1, last_change: "2026-10-19T12:00:00Z", total_count: 3 },
+  { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3", sku: "CARFZ1CAR", name: "FZ1E (DEMO, cadastro antigo)", category: null, status: "Ativo", photo_url: null, updated_at: "2026-10-18T12:00:00Z", version_id: null, version: null, version_status: null, components_count: 0, cost: 0, products_count: 0, last_change: "2026-10-18T12:00:00Z", total_count: 3 },
+]
+const demoKitComponents = (version: number) => [
+  { id: "c1", component_id: "11111111-1111-4111-8111-111111111111", sku: "MP-000001", name: "Perfil de aço U 6 m (DEMO)", category: "Perfis", item_type: "Materia-prima", status: "Ativo", position: 0, quantity: version === 1 ? 4 : 6, unit: "M", loss_percent: 5, notes: null, material_unit: "M", quantity_in_material_unit: version === 1 ? 4 : 6, required_with_loss: version === 1 ? 4.2 : 6.3, unit_cost: 12.4, line_cost: version === 1 ? 52.08 : 78.12, available: 50, units: [{ unit: "BARRA", factor: 6 }, { unit: "CM", factor: 0.01 }, { unit: "M", factor: 1 }, { unit: "MM", factor: 0.001 }] },
+  { id: "c2", component_id: "22222222-2222-4222-8222-222222222222", sku: "MP-000002", name: "Parafuso sextavado M10 (DEMO)", category: "Fixação", item_type: "Materia-prima", status: "Ativo", position: 1, quantity: 16, unit: "UN", loss_percent: 0, notes: null, material_unit: "UN", quantity_in_material_unit: 16, required_with_loss: 16, unit_cost: 0.85, line_cost: 13.6, available: 1920, units: [{ unit: "UN", factor: 1 }] },
+  ...(version === 2 ? [{ id: "c3", component_id: "33333333-3333-4333-8333-333333333333", sku: "MP-000003", name: "Chapa de aço 3 mm (DEMO)", category: "Chapas", item_type: "Materia-prima", status: "Ativo", position: 2, quantity: 0.5, unit: "UN", loss_percent: 0, notes: null, material_unit: "UN", quantity_in_material_unit: 0.5, required_with_loss: 0.5, unit_cost: 310, line_cost: 155, available: 0, units: [{ unit: "UN", factor: 1 }] }] : []),
+]
+const demoKitDetail = (id: string, versionId: string | null) => {
+  const shown = versionId === "v1" ? 1 : 2
+  const kit = demoKits.find((item) => item.id === id) || demoKits[0]
+  const components = demoKitComponents(shown)
+  return {
+    detail: {
+      kit: { id: kit.id, name: kit.name, internal_code: kit.sku, category: kit.category, status: kit.status, description: "Estrutura do chassi: perfis, chapa e fixação (texto de demonstração).", photo_url: null, updated_at: kit.updated_at, item_type: "Kit" },
+      current_version_id: "v2", shown_version_id: shown === 1 ? "v1" : "v2",
+      versions: [
+        { id: "v3", version: 3, status: "Rascunho", composition_kind: "fabricacao", notes: "troca do perfil por modelo mais leve", created_by: "ana@demo.com", created_at: "2026-10-22T09:00:00Z", activated_at: null, components_count: 3, cost: 190.2, used_in_production: false, used_by_products: 0 },
+        { id: "v2", version: 2, status: "Ativa", composition_kind: "fabricacao", notes: "inclui chapa", created_by: "ana@demo.com", created_at: "2026-10-15T09:00:00Z", activated_at: "2026-10-15T10:00:00Z", components_count: 3, cost: 215.4, used_in_production: true, used_by_products: 2 },
+        { id: "v1", version: 1, status: "Obsoleta", composition_kind: "fabricacao", notes: "original", created_by: "joao@demo.com", created_at: "2026-09-30T09:00:00Z", activated_at: "2026-09-30T10:00:00Z", components_count: 2, cost: 65.68, used_in_production: true, used_by_products: 0 },
+      ],
+      components, cost: components.reduce((sum, item) => sum + item.line_cost, 0),
+      products: [
+        { product_id: "p1", sku: "PRD-000001", name: "Carreta FZ 1E (DEMO)", status: "Ativo", bom_version_id: "b1", bom_version: 1, bom_status: "Ativa", quantity: 1, pinned_kit_version: null, follows_active: true },
+        { product_id: "p2", sku: "PRD-000002", name: "Carreta FZ 2E (DEMO)", status: "Ativo", bom_version_id: "b2", bom_version: 3, bom_status: "Ativa", quantity: 2, pinned_kit_version: 2, follows_active: false },
+      ],
+      cost_history: [{ id: "h1", total_cost: 215.4, computed_at: "2026-10-21T15:30:00Z", version: 2 }, { id: "h2", total_cost: 209.9, computed_at: "2026-10-15T10:00:00Z", version: 2 }, { id: "h3", total_cost: 65.68, computed_at: "2026-09-30T10:00:00Z", version: 1 }],
+      change_log: [
+        { id: "l1", action: "versao_criada", description: "Versão 3 criada em rascunho.", detail: null, changed_by: "ana@demo.com", changed_at: "2026-10-22T09:00:00Z", version: 3 },
+        { id: "l2", action: "componente_alterado", description: "v2: Perfil de aço U 6 m (DEMO) passou de 4 M para 6 M.", detail: null, changed_by: "ana@demo.com", changed_at: "2026-10-15T09:30:00Z", version: 2 },
+        { id: "l3", action: "versao_ativada", description: "Versão 2 ativada (passou a ser a vigente).", detail: null, changed_by: "ana@demo.com", changed_at: "2026-10-15T10:00:00Z", version: 2 },
+      ],
+      used_in_production: true,
+    },
+  }
+}
+
 /** Resposta genérica das APIs no modo de demonstração. */
 export function demoApiPayload(pathname: string) {
+  if (pathname === "/api/kits") return { items: demoKits, total: demoKits.length, page: 1, pageSize: 25 }
+  if (pathname === "/api/kits/materiais") return { items: demoRawMaterials.map((item) => ({ id: item.id, sku: item.sku, name: item.name, category: item.category, unit: item.unit, unit_cost: item.unit_cost, available: item.available, units: [{ unit: item.unit, factor: 1 }] })) }
+  const kitMatch = pathname.match(/^\/api\/kits\/([0-9a-f-]{36})$/)
+  if (kitMatch) return demoKitDetail(kitMatch[1], null)
   const rawMaterialMatch = pathname.match(/^\/api\/materias-primas\/([0-9a-f-]{36})$/)
   if (rawMaterialMatch) { const payload = demoRawMaterialDetail(rawMaterialMatch[1]); return { ...payload, form: formFromMaterial(payload.detail.material, payload.detail.suppliers) } }
   if (pathname === "/api/materias-primas") return { items: demoRawMaterials }
