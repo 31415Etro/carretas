@@ -96,7 +96,7 @@ export function useOperationalStore(options?: { skipInitialLoad?: boolean }) {
 
 /** Nome do módulo mostrado em letras pequenas no cabeçalho (pelo caminho da página). */
 const moduleNames: Array<[string, string]> = [
-  ["/dashboard", "Dashboard"], ["/financeiro", "Financeiro"], ["/estoque", "Estoque"], ["/compras", "Compras"], ["/servicos", "Produtos / Serviços"],
+  ["/dashboard", "Dashboard"], ["/financeiro", "Financeiro"], ["/estoque", "Estoque"], ["/compras", "Compras"], ["/servicos", "Produtos / Serviços"], ["/materias-primas", "Matérias-primas"],
   ["/ordens-servico", "Ordens de Serviço"], ["/frota", "Frota"], ["/maquinas", "Máquinas e Equipamentos"], ["/clientes", "Clientes & Fornecedores"], ["/comercial", "Comercial"],
   ["/orcamento", "Orçamentos"], ["/contratos", "Contratos"], ["/relatorios", "Relatórios"], ["/logs-sistema", "Log do Sistema"], ["/configuracoes", "Configurações"],
 ]

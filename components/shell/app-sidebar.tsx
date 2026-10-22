@@ -6,6 +6,7 @@ import { useEffect, useState } from "react"
 import {
   Activity, BarChart3, Building2, Calculator, Car, Check, ChevronsUpDown, ClipboardList, Factory, FileText, Landmark, LayoutDashboard, LogOut,
   MapPinned, Menu, Package, PanelLeftClose, PanelLeftOpen, Settings2, ShoppingCart, Users, Wrench, X,
+  Boxes,
 } from "lucide-react"
 import { BrandMark } from "@/components/shell/brand-mark"
 import { Button } from "@/components/ui/button"
@@ -25,6 +26,7 @@ const groups: NavGroup[] = [
     { label: "Financeiro", href: "/financeiro", permission: "financeiro", icon: Landmark },
     { label: "Estoque", href: "/estoque", permission: "estoque", icon: Package },
     { label: "Compras", href: "/compras", permission: "compras", icon: ShoppingCart },
+    { label: "Matérias-primas", href: "/materias-primas", permission: "produtos_servicos", icon: Boxes },
     { label: "Produtos / Serviços", href: "/servicos", permission: "produtos_servicos", icon: Wrench },
     { label: "Ordens de Serviço", href: "/ordens-servico", permission: "ordens_servico", icon: ClipboardList },
     { label: "Frota", href: "/frota", permission: "frota", icon: Car },
