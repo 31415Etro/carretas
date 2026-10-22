@@ -3,6 +3,7 @@
     { "path": "/api/contratos/cron", "schedule": "0 9 * * *" },
     { "path": "/api/relatorios/cron", "schedule": "30 9 * * *" },
     { "path": "/api/auditoria/cron", "schedule": "0 3 * * *" },
-    { "path": "/api/notificacoes/cron", "schedule": "0 8 * * *" }
+    { "path": "/api/notificacoes/cron", "schedule": "0 8 * * *" },
+    { "path": "/api/maquinas/cron", "schedule": "15 8 * * *" }
   ]
 }

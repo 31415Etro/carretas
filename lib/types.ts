@@ -9,6 +9,9 @@ export type PagePermission =
   | "produtos_servicos"
   | "ordens_servico"
   | "frota"
+  | "maquinas"
+  | "maquinas_manutencao"
+  | "maquinas_patrimonio"
   | "clientes"
   | "comercial"
   | "orcamento"
@@ -24,6 +27,9 @@ export const systemPagePermissions: PagePermission[] = [
   "produtos_servicos",
   "ordens_servico",
   "frota",
+  "maquinas",
+  "maquinas_manutencao",
+  "maquinas_patrimonio",
   "clientes",
   "comercial",
   "orcamento",
@@ -40,6 +46,9 @@ export const pagePermissionLabels: Record<PagePermission, string> = {
   produtos_servicos: "Produtos / Serviços",
   ordens_servico: "Ordens de Serviço",
   frota: "Frota",
+  maquinas: "Máquinas e Equipamentos",
+  maquinas_manutencao: "Máquinas: manutentor (status, manutenção, horímetro)",
+  maquinas_patrimonio: "Máquinas: dados patrimoniais e financeiros",
   clientes: "Clientes e Fornecedores",
   comercial: "Comercial",
   orcamento: "Orçamentos",
