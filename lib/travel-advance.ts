@@ -68,3 +68,26 @@ export function receiptStatusLabel(status: ReceiptStatus) {
 export const CATEGORY_LABEL: Record<string, string> = {
   Alimentacao: "Alimentação", Combustivel: "Combustível", Hospedagem: "Hospedagem", Transporte: "Transporte", Estacionamento: "Estacionamento", Pedagio: "Pedágio", Outros: "Outros",
 }
+
+/** Categorias que podem ganhar um teto dentro do orçamento (mesma ordem em toda a tela). */
+export const BUDGETABLE_CATEGORIES = ["Hospedagem", "Alimentacao", "Combustivel", "Transporte", "Estacionamento", "Pedagio", "Outros"] as const
+export type CategoryBudgets = Partial<Record<string, number>>
+
+export type CategorySummary = { category: string; budget: number; spent: number; remaining: number; overspent: boolean }
+
+/** Soma dos sub-orçamentos preenchidos: não pode passar do valor total (o resto fica "não dividido", sem teto). */
+export function validateCategoryBudgets(total: number, budgets: CategoryBudgets) {
+  const sum = Math.round(Object.values(budgets).reduce((acc: number, value) => acc + Number(value || 0), 0) * 100) / 100
+  if (sum > total + 0.004) return { ok: false as const, reason: `A soma dos sub-orçamentos (${sum}) passa do valor total do orçamento (${total}).`, sum }
+  return { ok: true as const, sum }
+}
+
+/** Gasto por categoria, só para as que o financeiro deu um teto: é informativo (não bloqueia o envio de notinhas nem a finalização). */
+export function summarizeCategories(budgets: CategoryBudgets, receipts: Array<{ category: string; amount: number }>): CategorySummary[] {
+  return BUDGETABLE_CATEGORIES.filter((category) => Number(budgets[category] || 0) > 0).map((category) => {
+    const budget = Number(budgets[category] || 0)
+    const spent = Math.round(receipts.filter((receipt) => receipt.category === category).reduce((sum, receipt) => sum + Number(receipt.amount || 0), 0) * 100) / 100
+    const remaining = Math.round((budget - spent) * 100) / 100
+    return { category, budget, spent, remaining, overspent: remaining < 0 }
+  })
+}

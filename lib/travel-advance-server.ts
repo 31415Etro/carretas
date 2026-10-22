@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto"
 import type { createAdminClient } from "@/lib/supabase/server"
 import { categorizeReceipt, parseReceiptText } from "@/lib/receipt-ocr"
-import { canFinalize, canUpload, needsSettlementChoice, summarizeAdvance, type SettlementAction } from "@/lib/travel-advance"
+import { canFinalize, canUpload, needsSettlementChoice, summarizeAdvance, summarizeCategories, validateCategoryBudgets, type CategoryBudgets, type SettlementAction } from "@/lib/travel-advance"
 
 type Admin = ReturnType<typeof createAdminClient>
 export const ADVANCE_MIGRATION_HINT = "Orçamento de viagem ainda não instalado no banco. Rode scripts/217_orcamento_viagem.sql no SQL Editor do Supabase."
@@ -29,13 +29,15 @@ export async function listEmployeeOptions(admin: Admin) {
   }))
 }
 
-export type CreateAdvanceInput = { employeeId: string; reason: string; amount: number; startDate: string; endDate: string; bank: BankSnapshot }
+export type CreateAdvanceInput = { employeeId: string; reason: string; amount: number; startDate: string; endDate: string; bank: BankSnapshot; categoryBudgets: CategoryBudgets }
 
 /** Cria o orçamento de viagem, gera o link e salva/atualiza os dados bancários do funcionário no cadastro (para reaproveitar da próxima vez). */
 export async function createAdvance(admin: Admin, input: CreateAdvanceInput, createdBy: string) {
   if (!input.employeeId) throw new Error("Escolha o funcionário.")
   if (!(input.amount > 0)) throw new Error("Informe um valor maior que zero.")
   if (!input.startDate || !input.endDate || input.endDate < input.startDate) throw new Error("Período inválido.")
+  const budgetCheck = validateCategoryBudgets(input.amount, input.categoryBudgets)
+  if (!budgetCheck.ok) throw new Error(budgetCheck.reason)
   const { data: employee, error: employeeError } = await admin.from("profiles").select("id,full_name,email").eq("id", input.employeeId).maybeSingle()
   if (employeeError) throw employeeError
   if (!employee) throw new Error("Funcionário não encontrado.")
@@ -47,7 +49,7 @@ export async function createAdvance(admin: Admin, input: CreateAdvanceInput, cre
 
   const row = {
     token: newToken(), employee_id: input.employeeId, employee_name: String(employee.full_name || employee.email || ""), employee_email: employee.email || null,
-    reason: input.reason.slice(0, 300), amount: input.amount, start_date: input.startDate, end_date: input.endDate, bank_snapshot: input.bank, created_by: createdBy,
+    reason: input.reason.slice(0, 300), amount: input.amount, category_budgets: input.categoryBudgets, start_date: input.startDate, end_date: input.endDate, bank_snapshot: input.bank, created_by: createdBy,
   }
   const { data, error } = await admin.from("travel_advances").insert(row).select("id,token").single()
   if (error) throw advanceError(error, "Erro ao criar o orçamento de viagem.")
@@ -55,13 +57,13 @@ export async function createAdvance(admin: Admin, input: CreateAdvanceInput, cre
 }
 
 async function withReceipts<T extends { id: string }>(admin: Admin, advances: T[]) {
-  if (!advances.length) return advances.map((advance) => ({ ...advance, receipts: [] as Array<{ id: string; amount: number; status: string }> }))
-  const { data, error } = await admin.from("travel_advance_receipts").select("id,advance_id,amount,status").in("advance_id", advances.map((advance) => advance.id))
+  if (!advances.length) return advances.map((advance) => ({ ...advance, receipts: [] as Array<{ id: string; amount: number; status: string; category: string }> }))
+  const { data, error } = await admin.from("travel_advance_receipts").select("id,advance_id,amount,status,category").in("advance_id", advances.map((advance) => advance.id))
   if (error) throw error
-  const byAdvance = new Map<string, Array<{ id: string; amount: number; status: string }>>()
+  const byAdvance = new Map<string, Array<{ id: string; amount: number; status: string; category: string }>>()
   for (const row of data || []) {
     const list = byAdvance.get(String(row.advance_id)) || []
-    list.push({ id: String(row.id), amount: Number(row.amount), status: String(row.status) })
+    list.push({ id: String(row.id), amount: Number(row.amount), status: String(row.status), category: String(row.category) })
     byAdvance.set(String(row.advance_id), list)
   }
   return advances.map((advance) => ({ ...advance, receipts: byAdvance.get(advance.id) || [] }))
@@ -72,7 +74,7 @@ export async function listAdvances(admin: Admin) {
   const { data, error } = await admin.from("travel_advances").select("*").order("created_at", { ascending: false }).limit(300)
   if (error) throw advanceError(error, "Erro ao carregar os orçamentos de viagem.")
   const withReceiptsData = await withReceipts(admin, data || [])
-  return withReceiptsData.map((row) => ({ ...row, summary: summarizeAdvance(Number(row.amount), row.receipts) }))
+  return withReceiptsData.map((row) => ({ ...row, summary: summarizeAdvance(Number(row.amount), row.receipts), categories: summarizeCategories(row.category_budgets || {}, row.receipts) }))
 }
 
 /** Notas pendentes de revisão (de orçamentos de viagem já finalizados pelo funcionário): a "página de pendências". */
@@ -92,7 +94,7 @@ export async function getAdvanceDetail(admin: Admin, id: string) {
   if (!advance) throw new Error("Orçamento de viagem não encontrado.")
   const { data: receipts, error: receiptsError } = await admin.from("travel_advance_receipts").select("*").eq("advance_id", id).order("created_at", { ascending: false })
   if (receiptsError) throw receiptsError
-  return { ...advance, receipts: receipts || [], summary: summarizeAdvance(Number(advance.amount), receipts || []) }
+  return { ...advance, receipts: receipts || [], summary: summarizeAdvance(Number(advance.amount), receipts || []), categories: summarizeCategories(advance.category_budgets || {}, receipts || []) }
 }
 
 export async function reviewReceipt(admin: Admin, receiptId: string, action: "aprovar" | "contestar", note: string, reviewer: string) {
@@ -150,11 +152,12 @@ export async function getByToken(admin: Admin, token: string) {
 export async function portalState(admin: Admin, token: string) {
   const { advance, receipts } = await getByToken(admin, token)
   const summary = summarizeAdvance(Number(advance.amount), receipts)
+  const categoryBudgets: CategoryBudgets = advance.category_budgets || {}
   return {
     id: advance.id, reason: advance.reason, amount: Number(advance.amount), startDate: advance.start_date, endDate: advance.end_date,
     status: advance.status, employeeName: advance.employee_name, ownPocketJustification: advance.own_pocket_justification,
     settlementAction: advance.settlement_action, settlementResolved: advance.settlement_resolved,
-    canUpload: canUpload(advance.status, advance.end_date), summary,
+    canUpload: canUpload(advance.status, advance.end_date), summary, categories: summarizeCategories(categoryBudgets, receipts),
     receipts: receipts.map((row) => ({ id: row.id, photoUrl: row.photo_url, amount: Number(row.amount), establishment: row.establishment, category: row.category, occurredAt: row.occurred_at, status: row.status, reviewNote: row.review_note })),
   }
 }

@@ -16,6 +16,7 @@ create table if not exists public.travel_advances (
   employee_email text,
   reason text not null default '',
   amount numeric(14,2) not null check (amount > 0),
+  category_budgets jsonb not null default '{}'::jsonb,
   start_date date not null,
   end_date date not null check (end_date >= start_date),
   status text not null default 'Aberto' check (status in ('Aberto', 'Finalizado', 'Concluido', 'Cancelado')),

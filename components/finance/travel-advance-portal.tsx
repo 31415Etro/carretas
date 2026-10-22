@@ -12,10 +12,12 @@ import { ocrReceiptImage } from "@/lib/ocr-client"
 import { CATEGORY_LABEL } from "@/lib/travel-advance"
 
 type PortalReceipt = { id: string; photoUrl: string; amount: number; establishment: string; category: string; occurredAt: string | null; status: string; reviewNote: string }
+type CategorySummary = { category: string; budget: number; spent: number; remaining: number; overspent: boolean }
 type PortalState = {
   reason: string; amount: number; startDate: string; endDate: string; status: "Aberto" | "Finalizado" | "Concluido" | "Cancelado"
   employeeName: string; ownPocketJustification: string; settlementAction: string | null; settlementResolved: boolean; canUpload: boolean
   summary: { budget: number; spent: number; remaining: number; overspent: boolean; overspentAmount: number }
+  categories: CategorySummary[]
   receipts: PortalReceipt[]
 }
 
@@ -151,6 +153,23 @@ export function TravelAdvancePortal({ token }: { token: string }) {
         {state.status === "Concluido" ? <p className="mt-3 flex items-center gap-2 rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-800"><CheckCircle2 className="h-4 w-4 shrink-0" />Prestação de contas concluída. Obrigado!</p> : null}
         {state.status === "Cancelado" ? <p className="mt-3 flex items-center gap-2 rounded-md border border-slate-300 bg-slate-100 p-3 text-sm text-slate-700"><X className="h-4 w-4 shrink-0" />Este orçamento de viagem foi cancelado.</p> : null}
       </Card>
+
+      {state.categories.length > 0 ? (
+        <Card>
+          <p className="mb-3 text-sm font-semibold text-slate-700">Divisão do orçamento</p>
+          <div className="space-y-3">
+            {state.categories.map((item) => {
+              const itemPct = item.budget > 0 ? Math.min(100, (item.spent / item.budget) * 100) : 0
+              return (
+                <div key={item.category}>
+                  <div className="flex items-center justify-between text-sm"><span>{CATEGORY_LABEL[item.category] || item.category}</span><span className={item.overspent ? "font-medium text-red-600" : "text-slate-600"}>{brl(item.spent)} de {brl(item.budget)}</span></div>
+                  <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full ${item.overspent ? "bg-red-500" : "bg-[var(--brand)]"}`} style={{ width: `${itemPct}%` }} /></div>
+                </div>
+              )
+            })}
+          </div>
+        </Card>
+      ) : null}
 
       {contested.length > 0 ? (
         <Card>

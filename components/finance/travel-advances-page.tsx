@@ -11,20 +11,25 @@ import { TableCell, TableRow } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { DataTable, FormSheet, PageShell, SaveButton, SearchableSelectField, SectionCard, SelectField, StatusBadge, TextAreaField, TextField, useCrudFeedback } from "@/components/operations/shared"
 import { accountTypes } from "@/lib/registry"
-import { CATEGORY_LABEL, statusLabel } from "@/lib/travel-advance"
+import { BUDGETABLE_CATEGORIES, CATEGORY_LABEL, statusLabel, validateCategoryBudgets } from "@/lib/travel-advance"
 
 type Bank = { bankName: string; bankAgency: string; bankAccount: string; bankAccountType: string; pixKey: string }
 type Employee = { id: string; name: string; email: string; bank: Bank }
 type Receipt = { id: string; photo_url: string; amount: number; establishment: string; category: string; occurred_at: string | null; status: string; review_note: string; advance_id?: string; advance?: { id: string; employee_name: string; reason: string; amount: number; end_date: string } }
+type CategorySummary = { category: string; budget: number; spent: number; remaining: number; overspent: boolean }
 type Advance = {
   id: string; token: string; employee_name: string; reason: string; amount: number; start_date: string; end_date: string; status: string
   own_pocket_justification: string; settlement_action: string | null; settlement_resolved: boolean; receipts: Array<{ status: string }>
-  summary: { budget: number; spent: number; remaining: number; overspent: boolean }
+  summary: { budget: number; spent: number; remaining: number; overspent: boolean }; categories: CategorySummary[]
 }
 
 const brl = (value: unknown) => Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
 const day = (value?: string | null) => (value ? value.split("-").reverse().join("/") : "-")
-const emptyForm = () => ({ employeeId: "", reason: "", amount: "", startDate: new Date().toISOString().slice(0, 10), endDate: "", bank: { bankName: "", bankAgency: "", bankAccount: "", bankAccountType: "", pixKey: "" } as Bank })
+const emptyForm = () => ({
+  employeeId: "", reason: "", amount: "", startDate: new Date().toISOString().slice(0, 10), endDate: "",
+  bank: { bankName: "", bankAgency: "", bankAccount: "", bankAccountType: "", pixKey: "" } as Bank,
+  categoryBudgets: Object.fromEntries(BUDGETABLE_CATEGORIES.map((category) => [category, ""])) as Record<string, string>,
+})
 
 async function send<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { cache: "no-store", ...init })
@@ -78,11 +83,14 @@ export function TravelAdvancesPage() {
 
   async function createAdvance() {
     if (!requireFields([["funcionário", form.employeeId], ["valor", form.amount], ["data final", form.endDate]])) return
+    const categoryBudgets = Object.fromEntries(Object.entries(form.categoryBudgets).map(([category, value]): [string, number] => [category, Number(value) || 0]).filter(([, value]) => value > 0))
+    const check = validateCategoryBudgets(Number(form.amount), categoryBudgets)
+    if (!check.ok) { toast({ title: "Sub-orçamentos passam do total", description: check.reason, variant: "destructive" }); return }
     setSaving(true)
     try {
       const result = await send<{ id: string; link: string }>("/api/financeiro/orcamento-viagem", {
         method: "POST",
-        body: JSON.stringify({ employeeId: form.employeeId, reason: form.reason, amount: Number(form.amount), startDate: form.startDate, endDate: form.endDate, bank: form.bank }),
+        body: JSON.stringify({ employeeId: form.employeeId, reason: form.reason, amount: Number(form.amount), startDate: form.startDate, endDate: form.endDate, bank: form.bank, categoryBudgets }),
       })
       setLink(`${window.location.origin}${result.link}`)
       setForm(emptyForm())
@@ -201,6 +209,21 @@ export function TravelAdvancesPage() {
               <div className="space-y-2"><Label>Prazo final</Label><Input type="date" min={form.startDate} value={form.endDate} onChange={(event) => setForm((current) => ({ ...current, endDate: event.target.value }))} /></div>
             </div>
             <div className="rounded-md border p-3">
+              <p className="mb-1 text-sm font-medium">Sub-orçamentos (opcional)</p>
+              <p className="mb-3 text-xs text-muted-foreground">Divida o valor total em categorias (ex.: Hospedagem R$ 1.000, Alimentação R$ 900). É só uma referência mostrada para o funcionário: não trava o envio de notinhas.</p>
+              <div className="grid gap-3 sm:grid-cols-3">
+                {BUDGETABLE_CATEGORIES.map((category) => (
+                  <TextField key={category} label={CATEGORY_LABEL[category]} type="number" value={form.categoryBudgets[category]} onChange={(value) => setForm((current) => ({ ...current, categoryBudgets: { ...current.categoryBudgets, [category]: value } }))} />
+                ))}
+              </div>
+              {(() => {
+                const allocated = Object.values(form.categoryBudgets).reduce((sum, value) => sum + (Number(value) || 0), 0)
+                const total = Number(form.amount) || 0
+                const left = Math.round((total - allocated) * 100) / 100
+                return allocated > 0 ? <p className={`mt-2 text-xs ${left < 0 ? "text-destructive" : "text-muted-foreground"}`}>{left < 0 ? `Passou do total em ${brl(-left)}.` : `Não dividido: ${brl(left)}.`}</p> : null
+              })()}
+            </div>
+            <div className="rounded-md border p-3">
               <p className="mb-3 text-sm font-medium">Dados da conta do funcionário</p>
               <div className="grid gap-3 sm:grid-cols-2">
                 <TextField label="Banco" value={form.bank.bankName} onChange={(value) => setForm((current) => ({ ...current, bank: { ...current.bank, bankName: value } }))} />
@@ -233,6 +256,17 @@ export function TravelAdvancesPage() {
                 </p>
               ) : null}
               {detail.settlement_action === "desconto_folha" ? <p className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm">Funcionário optou por descontar {brl(detail.summary.remaining)} do salário.</p> : null}
+              {detail.categories.length ? (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Sub-orçamentos</p>
+                  {detail.categories.map((item) => (
+                    <div key={item.category} className="text-sm">
+                      <div className="flex items-center justify-between"><span>{CATEGORY_LABEL[item.category] || item.category}</span><span className={item.overspent ? "text-destructive" : ""}>{brl(item.spent)} de {brl(item.budget)}</span></div>
+                      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full ${item.overspent ? "bg-destructive" : "bg-primary"}`} style={{ width: `${Math.min(100, (item.spent / item.budget) * 100)}%` }} /></div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
               <p className="text-xs text-muted-foreground">{detail.receipts.length} notinha(s) enviada(s). Use a seção "Pendências" acima para aprovar/contestar uma a uma.</p>
             </>
           ) : null}
