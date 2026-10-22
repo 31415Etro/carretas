@@ -37,6 +37,10 @@ export type ParsedInvoice = {
   warnings: string[]
   /** Leitura de foto/PDF: o total veio do campo VALOR TOTAL (e nao da soma das parcelas). */
   totalFromLabel?: boolean
+  /** Só NF-e (XML): finalidade (finNFe: 1 normal, 2 complementar, 3 ajuste, 4 devolução), tipo (tpNF: 0 entrada, 1 saída) e forma de pagamento (tPag; 90 = sem pagamento). */
+  purpose?: string
+  direction?: string
+  payment?: string
 }
 export type MyRole = "remetente" | "destinatario"
 
@@ -150,6 +154,9 @@ function parseNfe(root: XmlNode): ParsedInvoice {
     items,
     installments,
     warnings,
+    purpose: val(ide, "finNFe"),
+    direction: val(ide, "tpNF"),
+    payment: val(find(inf, "pag"), "detPag/tPag"),
   }
 }
 

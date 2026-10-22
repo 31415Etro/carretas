@@ -36,8 +36,9 @@ export function clientIp(headers: Headers) {
 
 export function originFor(pathname: string, hasUser: boolean): string {
   if (hasUser) return "Usuário"
-  if (pathname.endsWith("/cron")) return "Agendador"
+  if (pathname.endsWith("/cron") || pathname.startsWith("/api/financeiro/nf/sync")) return "Agendador"
   if (pathname.startsWith("/api/integrations/") || pathname.startsWith("/api/webhooks")) return "Integração"
+  if (pathname.startsWith("/api/adiantamentos/portal") || pathname.startsWith("/portal-adiantamento")) return "Portal do funcionário"
   return "Sistema"
 }
 

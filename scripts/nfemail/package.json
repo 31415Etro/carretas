@@ -1,0 +1,7 @@
+{
+  "name": "nfemail-sync",
+  "private": true,
+  "type": "module",
+  "description": "Importação automática de NFs do NFeMail para o ERP ND Carretas (roda na VPS)",
+  "dependencies": { "playwright-core": "^1.64.1" }
+}

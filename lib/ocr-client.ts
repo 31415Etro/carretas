@@ -126,3 +126,11 @@ export async function ocrInvoiceFile(file: File, progress: Progress = () => unde
   for (const image of images) texts.push(await ocrOneImage(image))
   return texts.join("\n")
 }
+
+/** Lê uma foto de notinha (cupom/recibo, não é DANFE): página inteira, sem o recorte "só o topo" usado para notas fiscais. */
+export async function ocrReceiptImage(file: File, progress: Progress = () => undefined) {
+  if (isHeicFile(file)) throw new Error("Fotos HEIC (iPhone) não são lidas. Envie em JPG ou PNG, ou tire um print.")
+  progressSink = progress
+  progress("Lendo a notinha...")
+  return recognize(await prepare(file, 1), "3")
+}

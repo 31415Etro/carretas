@@ -6,6 +6,7 @@ import { ocrInvoiceImage } from "@/lib/ocr-server"
 import { extractJpegImages, looksScanned } from "@/lib/pdf-images"
 import { findByDocument, saveRegistry } from "@/lib/registry-server"
 import { createHash, randomUUID } from "node:crypto"
+import { revenueKind } from "@/lib/nf-sync"
 import { counterpartOf, dedupeKey, findAccessKey, invoiceTitles, parseInvoicePdfText, parseInvoiceXml, roleWarnings, type InvoiceParty, type MyRole, type ParsedInvoice } from "@/lib/nfe-parser"
 import { extractPdfText } from "@/lib/pdf-text-extractor"
 
@@ -164,7 +165,7 @@ export async function previewInvoice(admin: Admin, input: InvoiceInput, role: My
   return { invoice, counterpart: enriched, existing, similar: { client: similarClient, supplier: similarSupplier }, duplicate: duplicate.data || null, warnings: [...invoice.warnings, ...roleWarnings(invoice, role, company?.cnpj || "")], dedupeKey: key }
 }
 
-export async function importInvoice(admin: Admin, input: InvoiceInput, role: MyRole, companyId: string, registerAs: "" | "cliente" | "fornecedor", responsible: string, launch = true) {
+export async function importInvoice(admin: Admin, input: InvoiceInput, role: MyRole, companyId: string, registerAs: "" | "cliente" | "fornecedor", responsible: string, launch = true, settleBefore = "") {
   const file = { name: input.fileName }
   const preview = await previewInvoice(admin, input, role, companyId)
   if (preview.duplicate) throw new Error("Esta nota já foi importada.")
@@ -229,10 +230,33 @@ export async function importInvoice(admin: Admin, input: InvoiceInput, role: MyR
         document_number: invoice.number || null, installment_number: parcels.length > 1 ? parcel.number : null, installment_count: parcels.length > 1 ? parcel.count : null, installment_group_id: group,
         source_type: kind === "pagar" ? "Compra" : "Venda", source_reference: invoice.accessKey || `NF ${number}`, created_by: responsible,
       })
+      // nota emitida: categoria de receita e linha da DRE da empresa (Receita Bruta)
+      let revenue: { category_id: string; dre_account_id: string | null } | null = null
+      if (kind === "receber") {
+        const wanted = revenueKind(invoice.items)
+        const { data: categories } = await admin.from("financial_categories").select("id,name,dre_account_id").eq("type", "entrada").eq("name", wanted).limit(1)
+        if (categories?.[0]) revenue = { category_id: String(categories[0].id), dre_account_id: categories[0].dre_account_id ? String(categories[0].dre_account_id) : null }
+      }
       const rows = parcels.map((parcel) => kind === "pagar"
         ? { ...base(parcel), supplier_id: supplierId, supplier_name: counterpart.name, paid_amount: 0 }
-        : { ...base(parcel), client_id: clientId, received_amount: 0 })
-      const inserted = await admin.from(kind === "pagar" ? "accounts_payable" : "accounts_receivable").insert(rows)
+        : { ...base(parcel), client_id: clientId, received_amount: 0, ...(revenue || {}) })
+      // Emitida de meses anteriores (settleBefore = 1º dia do mês corrente): já considerada recebida, entra como Entrada no dia do vencimento
+      const settled = settleBefore ? rows.filter((row) => String(row.due_date) < settleBefore) : []
+      const open = rows.filter((row) => !settled.includes(row))
+      // recebida de meses anteriores: não fica em Contas a Pagar (a saída é lançada em Entradas e Saídas pela rotina de lançar saídas)
+      if (kind === "receber" && settled.length) {
+        const entries = settled.map((row) => ({
+          id: randomUUID(), type: "entrada", description: row.description, client_id: clientId, competence_date: row.competence_date, due_date: row.due_date, realized_date: row.due_date,
+          expected_amount: row.expected_amount, realized_amount: row.expected_amount, status: "Realizado", origin: "Importacao NF", notes: row.notes, attachment_url: row.attachment_url,
+          category_id: (row as { category_id?: string }).category_id || null, dre_account_id: (row as { dre_account_id?: string | null }).dre_account_id || null,
+        }))
+        const entered = await admin.from("financial_transactions").insert(entries)
+        if (entered.error) {
+          await admin.from("imported_invoices").delete().eq("id", data.id)
+          throw new Error(`Entradas: ${entered.error.message}`)
+        }
+      }
+      const inserted = open.length ? await admin.from(kind === "pagar" ? "accounts_payable" : "accounts_receivable").insert(open) : { error: null }
       if (inserted.error) {
         await admin.from("imported_invoices").delete().eq("id", data.id) // não deixa a nota importada sem a conta
         throw new Error(`Contas a ${kind === "pagar" ? "Pagar" : "Receber"}: ${inserted.error.message}`)

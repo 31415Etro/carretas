@@ -14,14 +14,40 @@ const bad = (error: unknown, fallback: string) => {
   return NextResponse.json({ error: registryError(error, fallback).message }, { status: 400 })
 }
 
-/** Notas já importadas (mais recentes primeiro). `?warm=1` também deixa o OCR carregado para a primeira leitura. */
-export async function GET() {
+/**
+ * Notas já importadas, da emissão mais recente para a mais antiga.
+ * Filtros: papel (Destinatário = recebidas/entrada, Remetente = emitidas/saída), q (nome, CNPJ ou número), de/ate (emissão, yyyy-mm-dd), page, size.
+ */
+export async function GET(request: Request) {
   const context = await stockContext()
   if ("error" in context) return context.error
   try {
-    const { data, error } = await context.admin.from("imported_invoices").select("id,kind,number,series,issued_at,total_amount,my_role,issuer_name,issuer_document,recipient_name,recipient_document,counterpart_name,counterpart_document,counterpart_kind,created_at,created_by").order("created_at", { ascending: false }).limit(200)
+    const params = new URL(request.url).searchParams
+    const size = Math.min(200, Math.max(1, Number(params.get("size")) || 200))
+    const page = Math.max(1, Number(params.get("page")) || 1)
+    const role = params.get("papel") || ""
+    const term = (params.get("q") || "").replace(/[%,()*]/g, " ").trim()
+    const isDay = (value: string | null) => /^\d{4}-\d{2}-\d{2}$/.test(value || "")
+    const from = isDay(params.get("de")) ? params.get("de") : ""
+    const until = isDay(params.get("ate")) ? params.get("ate") : ""
+    const filtered = (query: any) => {
+      let next = query
+      if (role === "Remetente" || role === "Destinatário") next = next.eq("my_role", role)
+      if (term) next = next.or(["issuer_name", "recipient_name", "issuer_document", "recipient_document", "number"].map((column) => `${column}.ilike.%${term}%`).join(","))
+      if (from) next = next.gte("issued_at", `${from}T00:00:00-03:00`)
+      if (until) next = next.lte("issued_at", `${until}T23:59:59-03:00`)
+      return next
+    }
+    const columns = "id,kind,number,series,issued_at,total_amount,my_role,issuer_name,issuer_document,recipient_name,recipient_document,counterpart_name,counterpart_document,counterpart_kind,created_at,created_by"
+    const { data, error, count } = await filtered(context.admin.from("imported_invoices").select(columns, { count: "exact" })).order("issued_at", { ascending: false, nullsFirst: false }).range((page - 1) * size, page * size - 1)
     if (error) throw error
-    return NextResponse.json({ items: data || [] })
+    let sum = 0
+    for (let offset = 0; offset < (count || 0); offset += 1000) {
+      const part = await filtered(context.admin.from("imported_invoices").select("total_amount")).order("issued_at", { ascending: false, nullsFirst: false }).range(offset, offset + 999)
+      if (part.error) throw part.error
+      for (const row of part.data || []) sum += Number((row as { total_amount: number }).total_amount || 0)
+    }
+    return NextResponse.json({ items: data || [], total: count || 0, sum: Math.round(sum * 100) / 100, page, size })
   } catch (error) {
     return bad(error, "Erro ao carregar as notas importadas.")
   }

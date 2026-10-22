@@ -14,6 +14,11 @@ const publicPaths = [
   "/api/relatorios/cron",
   "/api/auditoria/cron",
   "/api/notificacoes/cron",
+  // Importação automática de NF (agendador local): autenticada por NF_SYNC_SECRET dentro da própria rota.
+  "/api/financeiro/nf/sync",
+  // Portal de adiantamento (link enviado ao funcionário): sem login; o token da URL é a autorização, validado dentro da rota.
+  "/portal-adiantamento",
+  "/api/adiantamentos/portal",
 ]
 
 const pagePermissions = [

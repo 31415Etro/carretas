@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { needsOcr, ocrInvoiceFile, warmClientOcr } from "@/lib/ocr-client"
+import { NfLedger } from "@/components/finance/nf-ledger"
 import { DataTable, PageShell, SectionCard, StatusBadge, useCrudFeedback } from "@/components/operations/shared"
 
 type Party = { document: string; personType: string; name: string; tradeName: string; stateRegistration: string; email: string; phone: string; zipCode: string; street: string; number: string; complement: string; district: string; city: string; state: string }
@@ -64,12 +65,10 @@ export function NfImportPage() {
   const [ocrText, setOcrText] = useState("")
   const [error, setError] = useState("")
   const [done, setDone] = useState("")
-  const [history, setHistory] = useState<Imported[]>([])
+  const [ledgerKey, setLedgerKey] = useState(0)
   const input = useRef<HTMLInputElement>(null)
 
-  const loadHistory = useCallback(async () => {
-    try { setHistory((await send<{ items: Imported[] }>("/api/financeiro/nf")).items) } catch (reason) { setError(reason instanceof Error ? reason.message : "") }
-  }, [])
+  const loadHistory = useCallback(async () => { setLedgerKey((value) => value + 1) }, [])
   useEffect(() => { void loadHistory() }, [loadHistory])
 
   function body(action: string, text = ocrText) {
@@ -201,18 +200,7 @@ export function NfImportPage() {
         </SectionCard>
       </> : null}
 
-      <SectionCard title="Notas importadas">
-        <DataTable headers={["Importada em", "Tipo", "NF", "Emissão", "Meu papel", "Parte contrária", "Cadastro", "Valor"]} empty={!history.length}>
-          {history.map((row) => (
-            <TableRow key={row.id}>
-              <TableCell>{day(row.created_at)}</TableCell><TableCell>{row.kind}</TableCell><TableCell>{row.number || "-"}{row.series ? `/${row.series}` : ""}</TableCell><TableCell>{day(row.issued_at)}</TableCell>
-              <TableCell>{row.my_role}</TableCell>
-              <TableCell>{row.counterpart_name || "-"}<div className="text-xs text-muted-foreground">{row.counterpart_document}</div></TableCell>
-              <TableCell>{row.counterpart_kind || "Não cadastrada"}</TableCell><TableCell>{brl(row.total_amount)}</TableCell>
-            </TableRow>
-          ))}
-        </DataTable>
-      </SectionCard>
+      <NfLedger refreshKey={ledgerKey} />
     </PageShell>
   )
 }
