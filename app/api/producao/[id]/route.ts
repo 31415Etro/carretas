@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { stockContext } from "@/lib/stock-api"
+import { releaseOf } from "@/lib/vehicle-documentation-server"
 import {
   cancelProductionOrder, changeProductionStatus, completeProduction, generateOrderPurchaseRequest, productionOrderDetail, recordConsumption, reserveMaterials, salesError, updateProductionPlan,
 } from "@/lib/sales-server"
@@ -13,6 +14,17 @@ const fail = (error: unknown) => {
   return NextResponse.json({ error: mapped.message }, { status: mapped.status })
 }
 
+const withRelease = async (admin: Parameters<typeof productionOrderDetail>[0], id: string) => {
+  const detail = await productionOrderDetail(admin, id)
+  const salesOrderId = detail.order?.sales_order_id
+  if (!salesOrderId) return { ...detail, release: { eligible: true, blockers: [] } }
+  try {
+    return { ...detail, release: await releaseOf(admin, String(salesOrderId)) }
+  } catch {
+    return detail  // script 224 ainda não instalado
+  }
+}
+
 /** Detalhes da ordem: kits e versões congelados, materiais (previsto, reservado, consumido), plano de materiais, consumos, lotes concluídos com custo, histórico e custos. */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const context = await stockContext()
@@ -20,7 +32,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const { id } = await params
   if (!uuid.test(id)) return NextResponse.json({ error: "Ordem inválida." }, { status: 400 })
   try {
-    return NextResponse.json({ detail: await productionOrderDetail(context.admin, id) })
+    return NextResponse.json({ detail: await withRelease(context.admin, id) })
   } catch (error) {
     return fail(error)
   }
@@ -53,7 +65,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       case "cancel": await cancelProductionOrder(context.admin, id, String(body.reason || "")); break
       default: return NextResponse.json({ error: "Ação desconhecida." }, { status: 400 })
     }
-    return NextResponse.json({ result, detail: await productionOrderDetail(context.admin, id) })
+    return NextResponse.json({ result, detail: await withRelease(context.admin, id) })
   } catch (error) {
     return fail(error)
   }

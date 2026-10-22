@@ -8,11 +8,15 @@ import { Input } from "@/components/ui/input"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { DataTable, MetricCard, PageShell, SectionCard } from "@/components/operations/shared"
 import { api, brl, dateBr, qty } from "@/components/catalog/catalog-fields"
+import { DocumentationSheet } from "@/components/documentation/documentation-sheet"
+import { useAuth } from "@/lib/auth-context"
+import { docStatusLabel, docStatusTone, releaseLabel } from "@/lib/vehicle-documentation"
 import { entityHref } from "@/lib/entity-links"
 import { fulfilment, productionStatusLabel, productionTone, salesActions, salesStatusLabel, salesTone, type SalesItemView } from "@/lib/sales"
 
 type Item = SalesItemView & Record<string, any>
 type Detail = {
+  release?: { eligible: boolean; blockers: Array<{ code: string; message: string; waivable: boolean }> }; documentation?: { summary: Record<string, any>; items: Array<Record<string, any>> }; settings?: Record<string, any>
   order: Record<string, any>; require_payment: boolean; items: Item[]; production_orders: Array<Record<string, any>>; deliveries: Array<Record<string, any>>; events: Array<Record<string, any>>; availability: Array<Record<string, any>>
 }
 const newKey = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `k${Date.now()}${Math.random().toString(36).slice(2)}`)
@@ -27,6 +31,11 @@ export function SalesDetailPage({ id }: { id: string }) {
   const [cancelling, setCancelling] = useState(false)
   const [paymentNote, setPaymentNote] = useState("")
   const deliveryKey = useRef(newKey())
+  const { user } = useAuth()
+  const manager = user?.role === "admin" || user?.role === "manager"
+  const [docId, setDocId] = useState<string | null>(null)
+  const [exceptionReason, setExceptionReason] = useState("")
+  const [revokeReason, setRevokeReason] = useState("")
 
   const load = useCallback(async () => {
     setLoading(true); setError("")
@@ -98,6 +107,34 @@ export function SalesDetailPage({ id }: { id: string }) {
               </div>
             ) : <Button variant="outline" onClick={() => setCancelling(true)}>Cancelar pedido</Button>) : null}
           </div>
+        </SectionCard>
+      ) : null}
+
+      {detail.release ? (
+        <SectionCard title="Documentação veicular e liberação da produção" description="A fabricação física só começa quando todas as condições abaixo estão atendidas. A liberação é calculada pelo sistema, não é um campo editável.">
+          <p className={`mb-3 flex items-start gap-2 rounded-md border p-3 text-sm ${detail.release.eligible ? "border-emerald-300 bg-emerald-50" : "border-amber-300 bg-amber-50"}`}>{releaseLabel(detail.release)}</p>
+          {detail.documentation && detail.documentation.items.length ? (
+            <div className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {detail.documentation.items.map((doc) => (
+                <button key={doc.id} type="button" onClick={() => setDocId(doc.id)} className="rounded-md border p-3 text-left text-sm hover:bg-muted/40">
+                  <span className="flex items-center justify-between gap-2"><span className="font-medium">Unidade {doc.unit_number}/{doc.units_in_item}</span><span className={`rounded px-2 py-0.5 text-xs font-medium ${docStatusTone(doc.status)}`}>{docStatusLabel(doc.status)}</span></span>
+                  <span className="mt-1 block font-mono text-xs text-muted-foreground">{doc.vin || "chassi a informar"}{doc.protocol ? ` · ${doc.protocol}` : ""}</span>
+                </button>
+              ))}
+            </div>
+          ) : <p className="mb-3 text-sm text-muted-foreground">{detail.release.blockers.some((blocker) => blocker.code === "documentacao") ? "A documentação das unidades ainda não foi iniciada." : "Nenhum item deste pedido exige documentação veicular."}</p>}
+          <div className="flex flex-wrap items-end gap-3">
+            {detail.release.blockers.some((blocker) => blocker.code === "autorizacao") ? <Button disabled={Boolean(busy)} onClick={() => void act("authorize", {}, "Produção autorizada.")}>{busy === "authorize" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Autorizar a produção</Button> : null}
+            {detail.settings?.require_operational_authorization && !detail.release.blockers.some((blocker) => blocker.code === "autorizacao") && !["Entregue", "Cancelado"].includes(order.status) ? (
+              <div className="flex items-end gap-2"><Input className="w-56" placeholder="Motivo para revogar" value={revokeReason} onChange={(event) => setRevokeReason(event.target.value)} /><Button variant="outline" disabled={Boolean(busy) || !revokeReason.trim()} onClick={() => void act("revoke_authorization", { reason: revokeReason }, "Autorização revogada: produção bloqueada.")}>Revogar autorização</Button></div>
+            ) : null}
+            {manager && detail.release.blockers.some((blocker) => blocker.code === "pagamento" && blocker.waivable) ? (
+              <div className="flex items-end gap-2"><Input className="w-72" placeholder="Justificativa da exceção comercial (mín. 10)" value={exceptionReason} onChange={(event) => setExceptionReason(event.target.value)} /><Button variant="outline" disabled={Boolean(busy) || exceptionReason.trim().length < 10} onClick={() => void act("release_exception", { reason: exceptionReason }, "Exceção comercial registrada e auditada.")}>Dispensar sinal (exceção)</Button></div>
+            ) : null}
+            {(!detail.documentation || detail.documentation.items.length === 0) && ["Confirmado", "Aguardando producao", "Em producao", "Parcialmente disponivel", "Pronto para entrega"].includes(order.status) ? <Button variant="outline" disabled={Boolean(busy)} onClick={() => void act("generate_documentation", {}, "Documentação iniciada.")}>Iniciar documentação das unidades</Button> : null}
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">Documentação veicular é requisito legal e não pode ser dispensada. Só a exigência comercial (sinal) admite exceção, e apenas se a empresa tiver a regra formal ligada, com justificativa e auditoria.</p>
+          <DocumentationSheet id={docId} onClose={() => setDocId(null)} onChanged={() => void load()} />
         </SectionCard>
       ) : null}
 

@@ -10,9 +10,11 @@ import { TableCell, TableRow } from "@/components/ui/table"
 import { DataTable, MetricCard, PageShell, SectionCard } from "@/components/operations/shared"
 import { api, brl, dateBr, qty } from "@/components/catalog/catalog-fields"
 import { entityHref } from "@/lib/entity-links"
+import { releaseLabel } from "@/lib/vehicle-documentation"
 import { positiveNumber, productionActions, productionStatusLabel, productionTone } from "@/lib/sales"
 
 type Detail = {
+  release?: { eligible: boolean; blockers: Array<{ code: string; message: string; waivable: boolean }> }
   order: Record<string, any>; progress: { planned: number; started: number; produced: number; remaining: number }; kits: Array<Record<string, any>>; materials: Array<Record<string, any>>
   plan: Array<Record<string, any>>; consumptions: Array<Record<string, any>>; receipts: Array<Record<string, any>>; events: Array<Record<string, any>>; costs: Record<string, any>; purchase_requests: Array<Record<string, any>>
 }
@@ -61,6 +63,7 @@ export function ProductionDetailPage({ id }: { id: string }) {
   const materialsInOrder = Array.from(new Map(detail.materials.map((m) => [m.material_id, m])).values())
   const lot = positiveNumber(lotQty)
   const costs = detail.costs
+  const blocked = Boolean(detail.release && !detail.release.eligible)
 
   return (
     <PageShell title={`Ordem ${order.code}`} description={`${order.product_name} (${order.sku}) · estrutura v${order.bom_version}${order.order_number ? ` · pedido ${order.order_number}` : ""}${order.client_name ? ` · ${order.client_name}` : ""}`}
@@ -84,11 +87,14 @@ export function ProductionDetailPage({ id }: { id: string }) {
         <MetricCard title="Custo estimado" value={brl(costs.estimated_total)} note={`realizado: materiais ${brl(costs.consumed_materials)}`} icon={Banknote} />
       </div>
 
+      {blocked ? (
+        <p className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm"><TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" /><span><strong>Ordem bloqueada: aguardando liberação.</strong> {releaseLabel(detail.release)} O planejamento e a reserva de materiais continuam permitidos; iniciar, consumir material e concluir unidades só depois da liberação. {order.sales_order_id ? <Link className="underline" href={`/vendas/${order.sales_order_id}`}>Ver pedido e documentação</Link> : null}</span></p>
+      ) : null}
       <SectionCard title="Ações da produção">
         <div className="flex flex-wrap items-center gap-2">
           {allowed.reserve ? <Button variant="outline" disabled={Boolean(busy)} onClick={() => void act("reserve", {}, "Reserva atualizada com o saldo livre da empresa.")}>{busy === "reserve" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Boxes className="h-4 w-4" />}Reservar materiais</Button> : null}
           {detail.plan.some((row) => Number(row.shortage) > 0) ? <Button variant="outline" disabled={Boolean(busy)} onClick={() => void act("purchase_request", {}, "Solicitação de compra gerada para as faltas desta ordem.")}><ShoppingCart className="h-4 w-4" />Gerar solicitação de compra</Button> : null}
-          {allowed.start ? <Button disabled={Boolean(busy)} onClick={() => void act("status", { to: "start" }, "Produção iniciada.")}><Play className="h-4 w-4" />Iniciar produção</Button> : null}
+          {allowed.start ? <Button disabled={Boolean(busy) || blocked} onClick={() => void act("status", { to: "start" }, "Produção iniciada.")}><Play className="h-4 w-4" />Iniciar produção</Button> : null}
           {allowed.inspection ? <Button variant="outline" disabled={Boolean(busy)} onClick={() => void act("status", { to: "inspection" }, "Ordem enviada para inspeção.")}>Enviar para inspeção</Button> : null}
           {allowed.backToProduction ? <Button variant="outline" disabled={Boolean(busy)} onClick={() => void act("status", { to: "back_to_production" }, "Inspeção aprovada: de volta à produção.")}>Inspeção concluída</Button> : null}
           {allowed.resume ? <Button disabled={Boolean(busy)} onClick={() => void act("status", { to: "resume" }, "Produção retomada.")}><Play className="h-4 w-4" />Retomar</Button> : null}
@@ -113,7 +119,7 @@ export function ProductionDetailPage({ id }: { id: string }) {
                 </select>
                 <Input className="w-28" inputMode="decimal" placeholder="Quantidade" aria-label="Quantidade consumida" value={consumeQty} onChange={(event) => setConsumeQty(event.target.value)} />
                 <select aria-label="Tipo" className="h-9 rounded-md border bg-background px-2 text-sm" value={consumeKind} onChange={(event) => setConsumeKind(event.target.value)}><option>Consumo</option><option>Perda</option><option>Retrabalho</option><option>Adicional</option></select>
-                <Button disabled={Boolean(busy) || !materialId || Number.isNaN(positiveNumber(consumeQty))} onClick={() => void act("consume", { materialId, quantity: positiveNumber(consumeQty), kind: consumeKind, requestKey: consumeKey.current }, "Consumo registrado e baixado do estoque.", () => { consumeKey.current = newKey(); setConsumeQty("") })}>{busy === "consume" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Registrar consumo</Button>
+                <Button disabled={Boolean(busy) || blocked || !materialId || Number.isNaN(positiveNumber(consumeQty))} onClick={() => void act("consume", { materialId, quantity: positiveNumber(consumeQty), kind: consumeKind, requestKey: consumeKey.current }, "Consumo registrado e baixado do estoque.", () => { consumeKey.current = newKey(); setConsumeQty("") })}>{busy === "consume" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Registrar consumo</Button>
               </div>
               <p className="mt-2 text-xs text-muted-foreground">A baixa usa o custo do momento e não se repete se o clique for duplicado. A quantidade é na unidade do material.</p>
             </div>
@@ -123,7 +129,7 @@ export function ProductionDetailPage({ id }: { id: string }) {
                 <div className="flex flex-wrap items-end gap-2">
                   <Input className="w-28" inputMode="decimal" placeholder={`até ${qty(allowed.remaining)}`} aria-label="Unidades concluídas" value={lotQty} onChange={(event) => setLotQty(event.target.value)} />
                   <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={autoConsume} onChange={(event) => setAutoConsume(event.target.checked)} />Apontar automaticamente o material previsto que faltar</label>
-                  <Button disabled={Boolean(busy) || Number.isNaN(lot) || lot > allowed.remaining} onClick={() => void act("complete", { quantity: lot, autoConsume, requestKey: lotKey.current }, "Unidades concluídas: entrada no estoque de acabados e reservadas ao pedido.", () => { lotKey.current = newKey(); setLotQty("") })}>{busy === "complete" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Concluir lote</Button>
+                  <Button disabled={Boolean(busy) || blocked || Number.isNaN(lot) || lot > allowed.remaining} onClick={() => void act("complete", { quantity: lot, autoConsume, requestKey: lotKey.current }, "Unidades concluídas: entrada no estoque de acabados e reservadas ao pedido.", () => { lotKey.current = newKey(); setLotQty("") })}>{busy === "complete" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Concluir lote</Button>
                 </div>
                 <p className="mt-2 text-xs text-muted-foreground">O acabado só entra no estoque agora, com o custo do material efetivamente consumido; a conclusão não se repete.</p>
               </div>

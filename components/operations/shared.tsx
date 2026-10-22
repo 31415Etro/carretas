@@ -96,7 +96,7 @@ export function useOperationalStore(options?: { skipInitialLoad?: boolean }) {
 
 /** Nome do módulo mostrado em letras pequenas no cabeçalho (pelo caminho da página). */
 const moduleNames: Array<[string, string]> = [
-  ["/dashboard", "Dashboard"], ["/financeiro", "Financeiro"], ["/estoque", "Estoque"], ["/compras", "Compras"], ["/servicos", "Serviços"], ["/materias-primas", "Matérias-primas"], ["/kits", "Kits e composições"], ["/produtos", "Produtos finais"], ["/vendas", "Pedidos de venda"], ["/producao", "Produção e MRP"],
+  ["/dashboard", "Dashboard"], ["/financeiro", "Financeiro"], ["/estoque", "Estoque"], ["/compras", "Compras"], ["/servicos", "Serviços"], ["/materias-primas", "Matérias-primas"], ["/kits", "Kits e composições"], ["/produtos", "Produtos finais"], ["/vendas", "Pedidos de venda"], ["/documentacao", "Documentação veicular"], ["/documentacao", "Documentação veicular"], ["/producao", "Produção e MRP"],
   ["/ordens-servico", "Ordens de Serviço"], ["/frota", "Frota"], ["/maquinas", "Máquinas e Equipamentos"], ["/clientes", "Clientes & Fornecedores"], ["/comercial", "Comercial"],
   ["/orcamento", "Orçamentos"], ["/contratos", "Contratos"], ["/relatorios", "Relatórios"], ["/logs-sistema", "Log do Sistema"], ["/configuracoes", "Configurações"],
 ]

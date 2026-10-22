@@ -15,6 +15,7 @@ const publicPaths = [
   "/api/auditoria/cron",
   "/api/notificacoes/cron",
   "/api/maquinas/cron",
+  "/api/documentacao/cron",
   // Importação automática de NF (agendador local): autenticada por NF_SYNC_SECRET dentro da própria rota.
   "/api/financeiro/nf/sync",
   // Portal de orçamento de viagem (link enviado ao funcionário): sem login; o token da URL é a autorização, validado dentro da rota.
@@ -38,6 +39,7 @@ const pagePermissions = [
   { prefix: "/comercial", permission: "comercial" },
   { prefix: "/orcamento", permission: "orcamento" },
   { prefix: "/vendas", permission: "orcamento" },
+  { prefix: "/documentacao", permission: "orcamento" },
   { prefix: "/producao", permission: "estoque" },
   { prefix: "/contratos", permission: "contratos" },
   { prefix: "/relatorios", permission: "relatorios" },

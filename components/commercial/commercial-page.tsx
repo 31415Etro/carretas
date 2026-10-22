@@ -7,6 +7,7 @@ import { AlertTriangle, BadgeDollarSign, Handshake, Plus, RefreshCw, Target, Use
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TableCell, TableRow } from "@/components/ui/table"
+import { OpportunityDocumentationProgress } from "@/components/documentation/documentation-progress"
 import { DataTable, FormSheet, MetricCard, PageShell, SaveButton, SearchableSelectField, SectionCard, SelectField, StatusBadge, TextAreaField, TextField, useCrudFeedback } from "@/components/operations/shared"
 import { brStates, cleanDocument, contactOverdue, conversionRate, formatDocument, funnelStages, funnelSummary, icmsIndicators, interactionKinds, isValidDocument, leadOrigins, openStages, partyKinds, stageProbability, type Party } from "@/lib/commercial"
 
@@ -436,6 +437,7 @@ export function CommercialPage() {
                 {oppOriginalStage === "Ganho" && <Button asChild><Link href={`/ordens-servico/nova?clientId=${oppSheet.clientId}&opportunityId=${oppSheet.id}&description=${encodeURIComponent(oppSheet.interest || "")}`}>Abrir OS</Link></Button>}
               </div>
             )}
+            {oppSheet.id && <OpportunityDocumentationProgress opportunityId={oppSheet.id} />}
             {oppSheet.id && (
               <div className="space-y-3">
                 <h3 className="text-sm font-medium">Histórico de interações</h3>

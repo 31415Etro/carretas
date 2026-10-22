@@ -137,6 +137,9 @@ const demoSaleDetail = () => ({ detail: {
   items: [{ id: "it1", position: 0, line_type: "Produto", material_id: "44444444-4444-4444-8444-444444444444", sku: "PRD-000001", description: "Carreta Náutica FZ 1E (DEMO)", unit: "UN", quantity: 5, unit_price: 9800, discount_percent: 0, total: 49000, unit_cost: 6420.5, make_to_order: false, quantity_from_stock: 2, quantity_to_produce: 3, lead_time_days: 30, reserved: 3, delivered: 0, produced: 1, in_production: 2, quoted_bom_version: 1, bom_version: 2, structure_changed: true, planned: true }],
   production_orders: [{ id: demoOrderId, code: "OP-2026-00001", status: "Em producao", quantity: 3, produced_quantity: 1, planned_end: "2026-11-10", product: "Carreta Náutica FZ 1E (DEMO)", sku: "PRD-000001" }],
   deliveries: [], availability: [],
+  release: { eligible: false, blockers: [{ code: "documentacao", message: "Documentação veicular: 0 de 2 unidade(s) liberada(s).", waivable: false }, { code: "autorizacao", message: "Falta a autorização operacional da produção.", waivable: false }] },
+  documentation: { summary: { total: 2, approved: 0 }, items: [{ id: "99999999-9999-4999-8999-999999999999", unit_number: 1, units_in_item: 2, status: "Aguardando processamento", vin: "9BWZZZ377VT004251", protocol: "PORTAL-2026-0001" }, { id: "a1", unit_number: 2, units_in_item: 2, status: "Pendente de dados", vin: null, protocol: null }] },
+  settings: { require_operational_authorization: true, documentation_channel: "manual" },
   events: [{ event: "Situação", description: "Situação alterada de Em producao para Parcialmente disponivel.", actor: "sistema", created_at: "2026-10-22T09:00:00Z" }, { event: "Pagamento", description: "Pagamento/sinal confirmado: sinal de 30%.", actor: "financeiro@demo.com", created_at: "2026-10-19T10:00:00Z" }, { event: "Criado", description: "Pedido PV-2026-00001 criado a partir do orçamento ORC-000012.", actor: "vendas@demo.com", created_at: "2026-10-18T12:00:00Z" }],
 } })
 const demoProduction = [
@@ -163,10 +166,28 @@ const demoMrp = { items: [
 ] }
 const demoDashboard = { sales_awaiting_confirmation: 1, sales_awaiting_production: 0, sales_ready_for_delivery: 1, orders_in_progress: 1, orders_waiting_materials: 1, orders_open: 2, units_pending: 5, units_planned: 6, units_completed_30d: 1, orders_late: 1, materials_short: 1, materials_short_now: 1, purchase_requests_pending: 0, cost_completed: { orders: 0, estimated: 0, actual: 0 }, require_payment: true }
 
+/** Documentação veicular FICTÍCIA só para visualizar as telas no modo de demonstração. */
+const demoDocId = "99999999-9999-4999-8999-999999999999"
+const demoDocs = [
+  { id: demoDocId, sales_order_id: "66666666-6666-4666-8666-666666666666", order_number: "PV-2026-00001", client_name: "Náutica Exemplo Ltda (DEMO)", product_name: "Carreta Náutica FZ 1E (DEMO)", product_model: "FZ 1E", unit_number: 1, units_in_item: 2, vin: "9BWZZZ377VT004251", protocol: "PORTAL-2026-0001", portal: "SERPRO/RENAVAM - Pré-cadastro de veículos", channel: "manual", status: "Aguardando processamento", final_stage: "Nao iniciada", submitted_at: "2026-10-12T10:00:00Z", last_checked_at: "2026-10-14T10:00:00Z", approved_at: null, responsible: "Documentação", pendencies: [], last_error: null, stale: true, total_count: 3 },
+  { id: "a1", sales_order_id: "66666666-6666-4666-8666-666666666666", order_number: "PV-2026-00001", client_name: "Náutica Exemplo Ltda (DEMO)", product_name: "Carreta Náutica FZ 1E (DEMO)", product_model: "FZ 1E", unit_number: 2, units_in_item: 2, vin: null, protocol: null, portal: "SERPRO/RENAVAM - Pré-cadastro de veículos", channel: "manual", status: "Pendente de dados", final_stage: "Nao iniciada", submitted_at: null, last_checked_at: null, approved_at: null, responsible: "Documentação", pendencies: ["Chassi (VIN)"], last_error: null, stale: false, total_count: 3 },
+  { id: "a2", sales_order_id: "88888888-8888-4888-8888-888888888888", order_number: "PV-2026-00002", client_name: "Marina Demo S.A.", product_name: "Reboque Utilitário RU 300 (DEMO)", product_model: "RU 300", unit_number: 1, units_in_item: 1, vin: "9BWZZZ377VT004999", protocol: "PORTAL-2026-0002", portal: "SERPRO/RENAVAM - Pré-cadastro de veículos", channel: "manual", status: "Em exigencia", final_stage: "Nao iniciada", submitted_at: "2026-10-18T10:00:00Z", last_checked_at: "2026-10-20T10:00:00Z", approved_at: null, responsible: "Documentação", pendencies: ["Informar o número do CAT"], last_error: "Informar o CAT", stale: false, total_count: 3 },
+]
+const demoDocDashboard = { open: 3, pending_data: 1, ready: 0, waiting: 1, requirements: 1, rejected: 0, approved: 0, stale: 1 }
+const demoDocDetail = () => ({ detail: {
+  documentation: { ...demoDocs[0], id: demoDocId, client_document: "00.000.000/0001-00", quote_number: "ORC-000012", bom_version: 2, missing: [], cat_number: "", brand_model_version_code: "", notes: "", final_stage_note: null, status: "Aguardando processamento" },
+  attempts: [{ id: "t2", attempt_number: 1, kind: "envio", channel: "manual", outcome: "sucesso", message: "Pré-cadastro feito manualmente no portal.", protocol: "PORTAL-2026-0001", actor: "docs@demo.com", created_at: "2026-10-12T10:00:00Z", finished_at: "2026-10-12T10:00:00Z" }],
+  events: [{ event: "Envio", description: "Envio sucesso: Pré-cadastro feito manualmente no portal. (protocolo PORTAL-2026-0001).", actor: "docs@demo.com", created_at: "2026-10-12T10:00:00Z" }, { event: "Criada", description: "Documentação da unidade 1 criada para o pedido.", actor: "gerente@demo.com", created_at: "2026-10-10T09:00:00Z" }],
+  files: [],
+  release: { eligible: false, blockers: [{ code: "documentacao", message: "Documentação veicular: 0 de 2 unidade(s) liberada(s).", waivable: false }, { code: "autorizacao", message: "Falta a autorização operacional da produção.", waivable: false }] },
+} })
+
 /** Resposta genérica das APIs no modo de demonstração. */
 export function demoApiPayload(pathname: string, search = "") {
+  if (pathname === "/api/documentacao") return { items: demoDocs, total: demoDocs.length, page: 1, pageSize: 25, dashboard: demoDocDashboard }
+  if (/^\/api\/documentacao\/[0-9a-f-]{36}$/.test(pathname)) return demoDocDetail()
   if (pathname === "/api/vendas") return { items: demoSales, total: demoSales.length, page: 1, pageSize: 25 }
-  if (pathname === "/api/vendas/config") return { requirePayment: true }
+  if (pathname === "/api/vendas/config") return { requirePayment: true, require_payment_before_production: true, require_documentation_before_production: true, require_operational_authorization: true, allow_payment_exception: false, generate_receivables_on_confirmation: false, documentation_channel: "manual", documentation_stale_days: 7 }
   if (/^\/api\/vendas\/[0-9a-f-]{36}$/.test(pathname)) return demoSaleDetail()
   if (pathname === "/api/producao") return { items: demoProduction, total: demoProduction.length, page: 1, pageSize: 25, dashboard: demoDashboard }
   if (pathname === "/api/producao/mrp") return demoMrp

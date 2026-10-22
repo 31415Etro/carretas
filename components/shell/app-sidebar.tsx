@@ -4,7 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
 import {
-  Activity, BarChart3, Building2, Calculator, Car, Check, ChevronsUpDown, ClipboardList, Cog, Factory, FileText, Landmark, LayoutDashboard, LogOut,
+  Activity, BarChart3, Building2, Calculator, Car, FileCheck2, Check, ChevronsUpDown, ClipboardList, Cog, Factory, FileText, Landmark, LayoutDashboard, LogOut,
   MapPinned, Menu, Package, PackageCheck, PanelLeftClose, PanelLeftOpen, Receipt, Settings2, ShoppingCart, Users, Wrench, X,
   Boxes, Layers,
 } from "lucide-react"
@@ -40,6 +40,7 @@ const groups: NavGroup[] = [
     { label: "Comercial", href: "/comercial", permission: "comercial", icon: MapPinned },
     { label: "Orçamentos", href: "/orcamento", permission: "orcamento", icon: Calculator },
     { label: "Pedidos de venda", href: "/vendas", permission: "orcamento", icon: Receipt },
+    { label: "Documentação veicular", href: "/documentacao", permission: "orcamento", icon: FileCheck2 },
     { label: "Contratos", href: "/contratos", permission: "contratos", icon: FileText },
   ] },
   { title: "Sistema", items: [

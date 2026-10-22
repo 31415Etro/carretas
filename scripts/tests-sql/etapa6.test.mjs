@@ -52,7 +52,8 @@ const consume = (poId, materialId, quantity, key) => db.query("select public.rec
 const complete = async (poId, quantity, key) => (await one("select public.complete_production(jsonb_build_object('production_order_id', $1::text, 'quantity', $2::numeric, 'request_key', $3::text, 'responsible', 'Operador')) r", [poId, quantity, key])).r
 
 before(async () => {
-  db = await createDatabase({ extra: ["217_itens_estrutura.sql", "218_kits_e_estrutura_de_produto.sql", "219_vendas_producao_mrp.sql", "220_materia_prima_consultas.sql", "221_kits_consultas_e_conversao.sql", "222_produtos_finais.sql", "223_pedido_producao_integracao.sql"] })
+  db = await createDatabase({ extra: ["217_itens_estrutura.sql", "218_kits_e_estrutura_de_produto.sql", "219_vendas_producao_mrp.sql", "220_materia_prima_consultas.sql", "221_kits_consultas_e_conversao.sql", "222_produtos_finais.sql", "223_pedido_producao_integracao.sql", "224_documentacao_veicular.sql"] })
+  await db.exec(`select public.sales_settings_update('{"require_documentation_before_production":false,"require_operational_authorization":false}'::jsonb, 'teste')`)  // estas suítes testam outras regras; a liberação por documentação tem a suíte etapa7
   await db.exec(`insert into public.system_companies (id, name, legal_name, trade_name) values ('${COMPANY_B}', 'Empresa B', 'Empresa B', 'Empresa B') on conflict do nothing`)
   await asCompany(COMPANY_B)
   await db.exec("insert into public.warehouses (code, name, is_default) values ('DEP-B', 'Depósito B', true)")
@@ -253,26 +254,30 @@ test("sob encomenda: fabrica mesmo havendo saldo de acabados; confirmar duas vez
   await rejects("insert into public.production_orders (code, sales_order_id, sales_order_item_id, product_id, bom_version_id, quantity) values ('OP-DUP', $1, $2, $3, $4, 1)", [order, itemId, prod.id, prod.versionId], /duplicate|unique|único/i)
 })
 
-test("exigir sinal: nada é reservado nem fabricado até confirmar o pagamento; repetir a confirmação não duplica", async () => {
+test("exigir sinal: a demanda e os materiais são planejados, mas o início físico só libera com o pagamento; repetir a confirmação não duplica", async () => {
   const m = await material("MP Sinal", { cost: 1 }); await stockIn(m, 100, 1)
   const k = await kit("Kit Sinal", [comp(m, 2, "UN")])
   const prod = await product("Produto Sinal", [[k.id, 1]])
-  await rpc("sales_settings_save", {}).catch(() => null)
   await db.query("select public.sales_settings_save(true, 'Gerente')")
   const q = await approvedQuote([{ product: prod, qty: 3, price: 9000 }])
   const order = (await one("select public.sales_order_from_quote($1::uuid) r", [q])).r.sales_order_id
-  const blocked = await confirm(order)
-  assert.equal(blocked.blocked, true)
+  const confirmed = await confirm(order)
+  assert.equal(confirmed.blocked, false)
+  assert.equal(confirmed.production_orders_created.length, 1) // demanda registrada
+  const po = confirmed.production_orders_created[0]
+  assert.equal(num((await one("select sum(reserved_quantity) q from public.production_order_materials where production_order_id = $1", [po])).q), 6) // materiais planejados e reservados
   assert.equal((await orderRow(order)).status, "Aguardando producao")
-  assert.equal(num((await one("select count(*) n from public.production_orders where sales_order_id = $1", [order])).n), 0)
-  assert.equal(num((await one("select count(*) n from public.stock_reservations where status = 'Ativa' and notes like '%' || (select order_number from public.sales_orders where id = $1) || '%'", [order])).n), 0)
+  assert.deepEqual(confirmed.release.blockers.map((b) => b.code), ["pagamento"])
+  await rejects("select public.production_change_status($1::uuid, 'start', 'Chefe')", [po], /sinal\/pagamento/)
   await rejects("select public.confirm_sales_payment($1::uuid)", ["00000000-0000-0000-0000-000000000000"], /não encontrado/)
   const paid = (await one("select public.confirm_sales_payment($1::uuid, 'Financeiro', 'Sinal de 30%') r", [order])).r
-  assert.equal(paid.production_orders_created.length, 1)
+  assert.equal(paid.release.eligible, true)
   assert.equal((await orderRow(order)).payment_confirmed_by, "Financeiro")
+  assert.equal((await orderRow(order)).status, "Em producao")
   const paidAgain = (await one("select public.confirm_sales_payment($1::uuid, 'Financeiro') r", [order])).r
   assert.deepEqual([paidAgain.production_orders_created.length, paidAgain.already_existing.length], [0, 1])
   assert.equal(num((await one("select count(*) n from public.production_orders where sales_order_id = $1", [order])).n), 1)
+  await db.query("select public.production_change_status($1::uuid, 'start', 'Chefe')", [po])
   await db.query("select public.sales_settings_save(false, 'Gerente')")
 })
 
