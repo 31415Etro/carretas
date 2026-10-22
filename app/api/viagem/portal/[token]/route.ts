@@ -5,7 +5,7 @@ import { advanceError, companyScopedByToken, portalState } from "@/lib/travel-ad
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-/** Estado do adiantamento para a pessoa com o link (sem login: o token em si é a autorização). */
+/** Estado do orçamento de viagem para a pessoa com o link (sem login: o token em si é a autorização). */
 export async function GET(_request: Request, { params }: { params: Promise<{ token: string }> }) {
   try {
     const { token } = await params

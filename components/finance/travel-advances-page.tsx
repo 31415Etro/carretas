@@ -56,9 +56,9 @@ export function TravelAdvancesPage() {
     setError("")
     try {
       const [advancesData, pendingData, employeesData] = await Promise.all([
-        send<{ items: Advance[] }>("/api/financeiro/adiantamentos"),
-        send<{ items: Receipt[] }>("/api/financeiro/adiantamentos/pendencias"),
-        send<{ employees: Employee[] }>("/api/financeiro/adiantamentos/opcoes"),
+        send<{ items: Advance[] }>("/api/financeiro/orcamento-viagem"),
+        send<{ items: Receipt[] }>("/api/financeiro/orcamento-viagem/pendencias"),
+        send<{ employees: Employee[] }>("/api/financeiro/orcamento-viagem/opcoes"),
       ])
       setAdvances(advancesData.items)
       setPending(pendingData.items)
@@ -80,14 +80,14 @@ export function TravelAdvancesPage() {
     if (!requireFields([["funcionário", form.employeeId], ["valor", form.amount], ["data final", form.endDate]])) return
     setSaving(true)
     try {
-      const result = await send<{ id: string; link: string }>("/api/financeiro/adiantamentos", {
+      const result = await send<{ id: string; link: string }>("/api/financeiro/orcamento-viagem", {
         method: "POST",
         body: JSON.stringify({ employeeId: form.employeeId, reason: form.reason, amount: Number(form.amount), startDate: form.startDate, endDate: form.endDate, bank: form.bank }),
       })
       setLink(`${window.location.origin}${result.link}`)
       setForm(emptyForm())
       await load()
-      toast({ title: "Adiantamento criado", description: "Copie o link e envie para o funcionário." })
+      toast({ title: "Orçamento de viagem criado", description: "Copie o link e envie para o funcionário." })
     } catch (reason) {
       toast({ title: "Erro ao criar", description: reason instanceof Error ? reason.message : "", variant: "destructive" })
     } finally {
@@ -96,7 +96,7 @@ export function TravelAdvancesPage() {
   }
 
   async function copyLink(token: string) {
-    const url = `${window.location.origin}/portal-adiantamento/${token}`
+    const url = `${window.location.origin}/portal-viagem/${token}`
     await navigator.clipboard.writeText(url)
     toast({ title: "Link copiado", description: url })
   }
@@ -104,7 +104,7 @@ export function TravelAdvancesPage() {
   async function review(receiptId: string, action: "aprovar" | "contestar", noteText = "") {
     setBusyId(receiptId)
     try {
-      await send(`/api/financeiro/adiantamentos/recibos/${receiptId}`, { method: "PATCH", body: JSON.stringify({ action, note: noteText }) })
+      await send(`/api/financeiro/orcamento-viagem/recibos/${receiptId}`, { method: "PATCH", body: JSON.stringify({ action, note: noteText }) })
       setContesting("")
       setNote("")
       await load()
@@ -116,14 +116,14 @@ export function TravelAdvancesPage() {
   }
 
   async function cancelAdvance(id: string) {
-    if (!window.confirm("Cancelar este adiantamento? O link deixa de aceitar novas notinhas.")) return
-    await send(`/api/financeiro/adiantamentos/${id}`, { method: "PATCH", body: JSON.stringify({ action: "cancelar" }) })
+    if (!window.confirm("Cancelar este orçamento de viagem? O link deixa de aceitar novas notinhas.")) return
+    await send(`/api/financeiro/orcamento-viagem/${id}`, { method: "PATCH", body: JSON.stringify({ action: "cancelar" }) })
     setDetail(null)
     await load()
   }
 
   async function resolveSettlement(id: string) {
-    await send(`/api/financeiro/adiantamentos/${id}`, { method: "PATCH", body: JSON.stringify({ action: "resolver_devolucao", note: "Confirmado pelo financeiro." }) })
+    await send(`/api/financeiro/orcamento-viagem/${id}`, { method: "PATCH", body: JSON.stringify({ action: "resolver_devolucao", note: "Confirmado pelo financeiro." }) })
     setDetail(null)
     await load()
   }
@@ -131,13 +131,13 @@ export function TravelAdvancesPage() {
   const employeeOptions = employees.map((item) => ({ value: item.id, label: item.name }))
 
   return (
-    <PageShell title="Adiantamentos" description="Orçamento de viagem/visita para o funcionário, com prestação de contas por um link público." actions={<>
+    <PageShell title="Orçamento de Viagem" description="Orçamento de gasto para viagem ou visita do funcionário, com prestação de contas por um link público." actions={<>
       <Button variant="outline" asChild><Link href="/financeiro"><ArrowLeft className="h-4 w-4" />Voltar ao Financeiro</Link></Button>
-      <Button onClick={() => { setForm(emptyForm()); setLink(""); setSheetOpen(true) }}><Plus className="h-4 w-4" />Novo adiantamento</Button>
+      <Button onClick={() => { setForm(emptyForm()); setLink(""); setSheetOpen(true) }}><Plus className="h-4 w-4" />Novo orçamento de viagem</Button>
     </>}>
       {error ? <p className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{error}</p> : null}
 
-      <SectionCard title="Pendências de aprovação" description="Notinhas de adiantamentos já finalizados pelo funcionário.">
+      <SectionCard title="Pendências de aprovação" description="Notinhas de orçamentos de viagem já finalizados pelo funcionário.">
         {pending.length === 0 ? <p className="text-sm text-muted-foreground">{loading ? "Carregando..." : "Nada pendente no momento."}</p> : (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {pending.map((receipt) => (
@@ -167,7 +167,7 @@ export function TravelAdvancesPage() {
         )}
       </SectionCard>
 
-      <SectionCard title="Adiantamentos">
+      <SectionCard title="Orçamentos de viagem">
         <DataTable headers={["Funcionário", "Motivo", "Período", "Valor", "Gasto", "Saldo", "Status", "Link", ""]} empty={!advances.length && !loading}>
           {advances.map((advance) => (
             <TableRow key={advance.id} className="cursor-pointer" onClick={() => setDetail(advance)}>
@@ -185,10 +185,10 @@ export function TravelAdvancesPage() {
         </DataTable>
       </SectionCard>
 
-      <FormSheet open={sheetOpen} onOpenChange={setSheetOpen} title="Novo adiantamento" description="Escolha o funcionário, o valor e o prazo: um link é gerado para ele prestar contas." footer={!link ? <SaveButton onClick={() => void createAdvance()} disabled={saving}>{saving ? "Salvando..." : "Criar e gerar link"}</SaveButton> : <Button onClick={() => setSheetOpen(false)}>Concluir</Button>}>
+      <FormSheet open={sheetOpen} onOpenChange={setSheetOpen} title="Novo orçamento de viagem" description="Escolha o funcionário, o valor e o prazo: um link é gerado para ele prestar contas." footer={!link ? <SaveButton onClick={() => void createAdvance()} disabled={saving}>{saving ? "Salvando..." : "Criar e gerar link"}</SaveButton> : <Button onClick={() => setSheetOpen(false)}>Concluir</Button>}>
         {link ? (
           <div className="space-y-3">
-            <p className="flex items-center gap-2 rounded-md border border-green-600/40 bg-green-600/10 p-3 text-sm"><Receipt className="h-4 w-4 shrink-0" />Adiantamento criado. Envie este link para o funcionário.</p>
+            <p className="flex items-center gap-2 rounded-md border border-green-600/40 bg-green-600/10 p-3 text-sm"><Receipt className="h-4 w-4 shrink-0" />Orçamento de viagem criado. Envie este link para o funcionário.</p>
             <div className="flex gap-2"><Input readOnly value={link} /><Button variant="outline" onClick={() => { void navigator.clipboard.writeText(link); toast({ title: "Link copiado" }) }}><Copy className="h-4 w-4" />Copiar</Button></div>
           </div>
         ) : (
@@ -219,7 +219,7 @@ export function TravelAdvancesPage() {
         <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
           {detail ? (
             <>
-              <DialogHeader><DialogTitle>{detail.employee_name} · {detail.reason || "Adiantamento"}</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>{detail.employee_name} · {detail.reason || "Orçamento de viagem"}</DialogTitle></DialogHeader>
               <div className="grid gap-3 text-sm sm:grid-cols-3">
                 <p>Orçamento<br /><strong>{brl(detail.amount)}</strong></p>
                 <p>Gasto<br /><strong>{brl(detail.summary.spent)}</strong></p>

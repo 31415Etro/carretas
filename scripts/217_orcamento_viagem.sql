@@ -1,7 +1,7 @@
--- Adiantamento de viagem/visita: orçamento de gasto para um funcionário, prestado de contas por um link público
+-- Orçamento de viagem: orçamento de gasto para um funcionário, prestado de contas por um link público
 -- (sem login) onde ele sobe fotos das notinhas, lidas por OCR. Rode no SQL Editor do Supabase.
 
--- Dados bancários do funcionário (reaproveitados ao criar adiantamentos; preenchidos uma vez, ficam salvos no perfil).
+-- Dados bancários do funcionário (reaproveitados ao criar orçamentos de viagem; preenchidos uma vez, ficam salvos no perfil).
 alter table public.profiles add column if not exists bank_name text;
 alter table public.profiles add column if not exists bank_agency text;
 alter table public.profiles add column if not exists bank_account text;

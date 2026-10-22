@@ -38,7 +38,7 @@ export function originFor(pathname: string, hasUser: boolean): string {
   if (hasUser) return "Usuário"
   if (pathname.endsWith("/cron") || pathname.startsWith("/api/financeiro/nf/sync")) return "Agendador"
   if (pathname.startsWith("/api/integrations/") || pathname.startsWith("/api/webhooks")) return "Integração"
-  if (pathname.startsWith("/api/adiantamentos/portal") || pathname.startsWith("/portal-adiantamento")) return "Portal do funcionário"
+  if (pathname.startsWith("/api/viagem/portal") || pathname.startsWith("/portal-viagem")) return "Portal do funcionário"
   return "Sistema"
 }
 

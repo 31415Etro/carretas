@@ -10,11 +10,11 @@ export async function GET() {
   try {
     return NextResponse.json({ items: await listAdvances(context.admin) })
   } catch (error) {
-    return bad(error, "Erro ao carregar os adiantamentos.")
+    return bad(error, "Erro ao carregar os orçamentos de viagem.")
   }
 }
 
-/** Cria um adiantamento e gera o link público (token). */
+/** Cria um orçamento de viagem e gera o link público (token). */
 export async function POST(request: Request) {
   const context = await stockContext()
   if ("error" in context) return context.error
@@ -25,8 +25,8 @@ export async function POST(request: Request) {
       startDate: String(body.startDate || ""), endDate: String(body.endDate || ""),
       bank: { bankName: String(body.bank?.bankName || ""), bankAgency: String(body.bank?.bankAgency || ""), bankAccount: String(body.bank?.bankAccount || ""), bankAccountType: String(body.bank?.bankAccountType || ""), pixKey: String(body.bank?.pixKey || "") },
     }, context.responsible)
-    return NextResponse.json({ id: result.id, link: `/portal-adiantamento/${result.token}` })
+    return NextResponse.json({ id: result.id, link: `/portal-viagem/${result.token}` })
   } catch (error) {
-    return bad(error, "Erro ao criar o adiantamento.")
+    return bad(error, "Erro ao criar o orçamento de viagem.")
   }
 }

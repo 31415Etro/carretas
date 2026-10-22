@@ -52,7 +52,7 @@ export function TravelAdvancePortal({ token }: { token: string }) {
 
   const load = useCallback(async () => {
     try {
-      const data = await send<PortalState>(`/api/adiantamentos/portal/${token}`)
+      const data = await send<PortalState>(`/api/viagem/portal/${token}`)
       setState(data)
       setJustification(data.ownPocketJustification || "")
       setSettlement((data.settlementAction as "devolver" | "desconto_folha") || "")
@@ -77,7 +77,7 @@ export function TravelAdvancePortal({ token }: { token: string }) {
       const form = new FormData()
       form.set("file", file)
       form.set("ocrText", text)
-      await send(`/api/adiantamentos/portal/${token}/recibos`, { method: "POST", body: form })
+      await send(`/api/viagem/portal/${token}/recibos`, { method: "POST", body: form })
       await load()
     } catch (reason) {
       alert(reason instanceof Error ? reason.message : "Erro ao enviar a notinha.")
@@ -89,7 +89,7 @@ export function TravelAdvancePortal({ token }: { token: string }) {
 
   async function removeReceipt(id: string) {
     if (!window.confirm("Remover esta notinha?")) return
-    await send(`/api/adiantamentos/portal/${token}/recibos/${id}`, { method: "DELETE" }).catch((reason) => alert(reason.message))
+    await send(`/api/viagem/portal/${token}/recibos/${id}`, { method: "DELETE" }).catch((reason) => alert(reason.message))
     await load()
   }
 
@@ -99,16 +99,16 @@ export function TravelAdvancePortal({ token }: { token: string }) {
   }
 
   async function saveEdit(id: string) {
-    await send(`/api/adiantamentos/portal/${token}/recibos/${id}`, { method: "PATCH", body: JSON.stringify({ amount: Number(editDraft.amount), establishment: editDraft.establishment, occurredAt: editDraft.occurredAt, category: editDraft.category }) }).catch((reason) => alert(reason.message))
+    await send(`/api/viagem/portal/${token}/recibos/${id}`, { method: "PATCH", body: JSON.stringify({ amount: Number(editDraft.amount), establishment: editDraft.establishment, occurredAt: editDraft.occurredAt, category: editDraft.category }) }).catch((reason) => alert(reason.message))
     setEditingId("")
     await load()
   }
 
   async function finalize() {
-    if (!window.confirm("Finalizar a prestação de contas deste adiantamento? Depois disso você não poderá mais enviar ou remover notinhas, só até o financeiro revisar.")) return
+    if (!window.confirm("Finalizar a prestação de contas deste orçamento de viagem? Depois disso você não poderá mais enviar ou remover notinhas, só até o financeiro revisar.")) return
     setFinalizing(true)
     try {
-      await send(`/api/adiantamentos/portal/${token}/finalizar`, { method: "POST", body: JSON.stringify({ ownPocketJustification: justification, settlementAction: settlement || null }) })
+      await send(`/api/viagem/portal/${token}/finalizar`, { method: "POST", body: JSON.stringify({ ownPocketJustification: justification, settlementAction: settlement || null }) })
       await load()
     } catch (reason) {
       alert(reason instanceof Error ? reason.message : "Erro ao finalizar.")
@@ -138,7 +138,7 @@ export function TravelAdvancePortal({ token }: { token: string }) {
   return shell(
     <div className="space-y-4">
       <Card>
-        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--brand)]">Adiantamento de {state.employeeName}</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--brand)]">Orçamento de viagem de {state.employeeName}</p>
         <h1 className="mt-1 text-xl font-semibold text-slate-900">{state.reason || "Prestação de contas"}</h1>
         <p className="mt-1 text-sm text-slate-500">Prazo: {day(state.startDate)} até {day(state.endDate)}</p>
         <div className="mt-4 grid grid-cols-3 gap-3 text-center">
@@ -149,7 +149,7 @@ export function TravelAdvancePortal({ token }: { token: string }) {
         <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full ${state.summary.overspent ? "bg-red-500" : "bg-[var(--brand)]"}`} style={{ width: `${pct}%` }} /></div>
         {state.status === "Finalizado" ? <p className="mt-3 flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800"><Clock className="h-4 w-4 shrink-0" />Prestação de contas enviada: o financeiro está revisando as notinhas.</p> : null}
         {state.status === "Concluido" ? <p className="mt-3 flex items-center gap-2 rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-800"><CheckCircle2 className="h-4 w-4 shrink-0" />Prestação de contas concluída. Obrigado!</p> : null}
-        {state.status === "Cancelado" ? <p className="mt-3 flex items-center gap-2 rounded-md border border-slate-300 bg-slate-100 p-3 text-sm text-slate-700"><X className="h-4 w-4 shrink-0" />Este adiantamento foi cancelado.</p> : null}
+        {state.status === "Cancelado" ? <p className="mt-3 flex items-center gap-2 rounded-md border border-slate-300 bg-slate-100 p-3 text-sm text-slate-700"><X className="h-4 w-4 shrink-0" />Este orçamento de viagem foi cancelado.</p> : null}
       </Card>
 
       {contested.length > 0 ? (

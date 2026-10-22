@@ -4,8 +4,8 @@ import { categorizeReceipt, parseReceiptText } from "@/lib/receipt-ocr"
 import { canFinalize, canUpload, needsSettlementChoice, summarizeAdvance, type SettlementAction } from "@/lib/travel-advance"
 
 type Admin = ReturnType<typeof createAdminClient>
-export const ADVANCE_MIGRATION_HINT = "Adiantamentos ainda não instalado no banco. Rode scripts/217_adiantamentos.sql no SQL Editor do Supabase."
-const BUCKET = "comprovantes-adiantamento"
+export const ADVANCE_MIGRATION_HINT = "Orçamento de viagem ainda não instalado no banco. Rode scripts/217_orcamento_viagem.sql no SQL Editor do Supabase."
+const BUCKET = "comprovantes-viagem"
 const MAX_PHOTO_BYTES = 12 * 1024 * 1024
 
 export type BankSnapshot = { bankName: string; bankAgency: string; bankAccount: string; bankAccountType: string; pixKey: string }
@@ -31,7 +31,7 @@ export async function listEmployeeOptions(admin: Admin) {
 
 export type CreateAdvanceInput = { employeeId: string; reason: string; amount: number; startDate: string; endDate: string; bank: BankSnapshot }
 
-/** Cria o adiantamento, gera o link e salva/atualiza os dados bancários do funcionário no cadastro (para reaproveitar da próxima vez). */
+/** Cria o orçamento de viagem, gera o link e salva/atualiza os dados bancários do funcionário no cadastro (para reaproveitar da próxima vez). */
 export async function createAdvance(admin: Admin, input: CreateAdvanceInput, createdBy: string) {
   if (!input.employeeId) throw new Error("Escolha o funcionário.")
   if (!(input.amount > 0)) throw new Error("Informe um valor maior que zero.")
@@ -50,7 +50,7 @@ export async function createAdvance(admin: Admin, input: CreateAdvanceInput, cre
     reason: input.reason.slice(0, 300), amount: input.amount, start_date: input.startDate, end_date: input.endDate, bank_snapshot: input.bank, created_by: createdBy,
   }
   const { data, error } = await admin.from("travel_advances").insert(row).select("id,token").single()
-  if (error) throw advanceError(error, "Erro ao criar o adiantamento.")
+  if (error) throw advanceError(error, "Erro ao criar o orçamento de viagem.")
   return data as { id: string; token: string }
 }
 
@@ -70,12 +70,12 @@ async function withReceipts<T extends { id: string }>(admin: Admin, advances: T[
 /** Lista para a tela interna do financeiro (com resumo de gasto/saldo de cada um). */
 export async function listAdvances(admin: Admin) {
   const { data, error } = await admin.from("travel_advances").select("*").order("created_at", { ascending: false }).limit(300)
-  if (error) throw advanceError(error, "Erro ao carregar os adiantamentos.")
+  if (error) throw advanceError(error, "Erro ao carregar os orçamentos de viagem.")
   const withReceiptsData = await withReceipts(admin, data || [])
   return withReceiptsData.map((row) => ({ ...row, summary: summarizeAdvance(Number(row.amount), row.receipts) }))
 }
 
-/** Notas pendentes de revisão (de adiantamentos já finalizados pelo funcionário): a "página de pendências". */
+/** Notas pendentes de revisão (de orçamentos de viagem já finalizados pelo funcionário): a "página de pendências". */
 export async function listPendingReview(admin: Admin) {
   const { data: advances, error } = await admin.from("travel_advances").select("id,employee_name,reason,amount,end_date").eq("status", "Finalizado").order("finalized_at", { ascending: true })
   if (error) throw advanceError(error, "Erro ao carregar as pendências.")
@@ -88,8 +88,8 @@ export async function listPendingReview(admin: Admin) {
 
 export async function getAdvanceDetail(admin: Admin, id: string) {
   const { data: advance, error } = await admin.from("travel_advances").select("*").eq("id", id).maybeSingle()
-  if (error) throw advanceError(error, "Erro ao carregar o adiantamento.")
-  if (!advance) throw new Error("Adiantamento não encontrado.")
+  if (error) throw advanceError(error, "Erro ao carregar o orçamento de viagem.")
+  if (!advance) throw new Error("Orçamento de viagem não encontrado.")
   const { data: receipts, error: receiptsError } = await admin.from("travel_advance_receipts").select("*").eq("advance_id", id).order("created_at", { ascending: false })
   if (receiptsError) throw receiptsError
   return { ...advance, receipts: receipts || [], summary: summarizeAdvance(Number(advance.amount), receipts || []) }
@@ -106,7 +106,7 @@ export async function reviewReceipt(admin: Admin, receiptId: string, action: "ap
   const { error: updateError } = await admin.from("travel_advance_receipts").update(update).eq("id", receiptId)
   if (updateError) throw updateError
 
-  // alguma nota contestada: reabre o link para o funcionário ver e agir; nenhuma pendente/contestada: fecha o adiantamento
+  // alguma nota contestada: reabre o link para o funcionário ver e agir; nenhuma pendente/contestada: fecha o orçamento de viagem
   const { data: all, error: allError } = await admin.from("travel_advance_receipts").select("status").eq("advance_id", receipt.advance_id)
   if (allError) throw allError
   const statuses = (all || []).map((row) => String(row.status))
@@ -162,7 +162,7 @@ export async function portalState(admin: Admin, token: string) {
 /** Recebe uma foto de notinha: guarda no Storage, lê os campos pelo texto do OCR (feito no navegador) e salva o registro. */
 export async function addReceiptPhoto(admin: Admin, token: string, file: File, ocrText: string) {
   const { advance } = await getByToken(admin, token)
-  if (!canUpload(advance.status, advance.end_date)) throw new Error("Este link não está mais recebendo notinhas (prazo encerrado ou adiantamento já finalizado).")
+  if (!canUpload(advance.status, advance.end_date)) throw new Error("Este link não está mais recebendo notinhas (prazo encerrado ou orçamento já finalizado).")
   if (file.size > MAX_PHOTO_BYTES) throw new Error("Foto muito grande: envie até 12 MB.")
 
   const { data: bucket } = await admin.storage.getBucket(BUCKET)
@@ -212,7 +212,7 @@ export async function deleteReceipt(admin: Admin, token: string, receiptId: stri
 
 export async function finalizeAdvance(admin: Admin, token: string, input: { ownPocketJustification: string; settlementAction: SettlementAction | null }) {
   const { advance, receipts } = await getByToken(admin, token)
-  if (advance.status !== "Aberto") throw new Error("Este adiantamento já foi finalizado.")
+  if (advance.status !== "Aberto") throw new Error("Este orçamento de viagem já foi finalizado.")
   if (!receipts.length) throw new Error("Suba ao menos uma notinha antes de finalizar.")
   const summary = summarizeAdvance(Number(advance.amount), receipts)
   const canFinish = canFinalize(summary, input.ownPocketJustification)
