@@ -18,7 +18,7 @@ type Options = {
   clients: Array<{ id: string; name: string; document: string; status: string; phone: string; email: string }>
   salespeople: Array<{ id: string; name: string }>
   paymentConditions: Array<{ id: string; name: string; installments: number; firstDueDays: number; intervalDays: number }>
-  products: Array<{ id: string; name: string; code: string; unit: string; price: number; cost: number; stock: number; reserved: number; controlsStock: boolean }>
+  products: Array<{ id: string; name: string; code: string; unit: string; price: number; cost: number; stock: number; reserved: number; controlsStock: boolean; bomVersion?: number | null; leadTimeDays?: number | null; marginPercent?: number | null }>
   services: Array<{ id: string; name: string; code: string; unit: string; price: number; cost: number; warrantyDays: number }>
   warehouses: Array<{ id: string; name: string; isDefault: boolean }>
   opportunities: Array<{ id: string; code: string; title: string; clientId: string; salespersonId: string; interest: string; estimatedValue: number; stage: string }>
@@ -282,7 +282,7 @@ export function QuotesPage() {
   const clientItems = (options?.clients || []).map((item) => ({ value: item.id, label: `${item.name}${item.status === "Prospect" ? " (lead)" : ""}${item.document ? ` · ${item.document}` : ""}` }))
   const client = options?.clients.find((item) => item.id === form.clientId)
   const catalogItems = adding.kind === "Produto"
-    ? (options?.products || []).map((item) => ({ value: item.id, label: `${item.code ? `${item.code} · ` : ""}${item.name} — ${brl(item.price)}${item.controlsStock ? ` · estoque ${item.stock - item.reserved}` : ""}` }))
+    ? (options?.products || []).map((item) => ({ value: item.id, label: `${item.code ? `${item.code} · ` : ""}${item.name} — ${brl(item.price)}${item.controlsStock ? ` · estoque ${item.stock - item.reserved}` : ""}${item.bomVersion ? ` · custo ${brl(item.cost)} (estrutura v${item.bomVersion}${item.marginPercent === null || item.marginPercent === undefined ? "" : `, margem ${Number(item.marginPercent).toLocaleString("pt-BR")}%`})` : ""}${item.leadTimeDays ? ` · prazo ${item.leadTimeDays} dias` : ""}` }))
     : (options?.services || []).map((item) => ({ value: item.id, label: `${item.code ? `${item.code} · ` : ""}${item.name} — ${brl(item.price)}` }))
   const canEmail = Boolean(detail) && ["Rascunho", "Enviado"].includes(status)
   const needsWarehouse = detail?.items.some((item) => item.lineType === "Produto" && options?.products.find((product) => product.id === item.catalogId)?.controlsStock)

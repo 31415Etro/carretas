@@ -28,6 +28,7 @@ const pagePermissions = [
   { prefix: "/servicos", permission: "produtos_servicos" },
   { prefix: "/materias-primas", permission: "produtos_servicos" },
   { prefix: "/kits", permission: "produtos_servicos" },
+  { prefix: "/produtos", permission: "produtos_servicos" },
   { prefix: "/ordens-servico", permission: "ordens_servico" },
   { prefix: "/frota", permission: "frota" },
   { prefix: "/maquinas", permission: "maquinas" },
@@ -60,7 +61,7 @@ export async function updateSession(request: NextRequest) {
   if (isDemoMode()) {
     const path = request.nextUrl.pathname
     if (path === "/api/auth/user") return NextResponse.json(demoSession())
-    if (path.startsWith("/api/")) return NextResponse.json(demoApiPayload(path))
+    if (path.startsWith("/api/")) return NextResponse.json(demoApiPayload(path, request.nextUrl.search))
     if (path === "/" || path === "/login") return NextResponse.redirect(new URL("/dashboard", request.url))
     return NextResponse.next()
   }

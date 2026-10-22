@@ -5,7 +5,7 @@ export type EntityKind = "rawMaterial" | "kit" | "product" | "productionOrder" |
 const available: Record<EntityKind, (id: string) => string | null> = {
   rawMaterial: (id) => `/materias-primas/${id}`,
   kit: (id) => `/kits/${id}`,
-  product: () => null,          // Etapa 5
+  product: (id) => `/produtos/${id}`,
   productionOrder: () => null,  // Etapa 8
   purchaseOrder: () => "/compras",
   salesOrder: () => null,       // Etapa 7

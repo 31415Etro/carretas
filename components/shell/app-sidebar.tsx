@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
 import {
   Activity, BarChart3, Building2, Calculator, Car, Check, ChevronsUpDown, ClipboardList, Factory, FileText, Landmark, LayoutDashboard, LogOut,
-  MapPinned, Menu, Package, PanelLeftClose, PanelLeftOpen, Settings2, ShoppingCart, Users, Wrench, X,
+  MapPinned, Menu, Package, PackageCheck, PanelLeftClose, PanelLeftOpen, Settings2, ShoppingCart, Users, Wrench, X,
   Boxes, Layers,
 } from "lucide-react"
 import { BrandMark } from "@/components/shell/brand-mark"
@@ -28,6 +28,7 @@ const groups: NavGroup[] = [
     { label: "Compras", href: "/compras", permission: "compras", icon: ShoppingCart },
     { label: "Matérias-primas", href: "/materias-primas", permission: "produtos_servicos", icon: Boxes },
     { label: "Kits e composições", href: "/kits", permission: "produtos_servicos", icon: Layers },
+    { label: "Produtos finais", href: "/produtos", permission: "produtos_servicos", icon: PackageCheck },
     { label: "Produtos / Serviços", href: "/servicos", permission: "produtos_servicos", icon: Wrench },
     { label: "Ordens de Serviço", href: "/ordens-servico", permission: "ordens_servico", icon: ClipboardList },
     { label: "Frota", href: "/frota", permission: "frota", icon: Car },

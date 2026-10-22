@@ -8,7 +8,7 @@
     "lint": "next lint",
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --experimental-strip-types lib/*.test.ts",
     "start": "next start",
-    "test:sql": "node --test scripts/tests-sql/etapa2.test.mjs scripts/tests-sql/etapa3.test.mjs scripts/tests-sql/etapa4.test.mjs"
+    "test:sql": "node --test scripts/tests-sql/etapa2.test.mjs scripts/tests-sql/etapa3.test.mjs scripts/tests-sql/etapa4.test.mjs scripts/tests-sql/etapa5.test.mjs"
   },
   "dependencies": {
     "@emotion/is-prop-valid": "latest",

@@ -121,7 +121,14 @@ async function catalogSnapshot(admin: Admin, lines: QuoteSaveInput["lines"]) {
     materialIds.length ? admin.from("materials").select("id,sale_price,average_cost,cost_price,unit").in("id", materialIds) : { data: [] as any[] },
     serviceIds.length ? admin.from("service_types").select("id,default_price,estimated_cost,billing_unit").in("id", serviceIds) : { data: [] as any[] },
   ])
+  // valores do produto final no momento da proposta (script 222). Sem o script instalado a consulta falha e o orçamento segue como antes.
+  const productSnapshot = new Map<string, any>()
+  if (materialIds.length) {
+    const { data, error } = await admin.rpc("product_quote_snapshot", { p_ids: materialIds })
+    if (!error) for (const row of (data || []) as any[]) productSnapshot.set(row.id as string, row)
+  }
   return {
+    product: productSnapshot,
     material: new Map<string, any>((materials.data || []).map((row: any) => [row.id as string, row])),
     service: new Map<string, any>((services.data || []).map((row: any) => [row.id as string, row])),
   }
@@ -160,12 +167,18 @@ export async function saveQuote(admin: Admin, input: QuoteSaveInput, responsible
       ? { price: Number(source.sale_price || 0), cost: Number(source.average_cost || source.cost_price || 0), unit: source.unit || "UN" }
       : { price: Number(source.default_price || 0), cost: Number(source.estimated_cost || 0), unit: source.billing_unit || "Servico" }
     const sameCatalogItem = existing && (existing.material_id || existing.service_type_id) === line.catalogId
+    // produto com estrutura: o custo do orçamento é o da estrutura vigente (kits + mão de obra + indiretos) e a versão fica registrada
+    const product = line.lineType === "Produto" ? catalog.product.get(line.catalogId) : null
+    if (product && product.bom_version_id && !sameCatalogItem) fresh.cost = Number(product.est_cost || 0)
+    const productFields = product && !sameCatalogItem
+      ? { bom_version_id: product.bom_version_id || null, bom_version_number: product.bom_version ?? null, lead_time_days: product.lead_time_days ?? null, product_sku: product.sku || null }
+      : {}
     return {
       quote_item: {
         ...(existing && line.id ? { id: line.id } : {}), position: index, line_type: line.lineType, material_id: line.lineType === "Produto" ? line.catalogId : null, service_type_id: line.lineType === "Serviço" ? line.catalogId : null,
         description: text(line.description), unit: text(line.unit) || fresh.unit, quantity: num(line.quantity), unit_price: num(line.unitPrice),
         catalog_price: sameCatalogItem ? Number(existing.catalog_price) : fresh.price, unit_cost: sameCatalogItem ? Number(existing.unit_cost) : fresh.cost,
-        discount_percent: num(line.discountPercent), notes: text(line.notes) || null,
+        discount_percent: num(line.discountPercent), notes: text(line.notes) || null, ...productFields,
       },
       calc: { lineType: line.lineType, quantity: num(line.quantity), unitPrice: num(line.unitPrice), discountPercent: num(line.discountPercent), unitCost: sameCatalogItem ? Number(existing.unit_cost) : fresh.cost },
     }

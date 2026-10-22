@@ -81,8 +81,59 @@ const demoKitDetail = (id: string, versionId: string | null) => {
   }
 }
 
+/** Produtos finais FICTÍCIOS só para visualizar as telas no modo de demonstração. */
+const demoProductId = "44444444-4444-4444-8444-444444444444"
+const demoProducts = [
+  { id: demoProductId, sku: "PRD-000001", name: "Carreta Náutica FZ 1E (DEMO)", model: "FZ 1E", category: "Carreta", product_line: "Linha Náutica", status: "Ativo", sale_price: 9800, photo_url: null, updated_at: "2026-10-18T12:00:00Z", bom_version_id: "pv2", bom_version: 2, bom_status: "Ativa", kits_count: 2, est_cost: 6420.5, margin: 3379.5, margin_percent: 34.49, physical: 2, reserved: 1, available: 1, in_production: 3, make_to_order: false, available_for_quote: true, total_count: 2 },
+  { id: "55555555-5555-4555-8555-555555555555", sku: "PRD-000002", name: "Reboque Utilitário RU 300 (DEMO)", model: "RU 300", category: "Carreta", product_line: "Linha Utilitária", status: "Ativo", sale_price: 6200, photo_url: null, updated_at: "2026-10-10T12:00:00Z", bom_version_id: null, bom_version: null, bom_status: null, kits_count: 0, est_cost: 0, margin: 6200, margin_percent: 100, physical: 0, reserved: 0, available: 0, in_production: 0, make_to_order: true, available_for_quote: true, total_count: 2 },
+]
+const demoProductDetail = () => ({
+  detail: {
+    product: { id: demoProductId, name: "Carreta Náutica FZ 1E (DEMO)", internal_code: "PRD-000001", item_type: "Produto", status: "Ativo", category: "Carreta", product_line: "Linha Náutica", product_model: "FZ 1E", description: "Carreta para jet ski (texto de demonstração).", unit: "UN", sale_price: 9800, lead_time_days: 30, warranty_months: 12, available_for_quote: true, allows_sale: true, make_to_order: false, length: 450, width: 180, height: 120, net_weight: 320, gross_weight: 900, payload_capacity: 580, axle_count: 1, finish_type: "Galvanizado a fogo", structural_notes: "Chassi em perfil U", engineering_notes: "Eixo único com freio", ncm: "87163900", ncm_confirmed_by: "Demonstração", updated_at: "2026-10-18T12:00:00Z" },
+    availability: { physical: 2, reserved: 1, available: 1, incoming: 0 },
+    in_production: { open_orders: 1, quantity: 3, expected_end: "2026-11-10" },
+    stock_by_warehouse: [{ warehouse_id: "d1", warehouse: "Depósito principal (demonstração)", code: "DEP-01", quantity: 2 }],
+    movements: [{ id: "m1", movement_type: "Entrada por producao", quantity: 2, unit_cost: 6380, total_cost: 12760, occurred_at: "2026-10-12T15:00:00Z", document_reference: "OP-0001", from_warehouse: null, to_warehouse: "Depósito principal (demonstração)" }],
+    orders: [{ production_order_id: "o1", code: "OP-0002", status: "Em producao", quantity: 3, produced_quantity: 0, planned_end: "2026-11-10", bom_version: 2, sales_order: "PV-0003", created_at: "2026-10-20T10:00:00Z" }],
+    documents: [], current_version_id: "pv2", shown_version_id: "pv2",
+    versions: [
+      { id: "pv2", version: 2, status: "Ativa", labor_cost: 900, labor_minutes: 960, overhead_cost: 150, other_cost: 0, estimated_production_days: 12, notes: "", change_reason: "Troca do kit de rodagem", created_by: "ana@demo.com", created_at: "2026-10-15T09:00:00Z", activated_at: "2026-10-15T10:00:00Z", activated_by: "ana@demo.com", kits_count: 2, total_cost: 6420.5, used_in_production: true, used_in_quotes: false },
+      { id: "pv1", version: 1, status: "Obsoleta", labor_cost: 850, labor_minutes: 900, overhead_cost: 150, other_cost: 0, estimated_production_days: 12, notes: "", change_reason: "Estrutura inicial", created_by: "ana@demo.com", created_at: "2026-10-01T09:00:00Z", activated_at: "2026-10-01T10:00:00Z", activated_by: "ana@demo.com", kits_count: 2, total_cost: 6310.5, used_in_production: true, used_in_quotes: true },
+    ],
+    kits: [
+      { id: "pk1", kit_id: "k1", sku: "KIT-000001", name: "Kit Chassi FZ 1E (DEMO)", kit_status: "Ativo", category: "Chassi", quantity: 1, pinned_version_id: null, follows_active: true, kit_version_id: "kv2", kit_version: 2, kit_version_status: "Ativa", kit_cost: 4120.5, line_cost: 4120.5, components_count: 6 },
+      { id: "pk2", kit_id: "k2", sku: "KIT-000002", name: "Kit Elétrica (DEMO)", kit_status: "Ativo", category: "Elétrica", quantity: 1, pinned_version_id: "kv9", follows_active: false, kit_version_id: "kv9", kit_version: 1, kit_version_status: "Ativa", kit_cost: 1250, line_cost: 1250, components_count: 4 },
+    ],
+    cost: { materials: 5370.5, labor: 900, overhead: 150, other: 0, total: 6420.5, price: 9800, margin: 3379.5, margin_percent: 34.49 },
+    cost_of_version: { total: 6400, materials: 5350, computed_at: "2026-10-15T10:00:00Z" },
+    cost_history: [{ total_cost: 6420.5, materials_cost: 5370.5, computed_at: "2026-10-20T10:00:00Z", version: 2 }, { total_cost: 6400, materials_cost: 5350, computed_at: "2026-10-15T10:00:00Z", version: 2 }],
+    real_cost: { quantity: 2, unit_cost: 6380, total_cost: 12760, lots: 1 },
+    change_log: [{ id: "c1", action: "versao_ativada", description: "Estrutura v2 ativada.", detail: null, changed_by: "ana@demo.com", changed_at: "2026-10-15T10:00:00Z", version: 2 }, { id: "c2", action: "preco_alterado", description: "Preço de R$ 9.500,00 para R$ 9.800,00.", detail: null, changed_by: "ana@demo.com", changed_at: "2026-10-18T12:00:00Z", version: null }],
+    sku_history: [], used_in_production: true,
+  },
+})
+const demoExplosion = (quantity: number) => ({ explosion: { product_id: demoProductId, quantity, materials_cost: 5370.5 * quantity, kits: [
+  { kit_id: "k1", sku: "KIT-000001", name: "Kit Chassi FZ 1E (DEMO)", kit_version: 2, quantity, cost: 4120.5 * quantity, components: [{ material_id: "11111111-1111-4111-8111-111111111111", sku: "MP-000001", name: "Perfil de aço U 6 m (DEMO)", unit: "M", required: 6.3 * quantity, cost: 78.12 * quantity }, { material_id: "22222222-2222-4222-8222-222222222222", sku: "MP-000002", name: "Parafuso sextavado M10 (DEMO)", unit: "UN", required: 16 * quantity, cost: 13.6 * quantity }] },
+  { kit_id: "k2", sku: "KIT-000002", name: "Kit Elétrica (DEMO)", kit_version: 1, quantity, cost: 1250 * quantity, components: [{ material_id: "22222222-2222-4222-8222-222222222222", sku: "MP-000002", name: "Parafuso sextavado M10 (DEMO)", unit: "UN", required: 4 * quantity, cost: 3.4 * quantity }] },
+], consolidated: [
+  { material_id: "11111111-1111-4111-8111-111111111111", sku: "MP-000001", name: "Perfil de aço U 6 m (DEMO)", unit: "M", required: 6.3 * quantity, unit_cost: 12.4, cost: 78.12 * quantity, available: 50, incoming: 120, shortage: Math.max(6.3 * quantity - 50, 0), origins: [{ kit_id: "k1", kit_name: "Kit Chassi FZ 1E (DEMO)", required: 6.3 * quantity }] },
+  { material_id: "22222222-2222-4222-8222-222222222222", sku: "MP-000002", name: "Parafuso sextavado M10 (DEMO)", unit: "UN", required: 20 * quantity, unit_cost: 0.85, cost: 17 * quantity, available: 1920, incoming: 0, shortage: 0, origins: [{ kit_id: "k1", kit_name: "Kit Chassi FZ 1E (DEMO)", required: 16 * quantity }, { kit_id: "k2", kit_name: "Kit Elétrica (DEMO)", required: 4 * quantity }] },
+] }, version_id: "pv2" })
+const demoCapacity = { capacity: { immediate_capacity: 7, projected_capacity: 19, company_name: "Carretas (demonstração)", computed_at: "2026-10-22T12:00:00Z", note: "Considera só o saldo físico livre da empresa (descontadas as reservas). Pedidos de compra não recebidos entram apenas na capacidade projetada.", warehouses: [{ id: "d1", code: "DEP-01", name: "Depósito principal (demonstração)" }], materials: [
+  { material_id: "11111111-1111-4111-8111-111111111111", sku: "MP-000001", name: "Perfil de aço U 6 m (DEMO)", unit: "M", required_per_unit: 6.3, physical: 80, reserved: 30, available: 50, incoming: 120, immediate_units: 7, projected_units: 26, limits_immediate: true, limits_projected: false },
+  { material_id: "22222222-2222-4222-8222-222222222222", sku: "MP-000002", name: "Parafuso sextavado M10 (DEMO)", unit: "UN", required_per_unit: 20, physical: 2400, reserved: 480, available: 1920, incoming: 0, immediate_units: 96, projected_units: 19, limits_immediate: false, limits_projected: true },
+] } }
+
 /** Resposta genérica das APIs no modo de demonstração. */
-export function demoApiPayload(pathname: string) {
+export function demoApiPayload(pathname: string, search = "") {
+  if (pathname === "/api/produtos") return { items: demoProducts, total: demoProducts.length, page: 1, pageSize: 25 }
+  if (pathname === "/api/produtos/kits") return { items: [{ id: "k1", sku: "KIT-000001", name: "Kit Chassi FZ 1E (DEMO)", version: 2, version_id: "kv2", cost: 4120.5, components_count: 6 }, { id: "k2", sku: "KIT-000002", name: "Kit Elétrica (DEMO)", version: 1, version_id: "kv9", cost: 1250, components_count: 4 }] }
+  if (/^\/api\/produtos\/[0-9a-f-]{36}$/.test(pathname)) {
+    const query = new URLSearchParams(search)
+    if (query.get("capacidade")) return demoCapacity
+    if (query.get("explosao")) return demoExplosion(Number(query.get("explosao")) || 1)
+    return demoProductDetail()
+  }
   if (pathname === "/api/kits") return { items: demoKits, total: demoKits.length, page: 1, pageSize: 25 }
   if (pathname === "/api/kits/materiais") return { items: demoRawMaterials.map((item) => ({ id: item.id, sku: item.sku, name: item.name, category: item.category, unit: item.unit, unit_cost: item.unit_cost, available: item.available, units: [{ unit: item.unit, factor: 1 }] })) }
   const kitMatch = pathname.match(/^\/api\/kits\/([0-9a-f-]{36})$/)

@@ -36,6 +36,8 @@ export const sharedMasterTables = new Set([
   // estrutura de itens (217/218): cadastro mestre compartilhado, como `materials`
   "raw_material_suppliers", "ncm_classifications", "item_sku_counters", "kit_versions", "kit_components", "product_bom_versions", "product_kits",
   "unit_conversions", "material_unit_conversions", "kit_change_log", "kit_cost_snapshots", "item_sku_history",
+  // produtos finais (222): documentos, histórico e estimativas de custo do cadastro mestre
+  "product_documents", "product_change_log", "product_bom_cost_snapshots",
 ])
 
 export const tenantScopedTables = new Set([
