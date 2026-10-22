@@ -4,8 +4,8 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
 import {
-  Activity, BarChart3, Building2, CalendarClock, Calculator, Car, Check, ChevronsUpDown, ClipboardList, Coins, Factory, FileBarChart, FileText, History, Landmark, LayoutDashboard, LayoutGrid, LogOut,
-  MapPinned, Menu, Package, PanelLeftClose, PanelLeftOpen, Settings2, ShoppingCart, SlidersHorizontal, Users, Wrench, X,
+  Activity, BarChart3, Building2, Calculator, Car, Check, ChevronsUpDown, ClipboardList, Factory, FileText, Landmark, LayoutDashboard, LogOut,
+  MapPinned, Menu, Package, PanelLeftClose, PanelLeftOpen, Settings2, ShoppingCart, Users, Wrench, X,
 } from "lucide-react"
 import { BrandMark } from "@/components/shell/brand-mark"
 import { Button } from "@/components/ui/button"
@@ -28,16 +28,7 @@ const groups: NavGroup[] = [
     { label: "Produtos / Serviços", href: "/servicos", permission: "produtos_servicos", icon: Wrench },
     { label: "Ordens de Serviço", href: "/ordens-servico", permission: "ordens_servico", icon: ClipboardList },
     { label: "Frota", href: "/frota", permission: "frota", icon: Car },
-  ] },
-  { title: "Máquinas e Equipamentos", items: [
-    { label: "Visão Geral", href: "/maquinas", permission: "maquinas", icon: Factory, exact: true },
-    { label: "Todas as Máquinas", href: "/maquinas/todas", permission: "maquinas", icon: LayoutGrid },
-    { label: "Manutenções", href: "/maquinas/manutencoes", permission: "maquinas", icon: Wrench },
-    { label: "Manutenções Programadas", href: "/maquinas/programadas", permission: "maquinas", icon: CalendarClock },
-    { label: "Histórico de Manutenções", href: "/maquinas/historico", permission: "maquinas", icon: History },
-    { label: "Custos e Depreciação", href: "/maquinas/custos", permission: "maquinas_patrimonio", icon: Coins },
-    { label: "Relatórios", href: "/maquinas/relatorios", permission: "maquinas", icon: FileBarChart },
-    { label: "Configurações", href: "/maquinas/configuracoes", permission: "maquinas_manutencao", icon: SlidersHorizontal },
+    { label: "Máquinas e Equipamentos", href: "/maquinas", permission: "maquinas", icon: Factory },
   ] },
   { title: "Relacionamento", items: [
     { label: "Clientes & Fornecedores", href: "/clientes", permission: "comercial", icon: Users },

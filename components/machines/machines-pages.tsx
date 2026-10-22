@@ -1,7 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { useMemo, useState } from "react"
+import { usePathname } from "next/navigation"
+import { useEffect, useMemo, useState } from "react"
 import { AlertTriangle, CalendarClock, CircleHelp, Factory, LayoutGrid, Loader2, Map as MapIcon, OctagonX, Play, Plus, RefreshCw, Search, Wrench } from "lucide-react"
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { Button } from "@/components/ui/button"
@@ -18,6 +19,27 @@ import { OrderActions, OrderBadge } from "@/components/machines/order-actions"
 
 const all = "todos"
 
+const machineTabs = [
+  { label: "Visão Geral", href: "/maquinas", need: "view" }, { label: "Todas as Máquinas", href: "/maquinas/todas", need: "view" }, { label: "Manutenções", href: "/maquinas/manutencoes", need: "view" },
+  { label: "Manutenções Programadas", href: "/maquinas/programadas", need: "view" }, { label: "Histórico de Manutenções", href: "/maquinas/historico", need: "view" },
+  { label: "Custos e Depreciação", href: "/maquinas/custos", need: "patrimony" }, { label: "Relatórios", href: "/maquinas/relatorios", need: "view" }, { label: "Configurações", href: "/maquinas/configuracoes", need: "maintain" },
+] as const
+
+/** Abas do módulo (uma única entrada no menu lateral; cada aba é uma subpágina). */
+export function MachineTabs() {
+  const pathname = usePathname() || ""
+  const [caps, setCaps] = useState<Record<string, boolean>>({ view: true, patrimony: true, maintain: true })
+  useEffect(() => { mApi<Overview>("data").then((result) => setCaps(result.caps as any)).catch(() => undefined) }, [])
+  return (
+    <nav aria-label="Seções de máquinas" className="-mt-2 flex gap-1 overflow-x-auto border-b">
+      {machineTabs.filter((tab) => caps[tab.need]).map((tab) => {
+        const active = tab.href === "/maquinas" ? pathname === tab.href : pathname.startsWith(tab.href)
+        return <Link key={tab.href} href={tab.href} prefetch={false} aria-current={active ? "page" : undefined} className={`whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium ${active ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}>{tab.label}</Link>
+      })}
+    </nav>
+  )
+}
+
 /** Casca comum: carrega dados, mostra estado de carregamento/erro e entrega o painel já sincronizado. */
 export function MachinesShell({ title, description, actions, children }: { title: string; description: string; actions?: (ctx: { data: Overview; reload: () => void }) => React.ReactNode; children: (ctx: { data: Overview; reload: () => void; now: number }) => React.ReactNode }) {
   const { data, error, loading, reload } = useMachines()
@@ -25,6 +47,7 @@ export function MachinesShell({ title, description, actions, children }: { title
   const refresh = () => { void reload(true) }
   return (
     <PageShell title={title} description={description} actions={data ? <>{actions?.({ data, reload: refresh })}<Button variant="outline" size="icon" onClick={() => reload()} aria-label="Atualizar" title="Atualizar"><RefreshCw className="h-4 w-4" /></Button></> : undefined}>
+      <MachineTabs />
       {error && !data ? <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</p> : null}
       {loading && !data ? <div className="flex items-center gap-2 p-6 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando máquinas…</div> : null}
       {data ? children({ data, reload: refresh, now }) : null}

@@ -15,6 +15,7 @@ import { bookValueCurve, depreciation, dueState, effectiveDate, formatDuration, 
 import { MachineArt, StatusPill } from "@/components/machines/machine-art"
 import { brl, dateTime, day, fileUrl, hours, mApi, uploadMachineFile, useNow, type Caps, type Overview, type Row } from "@/components/machines/machine-data"
 import { CompleteDialog, MeterDialog, OrderSheet, PlanSheet, ReportDialog, StatusDialog } from "@/components/machines/machine-dialogs"
+import { MachineTabs } from "@/components/machines/machines-pages"
 import { MachineFormSheet } from "@/components/machines/machine-form"
 import { OrderActions, OrderBadge } from "@/components/machines/order-actions"
 import { downloadLabel, printLabel } from "@/components/machines/label"
@@ -240,7 +241,7 @@ export function MachineDetail({ machineId, mobile = false }: { machineId: string
     )
   })()
 
-  return mobile ? <PageLayout><div className="mx-auto w-full max-w-3xl">{body}</div></PageLayout> : <PageShell title="Ficha da máquina" description="Dados, status operacional, manutenção, custos e documentos.">{body}</PageShell>
+  return mobile ? <PageLayout><div className="mx-auto w-full max-w-3xl">{body}</div></PageLayout> : <PageShell title="Ficha da máquina" description="Dados, status operacional, manutenção, custos e documentos."><MachineTabs />{body}</PageShell>
 }
 
 // ===== Documentos =====
