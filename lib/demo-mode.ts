@@ -124,8 +124,54 @@ const demoCapacity = { capacity: { immediate_capacity: 7, projected_capacity: 19
   { material_id: "22222222-2222-4222-8222-222222222222", sku: "MP-000002", name: "Parafuso sextavado M10 (DEMO)", unit: "UN", required_per_unit: 20, physical: 2400, reserved: 480, available: 1920, incoming: 0, immediate_units: 96, projected_units: 19, limits_immediate: false, limits_projected: true },
 ] } }
 
+/** Pedidos, ordens e MRP FICTÍCIOS só para visualizar as telas no modo de demonstração. */
+const demoSaleId = "66666666-6666-4666-8666-666666666666"
+const demoOrderId = "77777777-7777-4777-8777-777777777777"
+const demoSales = [
+  { id: demoSaleId, order_number: "PV-2026-00001", status: "Parcialmente disponivel", client_id: "c1", client_name: "Náutica Exemplo Ltda (DEMO)", order_date: "2026-10-18", delivery_date: "2026-11-20", total_amount: 49000, quote_number: "ORC-000012", items_count: 1, units_ordered: 5, units_ready: 3, units_delivered: 0, units_in_production: 2, payment_confirmed: true, created_at: "2026-10-18T12:00:00Z", total_count: 2 },
+  { id: "88888888-8888-4888-8888-888888888888", order_number: "PV-2026-00002", status: "Aguardando confirmacao", client_id: "c2", client_name: "Marina Demo S.A.", order_date: "2026-10-21", delivery_date: "2026-12-05", total_amount: 19600, quote_number: "ORC-000015", items_count: 1, units_ordered: 2, units_ready: 0, units_delivered: 0, units_in_production: 0, payment_confirmed: false, created_at: "2026-10-21T12:00:00Z", total_count: 2 },
+]
+const demoSaleDetail = () => ({ detail: {
+  order: { id: demoSaleId, order_number: "PV-2026-00001", status: "Parcialmente disponivel", client_name: "Náutica Exemplo Ltda (DEMO)", client_document: "00.000.000/0001-00", quote_number: "ORC-000012", quote_version: 1, payment_condition_name: "30/60/90 dias", total_amount: 49000, delivery_date: "2026-11-20", payment_confirmed_at: "2026-10-19T10:00:00Z", payment_confirmed_by: "financeiro@demo.com" },
+  require_payment: true,
+  items: [{ id: "it1", position: 0, line_type: "Produto", material_id: "44444444-4444-4444-8444-444444444444", sku: "PRD-000001", description: "Carreta Náutica FZ 1E (DEMO)", unit: "UN", quantity: 5, unit_price: 9800, discount_percent: 0, total: 49000, unit_cost: 6420.5, make_to_order: false, quantity_from_stock: 2, quantity_to_produce: 3, lead_time_days: 30, reserved: 3, delivered: 0, produced: 1, in_production: 2, quoted_bom_version: 1, bom_version: 2, structure_changed: true, planned: true }],
+  production_orders: [{ id: demoOrderId, code: "OP-2026-00001", status: "Em producao", quantity: 3, produced_quantity: 1, planned_end: "2026-11-10", product: "Carreta Náutica FZ 1E (DEMO)", sku: "PRD-000001" }],
+  deliveries: [], availability: [],
+  events: [{ event: "Situação", description: "Situação alterada de Em producao para Parcialmente disponivel.", actor: "sistema", created_at: "2026-10-22T09:00:00Z" }, { event: "Pagamento", description: "Pagamento/sinal confirmado: sinal de 30%.", actor: "financeiro@demo.com", created_at: "2026-10-19T10:00:00Z" }, { event: "Criado", description: "Pedido PV-2026-00001 criado a partir do orçamento ORC-000012.", actor: "vendas@demo.com", created_at: "2026-10-18T12:00:00Z" }],
+} })
+const demoProduction = [
+  { id: demoOrderId, code: "OP-2026-00001", status: "Em producao", product_id: "44444444-4444-4444-8444-444444444444", product_name: "Carreta Náutica FZ 1E (DEMO)", sku: "PRD-000001", quantity: 3, produced_quantity: 1, remaining: 2, sales_order_id: demoSaleId, order_number: "PV-2026-00001", client_name: "Náutica Exemplo Ltda (DEMO)", planned_end: "2026-10-15", priority: 2, responsible: "Chefe de produção", estimated_cost: 19261.5, actual_materials_cost: 5100, materials_missing: 1, late: true, total_count: 1 },
+]
+const demoProductionDetail = () => ({ detail: {
+  order: { id: demoOrderId, code: "OP-2026-00001", status: "Em producao", product_name: "Carreta Náutica FZ 1E (DEMO)", sku: "PRD-000001", bom_version: 2, order_number: "PV-2026-00001", sales_order_id: demoSaleId, client_name: "Náutica Exemplo Ltda (DEMO)", quantity: 3, produced_quantity: 1, priority: 2, responsible: "Chefe de produção", planned_start: "2026-10-05", planned_end: "2026-11-10", estimated_materials_cost: 16111.5, estimated_labor_cost: 2700, estimated_other_cost: 450 },
+  progress: { planned: 3, started: 2, produced: 1, remaining: 2 },
+  kits: [{ kit_id: "k1", sku: "KIT-000001", name: "Kit Chassi FZ 1E (DEMO)", kit_version: 2, quantity: 3 }, { kit_id: "k2", sku: "KIT-000002", name: "Kit Elétrica (DEMO)", kit_version: 1, quantity: 3 }],
+  materials: [
+    { id: "pm1", material_id: "11111111-1111-4111-8111-111111111111", sku: "MP-000001", name: "Perfil de aço U 6 m (DEMO)", kit: "Kit Chassi FZ 1E (DEMO)", unit: "M", required: 18.9, reserved: 6.3, consumed: 12.6, remaining: 6.3, unit_cost_estimated: 12.4, cost_estimated: 234.36 },
+    { id: "pm2", material_id: "22222222-2222-4222-8222-222222222222", sku: "MP-000002", name: "Parafuso sextavado M10 (DEMO)", kit: "Kit Chassi FZ 1E (DEMO)", unit: "UN", required: 60, reserved: 20, consumed: 40, remaining: 20, unit_cost_estimated: 0.85, cost_estimated: 51 },
+  ],
+  plan: [{ material_id: "11111111-1111-4111-8111-111111111111", name: "Perfil de aço U 6 m (DEMO)", unit: "M", required: 18.9, reserved_for_order: 6.3, consumed: 12.6, available_free: 0, incoming: 120, shortage: 0 }],
+  consumptions: [{ id: "cs1", material: "Perfil de aço U 6 m (DEMO)", quantity: 12.6, unit: "M", kind: "Consumo", unit_cost: 12.4, total_cost: 156.24, responsible: "Operador", occurred_at: "2026-10-14T09:00:00Z", notes: null }],
+  receipts: [{ id: "r1", quantity: 1, unit_cost: 6380, materials_cost: 5100, labor_other_cost: 1280, created_at: "2026-10-16T15:00:00Z", responsible: "Operador", warehouse: "Depósito principal (demonstração)", allocations: [{ cost_type: "materiais", amount: 5100, criterion: "x" }, { cost_type: "mao_de_obra", amount: 900, criterion: "x" }, { cost_type: "indiretos", amount: 380, criterion: "x" }], adjustments: [] }],
+  events: [{ event: "Conclusão parcial/total", description: "1 unidade(s) concluída(s) e recebida(s) no estoque a 6380.0000 cada.", actor: "Operador", created_at: "2026-10-16T15:00:00Z" }, { event: "Situação", description: "Situação alterada de Pronta para producao para Em producao.", actor: "chefe@demo.com", created_at: "2026-10-14T08:00:00Z" }],
+  costs: { estimated_materials: 16111.5, estimated_labor: 2700, estimated_other: 450, estimated_total: 19261.5, consumed_materials: 10200, allocated_materials: 5100, in_process_materials: 5100, received_cost: 6380, labor_other_applied: 1280, adjustments: 0 },
+  purchase_requests: [],
+} })
+const demoMrp = { items: [
+  { material_id: "11111111-1111-4111-8111-111111111111", sku: "MP-000001", name: "Perfil de aço U 6 m (DEMO)", unit: "M", required: 37.8, reserved_for_orders: 6.3, unreserved_need: 31.5, physical: 80, reserved_total: 80, available: 0, incoming: 20, shortage_now: 31.5, shortage_projected: 11.5, requested: 0, to_request: 11.5, supplier_name: "Aços Exemplo Ltda (DEMO)", lead_time_days: 7, next_arrival: "2026-10-28", needed_by: "2026-10-30", orders: [{ code: "OP-2026-00001" }, { code: "OP-2026-00002" }], arrivals: [{ purchase_order: "PC-000031", expected_date: "2026-10-28", quantity: 20 }] },
+  { material_id: "22222222-2222-4222-8222-222222222222", sku: "MP-000002", name: "Parafuso sextavado M10 (DEMO)", unit: "UN", required: 120, reserved_for_orders: 20, unreserved_need: 100, physical: 2400, reserved_total: 480, available: 1920, incoming: 0, shortage_now: 0, shortage_projected: 0, requested: 0, to_request: 0, supplier_name: "Fixadores Demo S.A.", lead_time_days: 5, next_arrival: null, needed_by: "2026-10-30", orders: [{ code: "OP-2026-00001" }], arrivals: [] },
+] }
+const demoDashboard = { sales_awaiting_confirmation: 1, sales_awaiting_production: 0, sales_ready_for_delivery: 1, orders_in_progress: 1, orders_waiting_materials: 1, orders_open: 2, units_pending: 5, units_planned: 6, units_completed_30d: 1, orders_late: 1, materials_short: 1, materials_short_now: 1, purchase_requests_pending: 0, cost_completed: { orders: 0, estimated: 0, actual: 0 }, require_payment: true }
+
 /** Resposta genérica das APIs no modo de demonstração. */
 export function demoApiPayload(pathname: string, search = "") {
+  if (pathname === "/api/vendas") return { items: demoSales, total: demoSales.length, page: 1, pageSize: 25 }
+  if (pathname === "/api/vendas/config") return { requirePayment: true }
+  if (/^\/api\/vendas\/[0-9a-f-]{36}$/.test(pathname)) return demoSaleDetail()
+  if (pathname === "/api/producao") return { items: demoProduction, total: demoProduction.length, page: 1, pageSize: 25, dashboard: demoDashboard }
+  if (pathname === "/api/producao/mrp") return demoMrp
+  if (pathname === "/api/producao/solicitacoes") return { items: [{ id: "sc1", request_number: "SC-2026-00001", status: "Pendente", requested_by: "compras@demo.com", created_at: "2026-10-21T10:00:00Z", production_order: null, orders: ["OP-2026-00001"], items: [{ name: "Perfil de aço U 6 m (DEMO)", quantity: 12, unit: "M", supplier: "Aços Exemplo Ltda (DEMO)" }] }] }
+  if (/^\/api\/producao\/[0-9a-f-]{36}$/.test(pathname)) return demoProductionDetail()
   if (pathname === "/api/produtos") return { items: demoProducts, total: demoProducts.length, page: 1, pageSize: 25 }
   if (pathname === "/api/produtos/kits") return { items: [{ id: "k1", sku: "KIT-000001", name: "Kit Chassi FZ 1E (DEMO)", version: 2, version_id: "kv2", cost: 4120.5, components_count: 6 }, { id: "k2", sku: "KIT-000002", name: "Kit Elétrica (DEMO)", version: 1, version_id: "kv9", cost: 1250, components_count: 4 }] }
   if (/^\/api\/produtos\/[0-9a-f-]{36}$/.test(pathname)) {

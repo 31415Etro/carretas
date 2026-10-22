@@ -6,9 +6,9 @@ const available: Record<EntityKind, (id: string) => string | null> = {
   rawMaterial: (id) => `/materias-primas/${id}`,
   kit: (id) => `/kits/${id}`,
   product: (id) => `/produtos/${id}`,
-  productionOrder: () => null,  // Etapa 8
+  productionOrder: (id) => `/producao/${id}`,
   purchaseOrder: () => "/compras",
-  salesOrder: () => null,       // Etapa 7
+  salesOrder: (id) => `/vendas/${id}`,
   supplier: () => "/clientes",
 }
 

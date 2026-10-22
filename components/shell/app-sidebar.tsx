@@ -4,8 +4,8 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
 import {
-  Activity, BarChart3, Building2, Calculator, Car, Check, ChevronsUpDown, ClipboardList, Factory, FileText, Landmark, LayoutDashboard, LogOut,
-  MapPinned, Menu, Package, PackageCheck, PanelLeftClose, PanelLeftOpen, Settings2, ShoppingCart, Users, Wrench, X,
+  Activity, BarChart3, Building2, Calculator, Car, Check, ChevronsUpDown, ClipboardList, Cog, Factory, FileText, Landmark, LayoutDashboard, LogOut,
+  MapPinned, Menu, Package, PackageCheck, PanelLeftClose, PanelLeftOpen, Receipt, Settings2, ShoppingCart, Users, Wrench, X,
   Boxes, Layers,
 } from "lucide-react"
 import { BrandMark } from "@/components/shell/brand-mark"
@@ -30,6 +30,7 @@ const groups: NavGroup[] = [
     { label: "Kits e composições", href: "/kits", permission: "produtos_servicos", icon: Layers },
     { label: "Produtos finais", href: "/produtos", permission: "produtos_servicos", icon: PackageCheck },
     { label: "Produtos / Serviços", href: "/servicos", permission: "produtos_servicos", icon: Wrench },
+    { label: "Produção e MRP", href: "/producao", permission: "estoque", icon: Cog },
     { label: "Ordens de Serviço", href: "/ordens-servico", permission: "ordens_servico", icon: ClipboardList },
     { label: "Frota", href: "/frota", permission: "frota", icon: Car },
     { label: "Máquinas e Equipamentos", href: "/maquinas", permission: "maquinas", icon: Factory },
@@ -38,6 +39,7 @@ const groups: NavGroup[] = [
     { label: "Clientes & Fornecedores", href: "/clientes", permission: "comercial", icon: Users },
     { label: "Comercial", href: "/comercial", permission: "comercial", icon: MapPinned },
     { label: "Orçamentos", href: "/orcamento", permission: "orcamento", icon: Calculator },
+    { label: "Pedidos de venda", href: "/vendas", permission: "orcamento", icon: Receipt },
     { label: "Contratos", href: "/contratos", permission: "contratos", icon: FileText },
   ] },
   { title: "Sistema", items: [

@@ -2,7 +2,7 @@
 // Funções puras (testáveis).
 
 export const quoteTypes = ["Produto", "Serviço", "Misto"] as const
-export const quoteStatuses = ["Rascunho", "Enviado", "Aprovado", "Recusado", "Expirado", "Convertido", "Cancelado", "Substituído"] as const
+export const quoteStatuses = ["Rascunho", "Enviado", "Em negociação", "Aprovado", "Recusado", "Expirado", "Convertido", "Cancelado", "Substituído"] as const
 export type QuoteStatus = (typeof quoteStatuses)[number]
 
 export type QuoteLine = {
@@ -88,24 +88,29 @@ export function validateQuote(input: QuoteInput) {
 
 /** Situação efetiva: rascunho ou enviado com a validade vencida vira "Expirado". */
 export function effectiveStatus(status: string, validUntil: string, today = new Date().toISOString().slice(0, 10)) {
-  return (status === "Rascunho" || status === "Enviado") && validUntil && validUntil < today ? "Expirado" : status
+  return (status === "Rascunho" || status === "Enviado" || status === "Em negociação") && validUntil && validUntil < today ? "Expirado" : status
 }
 
 /** Quem pode virar o quê. Aprovado/Recusado/Enviado partem de Enviado; Convertido só pela conversão. */
 export function validateQuoteTransition(from: string, to: string, extra: { acceptedBy?: string; reason?: string; validUntil?: string }, today = new Date().toISOString().slice(0, 10)) {
   const status = effectiveStatus(from, extra.validUntil || "", today)
+  if (to === "Em negociação") {
+    if (status === "Expirado") return "Orçamento expirado: crie uma nova versão com nova validade."
+    if (status !== "Enviado") return "Só um orçamento enviado pode ir para negociação."
+    return ""
+  }
   if (to === "Enviado") {
-    if (status !== "Rascunho" && status !== "Enviado") return status === "Expirado" ? "Orçamento expirado: crie uma nova versão com nova validade." : `Orçamento ${status.toLowerCase()} não pode ser enviado.`
+    if (status !== "Rascunho" && status !== "Enviado" && status !== "Em negociação") return status === "Expirado" ? "Orçamento expirado: crie uma nova versão com nova validade." : `Orçamento ${status.toLowerCase()} não pode ser enviado.`
     return ""
   }
   if (to === "Aprovado") {
     if (status === "Expirado") return "Orçamento expirado: crie uma nova versão com nova validade antes de aprovar."
-    if (status !== "Enviado" && status !== "Rascunho") return `Orçamento ${status.toLowerCase()} não pode ser aprovado.`
+    if (status !== "Enviado" && status !== "Rascunho" && status !== "Em negociação") return `Orçamento ${status.toLowerCase()} não pode ser aprovado.`
     if (!String(extra.acceptedBy || "").trim()) return "Informe o responsável pelo aceite."
     return ""
   }
   if (to === "Recusado") {
-    if (status !== "Enviado") return "Só é possível registrar recusa de um orçamento enviado."
+    if (status !== "Enviado" && status !== "Em negociação") return "Só é possível registrar recusa de um orçamento enviado ou em negociação."
     if (!String(extra.reason || "").trim()) return "Informe o motivo da recusa."
     return ""
   }
@@ -119,7 +124,7 @@ export function validateQuoteTransition(from: string, to: string, extra: { accep
 
 /** Rascunho edita no lugar; depois de enviado, qualquer alteração gera nova versão. */
 export const editableInPlace = (status: string) => status === "Rascunho"
-export const canCreateVersion = (status: string) => ["Enviado", "Aprovado", "Recusado", "Expirado"].includes(status)
+export const canCreateVersion = (status: string) => ["Enviado", "Em negociação", "Aprovado", "Recusado", "Expirado"].includes(status)
 
 export type PaymentRule = { installments: number; firstDueDays: number; intervalDays: number }
 

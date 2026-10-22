@@ -39,6 +39,8 @@ export function PageLayout({ children }: { children: React.ReactNode }) {
       { href: "/clientes", permission: "comercial" },
       { href: "/comercial", permission: "comercial" },
       { href: "/orcamento", permission: "orcamento" },
+      { href: "/vendas", permission: "orcamento" },
+      { href: "/producao", permission: "estoque" },
       { href: "/contratos", permission: "contratos" },
       { href: "/relatorios", permission: "relatorios" },
       { href: "/configuracoes", permission: "configuracoes" },

@@ -28,6 +28,8 @@ const toItem = (row: any) => ({
   id: row.id, lineType: row.line_type as "Produto" | "Serviço", catalogId: row.material_id || row.service_type_id || "", description: row.description, unit: row.unit,
   quantity: Number(row.quantity), unitPrice: Number(row.unit_price), catalogPrice: Number(row.catalog_price), unitCost: Number(row.unit_cost), discountPercent: Number(row.discount_percent),
   total: Number(row.total), notes: row.notes || "",
+  bomVersionId: (row.bom_version_id || "") as string, bomVersionNumber: row.bom_version_number === null || row.bom_version_number === undefined ? null : Number(row.bom_version_number),
+  leadTimeDays: row.lead_time_days === null || row.lead_time_days === undefined ? null : Number(row.lead_time_days), productSku: (row.product_sku || "") as string,
 })
 
 export type QuoteItemView = ReturnType<typeof toItem>
@@ -296,6 +298,8 @@ export async function changeQuoteStatus(admin: Admin, id: string, to: string, ex
   } else if (to === "Aprovado") {
     patch.approved_at = new Date().toISOString(); patch.accepted_by = text(extra.acceptedBy); patch.accept_notes = text(extra.acceptNotes) || null
     description = `Aprovado. Aceite: ${text(extra.acceptedBy)}.${extra.acceptNotes ? ` ${text(extra.acceptNotes)}` : ""}`
+  } else if (to === "Em negociação") {
+    description = `Em negociação${text(extra.acceptNotes) ? `: ${text(extra.acceptNotes)}` : ""}.`
   } else if (to === "Recusado") {
     patch.refusal_reason = text(extra.reason)
     description = `Recusado: ${text(extra.reason)}.`
@@ -373,6 +377,19 @@ export async function formalizeQuote(admin: Admin, id: string, options: { target
   await event(admin, id, "Convertido", `Formalizado como ${options.target === "OS" ? "ordem de serviço" : "venda"}: ${parcels.length} título(s) a receber de ${Number(quote!.total_amount).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.${warnings.length ? ` Atenção: ${warnings.join(" ")}` : ""}`, responsible)
   await winOpportunity(admin, quote, responsible)
   return { ...(await getQuote(admin, id)), warnings }
+}
+
+/**
+ * Converte o orçamento APROVADO em pedido de venda (função sales_order_from_quote). Idempotente: repetir devolve o mesmo pedido.
+ * Não reserva nem consome estoque e não gera títulos a receber: a confirmação do pedido é que dispara estoque de acabados e produção.
+ */
+export async function convertQuoteToSalesOrder(admin: Admin, id: string, responsible: string) {
+  const { data: quote } = await admin.from("quotes").select("*").eq("id", id).maybeSingle()
+  if (!quote) fail("Orçamento não encontrado.")
+  const { data, error } = await admin.rpc("sales_order_from_quote", { p_quote_id: id, p_user: responsible })
+  if (error) fail(error.message)
+  if (!data.duplicate) await winOpportunity(admin, quote, responsible)
+  return { ...(await getQuote(admin, id)), salesOrder: { id: data.sales_order_id as string, number: data.order_number as string, duplicate: Boolean(data.duplicate) } }
 }
 
 /** Orçamento aprovado que virou contrato: os títulos saem da recorrência do contrato, não do orçamento. */

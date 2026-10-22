@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { AlertTriangle, CheckCircle2, FileText, Plus, RefreshCw, Trash2, Wallet } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -56,6 +57,7 @@ function Opts({ label, value, onChange, items, placeholder = "Selecione", disabl
 }
 
 export function QuotesPage() {
+  const router = useRouter()
   const { toast } = useCrudFeedback()
   const [quotes, setQuotes] = useState<Row[]>([])
   const [options, setOptions] = useState<Options | null>(null)
@@ -169,6 +171,22 @@ export function QuotesPage() {
     }
   }
 
+  async function convertToOrder() {
+    if (!detail) return
+    setSaving(true)
+    try {
+      const data = await api<Detail & { salesOrder: { id: string; number: string; duplicate: boolean } }>(`/api/orcamentos/${detail.quote.id}`, { method: "POST", body: JSON.stringify({ action: "to_order" }) })
+      hydrate(data)
+      toast({ title: data.salesOrder.duplicate ? "Este orçamento já tinha pedido" : "Pedido de venda criado", description: `${data.salesOrder.number}: abra em Vendas para confirmar.` })
+      await load()
+      router.push(`/vendas/${data.salesOrder.id}`)
+    } catch (reason) {
+      toast({ title: "Conversão não concluída", description: reason instanceof Error ? reason.message : "", variant: "destructive" })
+    } finally {
+      setSaving(false)
+    }
+  }
+
   async function run(body: Row, successTitle: string) {
     if (!detail) return null
     setSaving(true)
@@ -270,11 +288,11 @@ export function QuotesPage() {
   const text = query.trim().toLowerCase()
   const shown = quotes.filter((row) => {
     const current = row.effectiveStatus as string
-    if (statusFilter === "abertos") { if (!["Rascunho", "Enviado", "Aprovado"].includes(current)) return false }
+    if (statusFilter === "abertos") { if (!["Rascunho", "Enviado", "Em negociação", "Aprovado"].includes(current)) return false }
     else if (statusFilter !== "todos" && current !== statusFilter) return false
     return !text || [row.number, row.clientName, row.salespersonName, row.title].some((value) => String(value || "").toLowerCase().includes(text))
   })
-  const openQuotes = quotes.filter((row) => ["Rascunho", "Enviado"].includes(row.effectiveStatus))
+  const openQuotes = quotes.filter((row) => ["Rascunho", "Enviado", "Em negociação"].includes(row.effectiveStatus))
   const approved = quotes.filter((row) => row.effectiveStatus === "Aprovado")
   const expiring = openQuotes.filter((row) => row.validUntil <= plusDays(7))
   const monthWon = quotes.filter((row) => row.effectiveStatus === "Convertido" && String(row.convertedAt).slice(0, 7) === today().slice(0, 7)).reduce((sum, row) => sum + row.totalAmount, 0)
@@ -284,7 +302,7 @@ export function QuotesPage() {
   const catalogItems = adding.kind === "Produto"
     ? (options?.products || []).map((item) => ({ value: item.id, label: `${item.code ? `${item.code} · ` : ""}${item.name} — ${brl(item.price)}${item.controlsStock ? ` · estoque ${item.stock - item.reserved}` : ""}${item.bomVersion ? ` · custo ${brl(item.cost)} (estrutura v${item.bomVersion}${item.marginPercent === null || item.marginPercent === undefined ? "" : `, margem ${Number(item.marginPercent).toLocaleString("pt-BR")}%`})` : ""}${item.leadTimeDays ? ` · prazo ${item.leadTimeDays} dias` : ""}` }))
     : (options?.services || []).map((item) => ({ value: item.id, label: `${item.code ? `${item.code} · ` : ""}${item.name} — ${brl(item.price)}` }))
-  const canEmail = Boolean(detail) && ["Rascunho", "Enviado"].includes(status)
+  const canEmail = Boolean(detail) && ["Rascunho", "Enviado", "Em negociação"].includes(status)
   const needsWarehouse = detail?.items.some((item) => item.lineType === "Produto" && options?.products.find((product) => product.id === item.catalogId)?.controlsStock)
   const parcels = detail && detail.quote.paymentConditionId && conditionRule ? buildInstallments(detail.quote.totalAmount, conditionRule, action?.kind === "formalize" && action.baseDate ? action.baseDate : today()) : []
 
@@ -432,14 +450,16 @@ export function QuotesPage() {
               {detail && <Button variant="outline" onClick={() => void downloadPdf()}>Baixar PDF</Button>}
               {canEmail && options?.emailConfigured && <Button variant="outline" onClick={() => setAction({ kind: "email", to: client?.email || detail!.quote.clientEmail || "", message: shareMessage({ companyName: options.company.name, clientName: detail!.quote.clientName, quoteNumber: detail!.quote.number, version: detail!.quote.version, total: detail!.quote.totalAmount, validUntil: detail!.quote.validUntil }) })}>Enviar por e-mail</Button>}
               {canEmail && <Button variant="outline" onClick={() => setAction({ kind: "whatsapp", phone: client?.phone || detail!.quote.clientPhone || "", message: shareMessage({ companyName: options!.company.name, clientName: detail!.quote.clientName, quoteNumber: detail!.quote.number, version: detail!.quote.version, total: detail!.quote.totalAmount, validUntil: detail!.quote.validUntil }) })}>Enviar por WhatsApp</Button>}
-              {detail && status === "Enviado" && <Button variant="outline" onClick={() => setAction({ kind: "approve", acceptedBy: "", acceptNotes: "" })}>Registrar aprovação</Button>}
-              {detail && status === "Enviado" && <Button variant="outline" onClick={() => setAction({ kind: "refuse", reason: "" })}>Registrar recusa</Button>}
-              {detail && status === "Aprovado" && <Button onClick={() => setAction({ kind: "formalize", warehouseId: options?.warehouses.find((item) => item.isDefault)?.id || options?.warehouses[0]?.id || "", baseDate: today() })}>Formalizar como venda</Button>}
+              {detail && status === "Enviado" && <Button variant="outline" onClick={() => void run({ action: "status", to: "Em negociação" }, "Orçamento em negociação")} disabled={saving}>Em negociação</Button>}
+              {detail && ["Enviado", "Em negociação"].includes(status) && <Button variant="outline" onClick={() => setAction({ kind: "approve", acceptedBy: "", acceptNotes: "" })}>Registrar aprovação</Button>}
+              {detail && ["Enviado", "Em negociação"].includes(status) && <Button variant="outline" onClick={() => setAction({ kind: "refuse", reason: "" })}>Registrar recusa</Button>}
+              {detail && status === "Aprovado" && <Button onClick={() => void convertToOrder()} disabled={saving}>Converter em pedido de venda</Button>}
+              {detail && status === "Aprovado" && <Button variant="outline" onClick={() => setAction({ kind: "formalize", warehouseId: options?.warehouses.find((item) => item.isDefault)?.id || options?.warehouses[0]?.id || "", baseDate: today() })}>Venda direta (baixa imediata)</Button>}
               {detail && status === "Aprovado" && <Button asChild><Link href={`/ordens-servico/nova?quoteId=${detail.quote.id}`}>Abrir OS</Link></Button>}
               {detail && status === "Aprovado" && <Button variant="outline" asChild><Link href={`/contratos?quoteId=${detail.quote.id}`}>Gerar contrato</Link></Button>}
-              {detail && ["Enviado", "Aprovado", "Recusado", "Expirado"].includes(status) && <Button variant="outline" onClick={() => void run({ action: "version" }, "Nova versão criada")} disabled={saving}>Nova versão</Button>}
+              {detail && ["Enviado", "Em negociação", "Aprovado", "Recusado", "Expirado"].includes(status) && <Button variant="outline" onClick={() => void run({ action: "version" }, "Nova versão criada")} disabled={saving}>Nova versão</Button>}
               {detail && <Button variant="outline" onClick={() => void run({ action: "duplicate" }, "Orçamento duplicado")} disabled={saving}>Duplicar</Button>}
-              {detail && ["Rascunho", "Enviado", "Aprovado", "Expirado"].includes(status) && <Button variant="outline" onClick={() => setAction({ kind: "cancel", reason: "" })}>Cancelar orçamento</Button>}
+              {detail && ["Rascunho", "Enviado", "Em negociação", "Aprovado", "Expirado"].includes(status) && <Button variant="outline" onClick={() => setAction({ kind: "cancel", reason: "" })}>Cancelar orçamento</Button>}
             </div>
 
             {action && detail && (

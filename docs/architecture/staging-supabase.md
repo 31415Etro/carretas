@@ -32,6 +32,7 @@ No **SQL Editor** do staging, na ordem, copie e rode cada arquivo de `scripts/su
 | 10 | `scripts/220_materia_prima_consultas.sql` |
 | 11 | `scripts/221_kits_consultas_e_conversao.sql` |
 | 12 | `scripts/222_produtos_finais.sql` |
+| 13 | `scripts/223_pedido_producao_integracao.sql` |
 
 Cada script é **idempotente**: se rodar duas vezes, não duplica nada.
 
@@ -48,7 +49,8 @@ Crie o usuário de teste em Authentication > Users e rode `scripts/supabase/` (a
 ### 4.1 Sem staging, em Postgres local descartável (já funciona hoje)
 ```
 npm install
-npm run test:sql      # 49 testes de SQL em Postgres local (PGlite): carrega o schema inteiro + 217–222
+npm run test:sql      # 61 testes de SQL em Postgres local (PGlite): carrega o schema inteiro + 217–223
+npm run test:rpc      # confere se cada chamada RPC do código usa funções e parâmetros que existem no banco
 npm test              # testes das bibliotecas (inclui o NCM)
 ```
 O teste sobe um Postgres em memória, aplica todo o schema do projeto e as migrações novas, e executa o fluxo completo (matéria-prima → kit → produto → pedido → ordem → MRP → compra → consumo → conclusão), concorrência por estoque, duplicidade de ordens, cancelamento, isolamento entre empresas, idempotência dos scripts e o comportamento em banco com SKU repetido.
@@ -59,6 +61,6 @@ Rodar os mesmos cenários pela interface depois das etapas de tela (Etapas 3 a 9
 ## 5. Levar para produção (somente com a sua aprovação específica)
 
 1. Backup do banco de produção (Supabase > Database > Backups, ou exportação).
-2. Rodar `217` a `222` no SQL Editor de produção (o `222` só depois de aprovado e testado no staging). Todos são aditivos: não removem nem alteram dados existentes.
+2. Rodar `217` a `223` no SQL Editor de produção (o `223` só depois de aprovado e testado no staging; ele corrige `product_quote_snapshot`, muda funções da 219 e amplia as situações de orçamento e pedido). Todos são aditivos: não removem nem alteram dados existentes.
 3. O `217` **não cria** o índice de SKU enquanto houver SKU repetido (hoje há 3 "FZ 1E" com o mesmo SKU); ele avisa na saída e você roda de novo depois da limpeza aprovada.
 4. Limpeza dos cadastros de teste: `python scripts/limpeza-catalogo-teste.py` (simulação) e depois `--aplicar`, só com os IDs que você aprovar em `docs/architecture/limpeza-ids-aprovados.txt`.

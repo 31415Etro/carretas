@@ -37,6 +37,8 @@ const pagePermissions = [
   { prefix: "/financeiro", permission: "financeiro" },
   { prefix: "/comercial", permission: "comercial" },
   { prefix: "/orcamento", permission: "orcamento" },
+  { prefix: "/vendas", permission: "orcamento" },
+  { prefix: "/producao", permission: "estoque" },
   { prefix: "/contratos", permission: "contratos" },
   { prefix: "/relatorios", permission: "relatorios" },
   { prefix: "/configuracoes", permission: "configuracoes" },

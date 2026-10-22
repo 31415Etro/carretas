@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { stockContext } from "@/lib/stock-api"
-import { addAttachment, changeQuoteStatus, companyBranding, createVersion, duplicateQuote, formalizeQuote, getQuote, quoteError, quoteForOrder, removeAttachment, sendQuoteEmail } from "@/lib/quotes-server"
+import { addAttachment, changeQuoteStatus, companyBranding, convertQuoteToSalesOrder, createVersion, duplicateQuote, formalizeQuote, getQuote, quoteError, quoteForOrder, removeAttachment, sendQuoteEmail } from "@/lib/quotes-server"
 import { getSelectedSystemCompany } from "@/lib/system-company-server"
 
 type Params = { params: Promise<{ id: string }> }
@@ -32,6 +32,7 @@ export async function POST(request: Request, { params }: Params) {
     const body = await request.json()
     switch (body.action) {
       case "status": return NextResponse.json(await changeQuoteStatus(context.admin, id, String(body.to || ""), body, context.responsible, context.role))
+      case "to_order": return NextResponse.json(await convertQuoteToSalesOrder(context.admin, id, context.responsible))
       case "version": return NextResponse.json(await createVersion(context.admin, id, context.responsible))
       case "duplicate": return NextResponse.json(await duplicateQuote(context.admin, id, context.responsible))
       case "formalize": return NextResponse.json(await formalizeQuote(context.admin, id, { target: body.target === "OS" ? "OS" : "Venda", warehouseId: body.warehouseId, baseDate: body.baseDate }, context.responsible))

@@ -28,7 +28,7 @@ const structure = (kits, extra = {}) => ({ kits: kits.map(([kit_id, quantity, pi
 const saveProduct = (payload) => rpc("product_save", payload)
 
 before(async () => {
-  db = await createDatabase({ extra: ["217_itens_estrutura.sql", "218_kits_e_estrutura_de_produto.sql", "219_vendas_producao_mrp.sql", "220_materia_prima_consultas.sql", "221_kits_consultas_e_conversao.sql", "222_produtos_finais.sql"] })
+  db = await createDatabase({ extra: ["217_itens_estrutura.sql", "218_kits_e_estrutura_de_produto.sql", "219_vendas_producao_mrp.sql", "220_materia_prima_consultas.sql", "221_kits_consultas_e_conversao.sql", "222_produtos_finais.sql", "223_pedido_producao_integracao.sql"] })
   await db.exec(`insert into public.system_companies (id, name, legal_name, trade_name) values ('${COMPANY_B}', 'Empresa B', 'Empresa B', 'Empresa B') on conflict do nothing`)
   await asCompany(COMPANY_B)
   await db.exec("insert into public.warehouses (code, name, is_default) values ('DEP-B', 'Depósito B', true)")
@@ -225,7 +225,8 @@ test("estoque de acabados: saldos por empresa e depósito, em produção, custo 
   assert.equal(again.duplicate, true) // a mesma conclusão não recebe o acabado duas vezes
   assert.equal(again.receipt_id, receipt.receipt_id)
   detail = (await one("select public.product_detail($1) d", [p.product_id])).d
-  assert.deepEqual([Number(detail.availability.physical), Number(detail.availability.available)], [1, 1])
+  // o acabado produzido fica reservado ao pedido de origem (223): físico 1, disponível 0
+  assert.deepEqual([Number(detail.availability.physical), Number(detail.availability.available)], [1, 0])
   assert.equal(detail.stock_by_warehouse.length, 1)
   assert.equal(detail.movements[0].movement_type, "Entrada por producao")
   assert.equal(Number(detail.in_production.quantity), 2)

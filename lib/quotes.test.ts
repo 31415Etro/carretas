@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { buildInstallments, effectiveStatus, quoteTotals, shareMessage, typeMatchesLines, validateQuote, validateQuoteTransition, type QuoteInput } from "./quotes.ts"
+import { buildInstallments, canCreateVersion, effectiveStatus, quoteTotals, shareMessage, typeMatchesLines, validateQuote, validateQuoteTransition, type QuoteInput } from "./quotes.ts"
 
 const base: QuoteInput = {
   clientId: "c1", salespersonId: "s1", issueDate: "2026-10-12", validUntil: "2026-10-27", quoteType: "Misto", paymentConditionId: "p1", discountAmount: 0, freightAmount: 0, expensesAmount: 0, taxPercent: 0, warrantyDays: 90,
@@ -60,4 +60,15 @@ test("parcelas pela condição de pagamento", () => {
 
 test("mensagem de envio", () => {
   assert.match(shareMessage({ companyName: "Carretas", clientName: "Silva", quoteNumber: "ORC-000001", version: 2, total: 1500, validUntil: "2026-10-27" }), /ORC-000001 \(versão 2\).*27\/10\/2026/)
+})
+
+test("situação 'Em negociação': só parte de um orçamento enviado e pode ser aprovada ou recusada", () => {
+  assert.equal(validateQuoteTransition("Enviado", "Em negociação", {}), "")
+  assert.match(validateQuoteTransition("Rascunho", "Em negociação", {}), /enviado/)
+  assert.equal(validateQuoteTransition("Em negociação", "Aprovado", { acceptedBy: "Cliente" }), "")
+  assert.equal(validateQuoteTransition("Em negociação", "Recusado", { reason: "preço" }), "")
+  assert.equal(validateQuoteTransition("Em negociação", "Enviado", {}), "")
+  assert.equal(validateQuoteTransition("Em negociação", "Cancelado", { reason: "x" }), "")
+  assert.equal(effectiveStatus("Em negociação", "2020-01-01", "2026-01-01"), "Expirado")
+  assert.equal(canCreateVersion("Em negociação"), true)
 })
