@@ -198,7 +198,7 @@ export async function changeOsStatus(admin: AdminClient, orderId: string, to: st
   let productionRecordId = ""
   if (to === "Concluída" && order.production_product_id && !order.production_record_id) {
     const { data: composition } = await admin.from("product_compositions").select("id").eq("product_id", order.production_product_id).eq("status", "Ativa").maybeSingle()
-    if (!composition) throw new Error("O produto fabricado não tem composição ativa. Cadastre a composição em Produtos / Serviços.")
+    if (!composition) throw new Error("O produto fabricado não tem composição ativa. Cadastre a estrutura em Produtos finais.")
     const { data: produced, error: produceError } = await admin.rpc("produce_composition", {
       p: { composition_id: composition.id, quantity: Number(order.production_quantity || 1), serial_number: order.production_serial || "", document_reference: `OS ${order.order_number}`, responsible, notes: `Fabricação pela OS ${order.order_number}` },
     })

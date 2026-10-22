@@ -29,7 +29,7 @@ const groups: NavGroup[] = [
     { label: "Matérias-primas", href: "/materias-primas", permission: "produtos_servicos", icon: Boxes },
     { label: "Kits e composições", href: "/kits", permission: "produtos_servicos", icon: Layers },
     { label: "Produtos finais", href: "/produtos", permission: "produtos_servicos", icon: PackageCheck },
-    { label: "Produtos / Serviços", href: "/servicos", permission: "produtos_servicos", icon: Wrench },
+    { label: "Serviços", href: "/servicos", permission: "produtos_servicos", icon: Wrench },
     { label: "Produção e MRP", href: "/producao", permission: "estoque", icon: Cog },
     { label: "Ordens de Serviço", href: "/ordens-servico", permission: "ordens_servico", icon: ClipboardList },
     { label: "Frota", href: "/frota", permission: "frota", icon: Car },

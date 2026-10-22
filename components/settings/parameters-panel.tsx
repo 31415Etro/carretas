@@ -98,7 +98,7 @@ export function FiscalPanel() {
             </TableRow>
           ))}
         </DataTable>
-        <p className="mt-2 text-xs text-muted-foreground">Regras de CFOP, CST e IBS/CBS por produto continuam no cadastro de Produtos / Serviços; elas são tabelas atualizáveis, sem tratamento fiscal fixo no sistema.</p>
+        <p className="mt-2 text-xs text-muted-foreground">Regras de CFOP, CST e IBS/CBS por produto continuam no cadastro do produto (Produtos finais e Matérias-primas); elas são tabelas atualizáveis, sem tratamento fiscal fixo no sistema.</p>
       </SectionCard>
 
       <SectionCard title="Natureza das operações" description="Lista usada para classificar vendas, serviços, remessas e devoluções na emissão fiscal.">

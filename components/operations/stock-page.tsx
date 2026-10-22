@@ -85,7 +85,7 @@ export function StockPage() {
       description="Saldos por depósito, movimentações, reservas para OS, inventário e sugestão de compra."
       actions={<>
         <Button onClick={() => setMovementSheet({ open: true })}><Plus className="h-4 w-4" />Nova movimentação</Button>
-        <Button variant="secondary" asChild><Link href="/servicos">Novo item (Produtos / Serviços)</Link></Button>
+        <Button variant="secondary" asChild><Link href="/produtos">Novo produto</Link></Button>
       </>}
     >
       {warehousesError ? <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">{warehousesError}</p> : null}
