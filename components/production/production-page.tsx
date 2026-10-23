@@ -70,18 +70,13 @@ export function ProductionPage() {
   const cost = d.cost_completed || { orders: 0, estimated: 0, actual: 0 }
 
   return (
-    <PageShell title="Produção e planejamento de materiais" description="Ordens de produção geradas pelos pedidos (ou abertas aqui, sem pedido) confirmados, necessidade consolidada de materiais (MRP) e solicitações de compra da empresa em uso."
-      actions={<><Button onClick={() => setNewOrder(true)}>Nova ordem de produção</Button><Button variant="outline" asChild><Link href="/producao/esteira">Esteira da fábrica</Link></Button><Button variant="outline" asChild><Link href="/estoque?aba=movimentacoes">Movimentos e inventário</Link></Button><Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />Atualizar</Button></>}>
+    <PageShell title="Produção" description="Ordens de produção, falta de materiais e solicitações de compra."
+      actions={<><Button onClick={() => setNewOrder(true)}>Nova ordem de produção</Button><Button variant="outline" asChild><Link href="/estoque?aba=movimentacoes">Estoque</Link></Button><Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />Atualizar</Button></>}>
       {error ? <p className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{error}</p> : null}
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard title="Pedidos aguardando produção" value={Number(d.sales_awaiting_production || 0)} note={`${Number(d.sales_awaiting_confirmation || 0)} aguardando confirmação`} icon={ClipboardList} />
-        <MetricCard title="Ordens em andamento" value={Number(d.orders_in_progress || 0)} note={`${Number(d.orders_open || 0)} abertas · ${Number(d.orders_waiting_materials || 0)} aguardando materiais`} icon={Factory} />
-        <MetricCard title="Unidades pendentes" value={qty(d.units_pending)} note={`${qty(d.units_planned)} planejadas · ${qty(d.units_completed_30d)} concluídas em 30 dias`} icon={PackageCheck} />
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <MetricCard title="Ordens em andamento" value={Number(d.orders_in_progress || 0)} note={`${Number(d.orders_open || 0)} abertas`} icon={Factory} />
         <MetricCard title="Ordens atrasadas" value={Number(d.orders_late || 0)} note="previsão vencida e ainda abertas" icon={TimerOff} />
         <MetricCard title="Materiais faltantes" value={Number(d.materials_short || 0)} note={`${Number(d.materials_short_now || 0)} sem saldo agora (projetado considera compras)`} icon={AlertTriangle} />
-        <MetricCard title="Solicitações pendentes" value={Number(d.purchase_requests_pending || 0)} note="aguardando aprovação" icon={ShoppingCart} />
-        <MetricCard title="Custo estimado (concluídas)" value={brl(cost.estimated)} note={`${Number(cost.orders)} ordem(ns) concluída(s)`} icon={Boxes} />
-        <MetricCard title="Custo realizado (concluídas)" value={brl(cost.actual)} note={Number(cost.estimated) > 0 ? `${(((Number(cost.actual) - Number(cost.estimated)) / Number(cost.estimated)) * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% sobre o estimado` : "sem base para comparar"} icon={Boxes} />
       </div>
 
       <Tabs defaultValue="ordens">
@@ -99,7 +94,7 @@ export function ProductionPage() {
                 {statusFilters.map(([value, label]) => <option key={label} value={value}>{label}</option>)}
               </select>
             </div>
-            <DataTable headers={["Ordem", "Produto", "Pedido / cliente", "Situação", "Produzido", "Restante", "Previsão", "Materiais", "Custo est.", "Resp."]} empty={!orders.length && !loading}>
+            <DataTable headers={["Ordem", "Produto", "Pedido / cliente", "Situação", "Produzido", "Previsão"]} empty={!orders.length && !loading}>
               {orders.map((order) => (
                 <TableRow key={order.id} className="cursor-pointer" onClick={() => router.push(`/producao/${order.id}`)}>
                   <TableCell className="whitespace-nowrap font-mono text-xs">{order.code}</TableCell>
@@ -107,11 +102,7 @@ export function ProductionPage() {
                   <TableCell>{order.order_number || "-"}<span className="block text-xs text-muted-foreground">{order.client_name || ""}</span></TableCell>
                   <TableCell><span className={`rounded px-2 py-0.5 text-xs font-medium ${productionTone(order.status)}`}>{productionStatusLabel(order.status, Number(order.produced_quantity), Number(order.quantity))}</span></TableCell>
                   <TableCell className="text-right">{qty(order.produced_quantity)} / {qty(order.quantity)}</TableCell>
-                  <TableCell className="text-right">{qty(order.remaining)}</TableCell>
                   <TableCell className={`whitespace-nowrap ${order.late ? "font-medium text-destructive" : ""}`}>{dateBr(order.planned_end)}{order.late ? " (atrasada)" : ""}</TableCell>
-                  <TableCell className="text-center">{order.materials_missing ? <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">{order.materials_missing} sem reserva</span> : "ok"}</TableCell>
-                  <TableCell className="whitespace-nowrap text-right">{brl(order.estimated_cost)}</TableCell>
-                  <TableCell>{order.responsible || "-"}</TableCell>
                 </TableRow>
               ))}
             </DataTable>
@@ -124,27 +115,22 @@ export function ProductionPage() {
         </TabsContent>
 
         <TabsContent value="mrp" className="mt-4">
-          <SectionCard title="Necessidade consolidada de materiais (MRP)" description="Soma das ordens abertas. As reservas já descontam do saldo livre: duas ordens nunca contam o mesmo saldo. Consulta apenas: não reserva nem consome.">
+          <SectionCard title="Necessidade consolidada de materiais (MRP)" description="O que as ordens abertas precisam, o que há em estoque e o que falta comprar.">
             <div className="mb-3 flex flex-wrap items-center gap-3">
               <Button onClick={() => void generate()} disabled={busy === "generate" || toRequest === 0}>{busy === "generate" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShoppingCart className="h-4 w-4" />}Gerar solicitação de compra ({toRequest} material(is))</Button>
-              <span className="text-xs text-muted-foreground">Consolida as faltas de todas as ordens; o que já está solicitado ou em compra aprovada não é pedido de novo. Não emite pedido ao fornecedor.</span>
+              <span className="text-xs text-muted-foreground">Junta as faltas de todas as ordens. Não emite pedido ao fornecedor.</span>
             </div>
             {notice ? <p className="mb-3 rounded-md border bg-muted/40 p-3 text-sm">{notice}</p> : null}
-            <DataTable headers={["Material", "Necessário", "Reservado p/ ordens", "Saldo físico", "Disponível", "A receber", "Falta agora", "Falta projetada", "Já solicitado", "Fornecedor / prazo", "Situação"]} empty={!mrp.length && !loading}>
+            <DataTable headers={["Material", "Necessário", "Disponível", "Falta", "Já solicitado", "Situação"]} empty={!mrp.length && !loading}>
               {mrp.map((row) => {
                 const situation = mrpSituation(row)
                 return (
                   <TableRow key={row.material_id}>
                     <TableCell><Link className="font-medium text-primary underline-offset-2 hover:underline" href={`/materias-primas/${row.material_id}`}>{row.name}</Link><span className="block font-mono text-xs text-muted-foreground">{row.sku} · {(row.orders || []).map((order) => order.code).join(", ")}</span></TableCell>
                     <TableCell className="text-right">{qty(row.required)} {row.unit}</TableCell>
-                    <TableCell className="text-right">{qty(row.reserved_for_orders)}</TableCell>
-                    <TableCell className="text-right">{qty(row.physical)}</TableCell>
                     <TableCell className="text-right">{qty(row.available)}</TableCell>
-                    <TableCell className="text-right" title={(row.arrivals || []).map((arrival) => `${arrival.purchase_order}: ${qty(arrival.quantity)} em ${dateBr(arrival.expected_date)}`).join("\n")}>{Number(row.incoming) ? `${qty(row.incoming)}${row.next_arrival ? ` (${dateBr(row.next_arrival)})` : ""}` : "-"}</TableCell>
                     <TableCell className={`text-right ${Number(row.shortage_now) > 0 ? "font-medium text-destructive" : ""}`}>{Number(row.shortage_now) > 0 ? qty(row.shortage_now) : "-"}</TableCell>
-                    <TableCell className={`text-right ${Number(row.shortage_projected) > 0 ? "font-medium text-destructive" : ""}`}>{Number(row.shortage_projected) > 0 ? qty(row.shortage_projected) : "-"}</TableCell>
                     <TableCell className="text-right">{Number(row.requested) ? qty(row.requested) : "-"}</TableCell>
-                    <TableCell className="text-xs">{row.supplier_name || "sem fornecedor principal"}{row.lead_time_days ? ` · ${row.lead_time_days} dias` : ""}</TableCell>
                     <TableCell><span className={`rounded px-2 py-0.5 text-xs font-medium ${situation.tone}`}>{situation.label}</span></TableCell>
                   </TableRow>
                 )

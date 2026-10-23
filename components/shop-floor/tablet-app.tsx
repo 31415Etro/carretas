@@ -126,18 +126,12 @@ export function TabletApp() {
       </header>
       <main className="space-y-8 p-5">
         {message ? <p className="rounded-2xl bg-amber-900/60 p-4 text-lg" role="status">{message}</p> : null}
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          {[["Em andamento", mine.length + running.length, "bg-emerald-700"], ["Pendentes", ready.length, "bg-sky-700"], ["Com alerta", attention.length, "bg-orange-700"], ["Concluídas hoje", done.length, "bg-slate-700"]].map(([label, value, tone]) => (
-            <div key={String(label)} className={`rounded-2xl p-4 ${tone}`}><p className="text-4xl font-extrabold">{value}</p><p className="text-lg">{label}</p></div>
-          ))}
-        </div>
         {cards === null ? <p className="flex items-center gap-3 text-xl text-slate-300"><Loader2 className="h-6 w-6 animate-spin" />Carregando suas tarefas...</p> : null}
         {cards && cards.length === 0 ? <p className="rounded-2xl bg-slate-900 p-8 text-center text-2xl text-slate-300">Nenhuma tarefa para você agora. Avise o gestor se estiver sem trabalho.</p> : null}
-        {section("Em execução por você", mine, true)}
-        {section("Pendentes (prontas para iniciar)", ready)}
-        {section("Em execução por colegas", running)}
-        {section("Bloqueadas ou com pendência", attention)}
-        {section("Concluídas hoje", done)}
+        {section("Fazendo agora", mine, true)}
+        {section("Para fazer", ready)}
+        {section("Com problema", attention)}
+        {section("Feitas hoje", done)}
       </main>
       {open ? <TaskScreen id={open} session={session} serverOffset={offset} onClose={() => { setOpen(null); void load() }} onExpired={() => void logout("Sessão expirada: identifique-se novamente.")} /> : null}
     </div>
@@ -293,12 +287,6 @@ function TaskScreen({ id, session, serverOffset, onClose, onExpired }: { id: str
           </div>
         </div>
         <div className="space-y-4">
-          <div className="rounded-3xl bg-slate-900 p-5 text-lg">
-            <p className="text-xl font-bold">Tempos desta tarefa</p>
-            <p className="mt-2">Tempo produtivo (cronológico): <b>{fmtMin(detail.metrics.elapsed_productive_minutes)}</b>{detail.metrics.planned_minutes ? ` · previsto ${fmtMin(detail.metrics.planned_minutes)}` : ""}</p>
-            <p>Pausas: <b>{fmtMin(detail.metrics.pause_minutes)}</b></p>
-            {detail.metrics.workers.map((w) => <p key={w.name} className="text-slate-300">{w.name}: {fmtMin(w.minutes)} de mão de obra</p>)}
-          </div>
           {detail.occurrences.length ? <div className="rounded-3xl bg-slate-900 p-5 text-lg"><p className="text-xl font-bold">Ocorrências</p>{detail.occurrences.map((o) => <p key={o.id} className="mt-2"><span className={o.status === "Aberta" ? "text-orange-300" : "text-slate-400"}>{o.status === "Aberta" ? "Aberta" : `Resolvida (${o.decision})`}:</span> {o.description}</p>)}</div> : null}
         </div>
       </div>

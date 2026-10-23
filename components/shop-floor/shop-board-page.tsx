@@ -50,24 +50,22 @@ export function ShopBoardPage() {
   }, [board])
 
   return (
-    <PageShell title="Esteira da fábrica" description="Acompanhe cada carreta por etapa, quem está fazendo, quanto tempo leva e o que está parado."
-      actions={<><Button variant="outline" asChild><Link href="/producao/tablet">Abrir tablet</Link></Button><Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />Atualizar</Button></>}>
+    <PageShell title="Esteira da fábrica" description="Cada carreta na sua etapa."
+      actions={<><Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />Atualizar</Button></>}>
       {error ? <p className="rounded-md border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">{error}</p> : null}
       {notice ? <p className="rounded-md border bg-muted/40 p-3 text-sm" role="status">{notice}</p> : null}
       {board ? (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-            <MetricCard title="Em atividade agora" value={board.active_workers.length} note="colaboradores com tarefa aberta" icon={Users} />
-            <MetricCard title="Paradas / bloqueadas" value={board.stopped.length} note="pausadas, bloqueadas ou com pendência" icon={Hammer} />
-            <MetricCard title="Atrasadas" value={board.late_count} note="tarefas acima do prazo previsto" icon={Clock} />
-            <MetricCard title="Ocorrências abertas" value={board.open_occurrences.length} note="não conformidades e divergências" icon={AlertTriangle} />
-            <MetricCard title="Retrabalhos" value={board.rework_count} note="tarefas refeitas" icon={Activity} />
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <MetricCard title="Trabalhando agora" value={board.active_workers.length} note="colaboradores" icon={Users} />
+            <MetricCard title="Paradas" value={board.stopped.length} note="pausadas ou com pendência" icon={Hammer} />
+            <MetricCard title="Atrasadas" value={board.late_count} note="acima do prazo" icon={Clock} />
           </div>
           <Tabs defaultValue="esteira">
             <TabsList className="flex flex-wrap">
-              <TabsTrigger value="esteira">Esteira</TabsTrigger><TabsTrigger value="alertas">Alertas ({board.stopped.length + board.open_occurrences.length})</TabsTrigger>
+              <TabsTrigger value="esteira">Esteira</TabsTrigger>
               <TabsTrigger value="colaboradores">Colaboradores</TabsTrigger><TabsTrigger value="etapas">Etapas e checklists</TabsTrigger>
-              <TabsTrigger value="terceirizados">Terceirizados</TabsTrigger><TabsTrigger value="indicadores">Indicadores</TabsTrigger>
+              
             </TabsList>
             <TabsContent value="esteira" className="mt-4">
               {board.steps.length === 0 ? <SetupNotice onSeed={() => void act({ action: "steps_seed" }, "Etapas oficiais criadas. Cadastre os itens de checklist e os colaboradores.")} /> : (
@@ -92,17 +90,17 @@ export function ShopBoardPage() {
                   ))}
                 </div>
               )}
-              <SectionCard title="Colaboradores em atividade">
+              {board.stopped.length + board.open_occurrences.length > 0 ? <Alerts board={board} onAct={act} /> : null}
+              {board.external.some((x: Row) => !x.returned_at) ? <External board={board} onAct={act} /> : null}
+              <SectionCard title="Trabalhando agora">
                 {board.active_workers.length === 0 ? <p className="text-sm text-muted-foreground">Ninguém com tarefa aberta neste momento.</p> : (
                   <ul className="divide-y text-sm">{board.active_workers.map((w: Row, index: number) => <li key={index} className="flex flex-wrap justify-between gap-2 py-2"><span><b>{w.worker}</b> · {w.task}</span><span className="text-muted-foreground">{w.order_code} unid. {w.unit} · desde {new Date(w.since).toLocaleTimeString("pt-BR")}</span></li>)}</ul>
                 )}
               </SectionCard>
             </TabsContent>
-            <TabsContent value="alertas" className="mt-4 space-y-4"><Alerts board={board} onAct={act} /></TabsContent>
+            
             <TabsContent value="colaboradores" className="mt-4"><Workers workers={data.workers} steps={data.steps} onAct={act} failure={failure} clearFailure={() => setFailure("")} /></TabsContent>
             <TabsContent value="etapas" className="mt-4"><Steps steps={data.steps} kits={data.kits} onAct={act} /></TabsContent>
-            <TabsContent value="terceirizados" className="mt-4"><External board={board} onAct={act} /></TabsContent>
-            <TabsContent value="indicadores" className="mt-4"><Productivity data={data.productivity} /></TabsContent>
           </Tabs>
         </>
       ) : loading ? <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando...</p> : null}
@@ -256,6 +254,7 @@ function UnitDialog({ unit, workers, onClose, onAct }: { unit: Row; workers: Row
   const [form, setForm] = useState<{ kind: string; task: Row } | null>(null)
   const [reason, setReason] = useState("")
   const [worker, setWorker] = useState("")
+  const [bulk, setBulk] = useState("")
   const [provider, setProvider] = useState("")
   const [finish, setFinish] = useState("galvanizacao_a_fogo")
   const reload = useCallback(async () => {
@@ -277,11 +276,16 @@ function UnitDialog({ unit, workers, onClose, onAct }: { unit: Row; workers: Row
             {unit.finished ? <Button size="sm" onClick={() => void run({ action: "receive_unit", orderId: unit.order_id, unit: unit.unit_number }, "Acabado recebido no estoque.")}>Dar entrada do acabado no estoque</Button> : null}</div>
           {qr ? <div className="text-center"><img src={qr} alt="QR Code da carreta" className="h-36 w-36" /><p className="flex items-center justify-center gap-1 text-xs text-muted-foreground"><QrCode className="h-3 w-3" />aponte no tablet</p><button type="button" className="text-xs underline" onClick={() => window.print()}>Imprimir</button></div> : null}
         </div>
+        <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 p-2 text-sm">
+          <span className="font-medium">Designar a unidade inteira a:</span>
+          <select className="h-9 rounded-md border bg-background px-3" value={bulk} onChange={(event) => setBulk(event.target.value)}><option value="">Escolha o colaborador</option>{workers.filter((w) => w.active).map((w) => <option key={w.id} value={w.id}>{w.name} ({w.code})</option>)}</select>
+          <Button size="sm" disabled={!bulk} onClick={() => void run({ action: "assign_unit", orderId: unit.order_id, unit: unit.unit_number, workerId: bulk }, "Tarefas da unidade designadas (as que já tinham responsável não mudam).")}>Designar</Button>
+        </div>
         <ul className="divide-y text-sm">{tasks.map((task) => (
           <li key={task.id} className="flex flex-wrap items-center justify-between gap-2 py-2"><span>{task.step} <span className={`ml-1 rounded px-1.5 py-0.5 text-xs ${statusTone[task.status] || "bg-slate-100"}`}>{statusLabel[task.status] || task.status}</span></span>
             <span className="flex flex-wrap gap-1">
               {!["Concluida", "Cancelada"].includes(task.status) ? <>
-                <Button size="sm" variant="outline" onClick={() => { setForm({ kind: "reassign", task }); setWorker("") }}>Reatribuir</Button>
+                <Button size="sm" variant="outline" onClick={() => { setForm({ kind: "reassign", task }); setWorker(""); setReason("") }}>Designar</Button>
                 <Button size="sm" variant="outline" onClick={() => setForm({ kind: task.status === "Bloqueada" ? "unblock" : "block", task })}>{task.status === "Bloqueada" ? "Desbloquear" : "Bloquear"}</Button>
                 <Button size="sm" variant="outline" onClick={() => setForm({ kind: "cancel", task })}>Cancelar</Button></> : null}
               {task.status === "Pronta" && /acabamento/i.test(task.step) ? <Button size="sm" onClick={() => { setForm({ kind: "send", task }); setProvider("") }}>Enviar ao prestador</Button> : null}
@@ -290,13 +294,13 @@ function UnitDialog({ unit, workers, onClose, onAct }: { unit: Row; workers: Row
         {form ? (
           <div className="space-y-3 rounded-md border p-3 text-sm">
             <p className="font-medium">{form.task.step}</p>
-            {form.kind === "reassign" ? <select className="h-9 w-full rounded-md border bg-background px-3" value={worker} onChange={(event) => setWorker(event.target.value)}><option value="">Equipe do setor (sem responsável fixo)</option>{workers.filter((w) => w.active).map((w) => <option key={w.id} value={w.id}>{w.name} ({w.code})</option>)}</select> : null}
+            {form.kind === "reassign" ? <select className="h-9 w-full rounded-md border bg-background px-3" value={worker} onChange={(event) => setWorker(event.target.value)}><option value="" disabled>Escolha o colaborador</option>{workers.filter((w) => w.active).map((w) => <option key={w.id} value={w.id}>{w.name} ({w.code})</option>)}</select> : null}
             {form.kind === "send" ? <><Input placeholder="Prestador" value={provider} onChange={(event) => setProvider(event.target.value)} /><select className="h-9 w-full rounded-md border bg-background px-3" value={finish} onChange={(event) => setFinish(event.target.value)}><option value="galvanizacao_a_fogo">Galvanização a fogo</option><option value="eletrostatica">Eletrostática</option><option value="pintura">Pintura</option><option value="outro">Outro</option></select></> : null}
-            {form.kind !== "send" ? <Input placeholder="Justificativa (obrigatória)" value={reason} onChange={(event) => setReason(event.target.value)} /> : null}
+            {form.kind !== "send" ? <Input placeholder={form.kind === "reassign" ? "Justificativa (só se estiver trocando quem já está com a tarefa)" : "Justificativa (obrigatória)"} value={reason} onChange={(event) => setReason(event.target.value)} /> : null}
             <div className="flex gap-2">
-              <Button disabled={form.kind === "send" ? !provider.trim() : reason.trim().length < 5} onClick={() => {
+              <Button disabled={form.kind === "send" ? !provider.trim() : form.kind === "reassign" ? !worker : reason.trim().length < 5} onClick={() => {
                 const taskId = form.task.id
-                if (form.kind === "reassign") void run({ action: "reassign", taskId, workerId: worker || null, reason }, "Tarefa reatribuída.")
+                if (form.kind === "reassign") void run({ action: "reassign", taskId, workerId: worker || null, reason: reason || undefined }, "Tarefa designada.")
                 else if (form.kind === "block" || form.kind === "unblock") void run({ action: "block", taskId, blocked: form.kind === "block", reason }, form.kind === "block" ? "Tarefa bloqueada." : "Tarefa desbloqueada.")
                 else if (form.kind === "cancel") void run({ action: "cancel", taskId, reason }, "Tarefa cancelada.")
                 else void run({ action: "external_send", taskId, external: { provider_name: provider, finish_type: finish } }, "Enviada ao prestador.")
