@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -26,7 +27,8 @@ export function StockPage() {
   const { warehouses, error: warehousesError, reload: reloadWarehouses } = useWarehouses()
   const [materials, setMaterials] = useState<Material[]>([])
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
-  const [tab, setTab] = useState("itens")
+  const requestedTab = useSearchParams()?.get("aba") || ""
+  const [tab, setTab] = useState(["itens", "movimentacoes", "reservas", "inventario", "compras", "depositos"].includes(requestedTab) ? requestedTab : "itens")
   const [query, setQuery] = useState("")
   const [refreshKey, setRefreshKey] = useState(0)
   const [movementSheet, setMovementSheet] = useState<{ open: boolean; preset?: Record<string, string> }>({ open: false })
@@ -82,7 +84,7 @@ export function StockPage() {
   return (
     <PageShell
       title="Estoque"
-      description="Saldos por depósito, movimentações, reservas para OS, inventário e sugestão de compra."
+      description="Saldos por depósito, movimentações, reservas, inventário, transferências e depósitos. Acesso pelas Matérias-primas e pela Produção."
       actions={<>
         <Button onClick={() => setMovementSheet({ open: true })}><Plus className="h-4 w-4" />Nova movimentação</Button>
         <Button variant="secondary" asChild><Link href="/produtos">Novo produto</Link></Button>

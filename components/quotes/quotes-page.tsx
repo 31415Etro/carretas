@@ -473,9 +473,7 @@ export function QuotesPage() {
               {detail && ["Enviado", "Em negociação"].includes(status) && <Button variant="outline" onClick={() => setAction({ kind: "approve", acceptedBy: "", acceptNotes: "" })}>Registrar aprovação</Button>}
               {detail && ["Enviado", "Em negociação"].includes(status) && <Button variant="outline" onClick={() => setAction({ kind: "refuse", reason: "" })}>Registrar recusa</Button>}
               {detail && status === "Aprovado" && <Button onClick={() => void convertToOrder()} disabled={saving}>Converter em pedido de venda</Button>}
-              {detail && status === "Aprovado" && <Button variant="outline" onClick={() => setAction({ kind: "formalize", warehouseId: options?.warehouses.find((item) => item.isDefault)?.id || options?.warehouses[0]?.id || "", baseDate: today() })}>Venda direta (baixa imediata)</Button>}
-              {detail && status === "Aprovado" && <Button asChild><Link href={`/ordens-servico/nova?quoteId=${detail.quote.id}`}>Abrir OS</Link></Button>}
-              {detail && status === "Aprovado" && <Button variant="outline" asChild><Link href={`/contratos?quoteId=${detail.quote.id}`}>Gerar contrato</Link></Button>}
+                                          {detail && status === "Aprovado" && <Button variant="outline" asChild><Link href={`/contratos?quoteId=${detail.quote.id}`}>Gerar contrato</Link></Button>}
               {detail && ["Enviado", "Em negociação", "Aprovado", "Recusado", "Expirado"].includes(status) && <Button variant="outline" onClick={() => void run({ action: "version" }, "Nova versão criada")} disabled={saving}>Nova versão</Button>}
               {detail && <Button variant="outline" onClick={() => void run({ action: "duplicate" }, "Orçamento duplicado")} disabled={saving}>Duplicar</Button>}
               {detail && ["Rascunho", "Enviado", "Em negociação", "Aprovado", "Expirado"].includes(status) && <Button variant="outline" onClick={() => setAction({ kind: "cancel", reason: "" })}>Cancelar orçamento</Button>}

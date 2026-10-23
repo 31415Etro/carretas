@@ -4,53 +4,22 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
 import {
-  Activity, BarChart3, Building2, Calculator, Car, FileCheck2, Check, ChevronsUpDown, ClipboardList, Cog, Factory, FileText, Landmark, LayoutDashboard, LogOut,
-  MapPinned, Menu, Package, PackageCheck, PanelLeftClose, PanelLeftOpen, Receipt, Settings2, ShoppingCart, Users, Wrench, X,
-  Boxes, Layers,
+  Activity, BarChart3, Building2, Calculator, Car, FileCheck2, Check, ChevronDown, ChevronsUpDown, ClipboardList, Cog, Factory, FileText, Landmark, LayoutDashboard, LogOut,
+  MapPinned, Menu, Package, PackageCheck, PanelLeftClose, PanelLeftOpen, Receipt, Settings2, ShoppingCart, Tablet, Users, X,
+  Boxes, Layers, Workflow,
 } from "lucide-react"
 import { BrandMark } from "@/components/shell/brand-mark"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useAuth } from "@/lib/auth-context"
 import { cn, getInitials } from "@/lib/utils"
+import { isActive, isParent, visibleNav, type NavLeaf } from "@/lib/navigation"
 
-type NavItem = { label: string; href: string; permission: string; icon: React.ComponentType<{ className?: string }>; adminOnly?: boolean; exact?: boolean }
-type NavGroup = { title: string; items: NavItem[] }
-
-/** Itens do menu (as mesmas rotas e permissões de sempre), agrupados por assunto. */
-const groups: NavGroup[] = [
-  { title: "Visão geral", items: [
-    { label: "Dashboard", href: "/dashboard", permission: "dashboard", icon: LayoutDashboard },
-  ] },
-  { title: "Operação", items: [
-    { label: "Financeiro", href: "/financeiro", permission: "financeiro", icon: Landmark },
-    { label: "Estoque", href: "/estoque", permission: "estoque", icon: Package },
-    { label: "Compras", href: "/compras", permission: "compras", icon: ShoppingCart },
-    { label: "Matérias-primas", href: "/materias-primas", permission: "produtos_servicos", icon: Boxes },
-    { label: "Kits e composições", href: "/kits", permission: "produtos_servicos", icon: Layers },
-    { label: "Produtos finais", href: "/produtos", permission: "produtos_servicos", icon: PackageCheck },
-    { label: "Serviços", href: "/servicos", permission: "produtos_servicos", icon: Wrench },
-    { label: "Produção e MRP", href: "/producao", permission: "estoque", icon: Cog },
-    { label: "Esteira da fábrica", href: "/producao/esteira", permission: "estoque", icon: Activity },
-    { label: "Tablet da fábrica", href: "/producao/tablet", permission: "chao_fabrica", icon: ClipboardList },
-    { label: "Ordens de Serviço", href: "/ordens-servico", permission: "ordens_servico", icon: ClipboardList },
-    { label: "Frota", href: "/frota", permission: "frota", icon: Car },
-    { label: "Máquinas e Equipamentos", href: "/maquinas", permission: "maquinas", icon: Factory },
-  ] },
-  { title: "Relacionamento", items: [
-    { label: "Clientes & Fornecedores", href: "/clientes", permission: "comercial", icon: Users },
-    { label: "Comercial", href: "/comercial", permission: "comercial", icon: MapPinned },
-    { label: "Orçamentos", href: "/orcamento", permission: "orcamento", icon: Calculator },
-    { label: "Pedidos de venda", href: "/vendas", permission: "orcamento", icon: Receipt },
-    { label: "Documentação veicular", href: "/documentacao", permission: "orcamento", icon: FileCheck2 },
-    { label: "Contratos", href: "/contratos", permission: "contratos", icon: FileText },
-  ] },
-  { title: "Sistema", items: [
-    { label: "Relatórios", href: "/relatorios", permission: "relatorios", icon: BarChart3 },
-    { label: "Logs do Sistema", href: "/logs-sistema", permission: "configuracoes", icon: Activity, adminOnly: true },
-    { label: "Configurações", href: "/configuracoes", permission: "configuracoes", icon: Settings2 },
-  ] },
-]
+const icons: Record<string, React.ComponentType<{ className?: string }>> = {
+  dashboard: LayoutDashboard, crm: MapPinned, clients: Users, quotes: Calculator, sales: Receipt, documents: FileCheck2, contracts: FileText, finance: Landmark, purchases: ShoppingCart,
+  inventory: Package, materials: Boxes, kits: Layers, products: PackageCheck, production: Factory, mrp: Cog, line: Workflow, tablet: Tablet, fleet: Car, machines: Factory, reports: BarChart3, logs: Activity, settings: Settings2,
+}
+const iconOf = (key: string) => icons[key] || ClipboardList
 
 const COLLAPSE_KEY = "nd-sidebar-collapsed"
 
@@ -77,16 +46,7 @@ export function useSidebarCollapsed() {
 /** Itens que o usuário pode ver (admin vê tudo; os demais, só o que tem permissão). */
 function useVisibleGroups() {
   const { user } = useAuth()
-  return groups
-    .map((group) => ({
-      ...group,
-      items: group.items.filter((item) => {
-        if (user?.role === "admin") return true
-        if (item.adminOnly) return false
-        return Boolean(user?.permissions?.includes(item.permission as never))
-      }),
-    }))
-    .filter((group) => group.items.length)
+  return visibleNav(user ? { role: user.role, permissions: user.permissions as readonly string[] } : null)
 }
 
 function CompanySwitcher({ collapsed }: { collapsed: boolean }) {
@@ -142,35 +102,73 @@ function CompanySwitcher({ collapsed }: { collapsed: boolean }) {
   )
 }
 
+const OPEN_KEY = "nd-nav-open"
+
+function NavLink({ item, pathname, collapsed, onNavigate, nested = false }: { item: NavLeaf; pathname: string; collapsed: boolean; onNavigate?: () => void; nested?: boolean }) {
+  const active = isActive(item, pathname)
+  const Icon = iconOf(item.icon)
+  return (
+    <Link
+      href={item.href}
+      prefetch={false}
+      title={collapsed ? item.label : undefined}
+      aria-current={active ? "page" : undefined}
+      onClick={onNavigate}
+      className={cn(
+        "group relative flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors duration-150",
+        collapsed && "justify-center px-0",
+        nested && !collapsed && "py-1.5 pl-9",
+        active ? "bg-[var(--brand-soft)] text-[var(--brand-dark)]" : "text-slate-600 hover:bg-slate-100 hover:text-foreground",
+      )}
+    >
+      {active && <span aria-hidden className="absolute left-0 top-2 bottom-2 w-1 rounded-r-full bg-primary" />}
+      {(!nested || collapsed) && <Icon className={cn("h-[18px] w-[18px] shrink-0", active ? "text-primary" : "text-slate-500 group-hover:text-foreground")} />}
+      {!collapsed && <span className="truncate">{item.label}</span>}
+    </Link>
+  )
+}
+
 function Nav({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: () => void }) {
   const pathname = usePathname() || ""
   const visible = useVisibleGroups()
+  const [open, setOpen] = useState<Record<string, boolean>>({})
+  useEffect(() => { try { setOpen(JSON.parse(localStorage.getItem(OPEN_KEY) || "{}")) } catch { /* sem armazenamento */ } }, [])
+  const toggle = (label: string, current: boolean) => setOpen((state) => {
+    const next = { ...state, [label]: !current }
+    try { localStorage.setItem(OPEN_KEY, JSON.stringify(next)) } catch { /* ignora */ }
+    return next
+  })
   return (
     <nav aria-label="Menu principal" className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto py-1 pr-0.5">
       {visible.map((group) => (
         <div key={group.title}>
           {collapsed ? <div className="mx-3 mb-2 border-t border-border first:hidden" /> : <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/80">{group.title}</p>}
           <ul className="flex flex-col gap-0.5">
-            {group.items.map((item) => {
-              const active = pathname === item.href || (!item.exact && pathname.startsWith(`${item.href}/`))
+            {group.items.map((entry) => {
+              if (!isParent(entry)) return <li key={entry.href}><NavLink item={entry} pathname={pathname} collapsed={collapsed} onNavigate={onNavigate} /></li>
+              const hasActive = entry.children.some((child) => isActive(child, pathname))
+              const expanded = hasActive || open[entry.label] === true
+              const Icon = iconOf(entry.icon)
+              // menu recolhido (só ícones): os subitens aparecem como ícones, sem o botão de expandir
+              if (collapsed) return <li key={entry.label}><ul className="flex flex-col gap-0.5">{entry.children.map((child) => <li key={child.href}><NavLink item={child} pathname={pathname} collapsed onNavigate={onNavigate} /></li>)}</ul></li>
               return (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    prefetch={false}
-                    title={collapsed ? item.label : undefined}
-                    aria-current={active ? "page" : undefined}
-                    onClick={onNavigate}
-                    className={cn(
-                      "group relative flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors duration-150",
-                      collapsed && "justify-center px-0",
-                      active ? "bg-[var(--brand-soft)] text-[var(--brand-dark)]" : "text-slate-600 hover:bg-slate-100 hover:text-foreground",
-                    )}
+                <li key={entry.label}>
+                  <button
+                    type="button"
+                    aria-expanded={expanded}
+                    aria-controls={`nav-${entry.label}`}
+                    onClick={() => toggle(entry.label, expanded)}
+                    className={cn("flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-medium transition-colors duration-150", hasActive ? "text-[var(--brand-dark)]" : "text-slate-600 hover:bg-slate-100 hover:text-foreground")}
                   >
-                    {active && <span aria-hidden className="absolute left-0 top-2 bottom-2 w-1 rounded-r-full bg-primary" />}
-                    <item.icon className={cn("h-[18px] w-[18px] shrink-0", active ? "text-primary" : "text-slate-500 group-hover:text-foreground")} />
-                    {!collapsed && <span className="truncate">{item.label}</span>}
-                  </Link>
+                    <Icon className={cn("h-[18px] w-[18px] shrink-0", hasActive ? "text-primary" : "text-slate-500")} />
+                    <span className="flex-1 truncate">{entry.label}</span>
+                    <ChevronDown className={cn("h-4 w-4 shrink-0 text-slate-400 transition-transform", expanded && "rotate-180")} />
+                  </button>
+                  {expanded ? (
+                    <ul id={`nav-${entry.label}`} className="mt-0.5 flex flex-col gap-0.5">
+                      {entry.children.map((child) => <li key={child.href}><NavLink item={child} pathname={pathname} collapsed={false} onNavigate={onNavigate} nested /></li>)}
+                    </ul>
+                  ) : null}
                 </li>
               )
             })}

@@ -69,7 +69,7 @@ export function ProductionPage() {
 
   return (
     <PageShell title="Produção e planejamento de materiais" description="Ordens de produção geradas pelos pedidos confirmados, necessidade consolidada de materiais (MRP) e solicitações de compra da empresa em uso."
-      actions={<Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />Atualizar</Button>}>
+      actions={<><Button variant="outline" asChild><Link href="/producao/esteira">Esteira da fábrica</Link></Button><Button variant="outline" asChild><Link href="/estoque?aba=movimentacoes">Movimentos e inventário</Link></Button><Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />Atualizar</Button></>}>
       {error ? <p className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{error}</p> : null}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard title="Pedidos aguardando produção" value={Number(d.sales_awaiting_production || 0)} note={`${Number(d.sales_awaiting_confirmation || 0)} aguardando confirmação`} icon={ClipboardList} />

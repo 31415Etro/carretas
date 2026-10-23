@@ -434,7 +434,7 @@ export function CommercialPage() {
             {oppSheet.id && (
               <div className="flex flex-wrap gap-2">
                 {oppOriginalStage !== "Ganho" && oppOriginalStage !== "Perdido" && <Button variant="outline" onClick={() => void generateQuote()} disabled={saving}><Handshake className="h-4 w-4" />Gerar orçamento</Button>}
-                {oppOriginalStage === "Ganho" && <Button asChild><Link href={`/ordens-servico/nova?clientId=${oppSheet.clientId}&opportunityId=${oppSheet.id}&description=${encodeURIComponent(oppSheet.interest || "")}`}>Abrir OS</Link></Button>}
+                {oppOriginalStage === "Ganho" && <Button asChild><Link href="/vendas">Ver pedidos de venda</Link></Button>}
               </div>
             )}
             {oppSheet.id && <OpportunityDocumentationProgress opportunityId={oppSheet.id} />}

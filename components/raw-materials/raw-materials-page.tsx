@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { AlertTriangle, Boxes, PackageCheck, Plus, RefreshCw, ShoppingCart } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -9,6 +10,7 @@ import { DataTable, MetricCard, PageShell, SectionCard, StatusBadge } from "@/co
 import { api, brl, qty, SearchBox } from "@/components/catalog/catalog-fields"
 import { RawMaterialSheet, type RawMaterialSheetTarget } from "@/components/raw-materials/raw-material-sheet"
 import { stockSituation } from "@/lib/raw-materials"
+import { useAuth } from "@/lib/auth-context"
 
 type Row = {
   id: string; sku: string; name: string; category: string | null; subcategory: string | null; unit: string; status: string; ncm: string | null; photo_url: string | null
@@ -19,6 +21,8 @@ const tones = { danger: "bg-red-100 text-red-800", warning: "bg-amber-100 text-a
 
 export function RawMaterialsPage() {
   const router = useRouter()
+  const { user } = useAuth()
+  const canStock = user?.role === "admin" || Boolean(user?.permissions?.includes("estoque"))
   const [rows, setRows] = useState<Row[]>([])
   const [query, setQuery] = useState("")
   const [status, setStatus] = useState<"Ativo" | "Inativo" | "">("Ativo")
@@ -46,7 +50,7 @@ export function RawMaterialsPage() {
 
   return (
     <PageShell title="Matérias-primas" description="Materiais e insumos usados na fabricação: especificações, fornecedores, estoque da empresa e kits em que cada um é usado."
-      actions={<Button onClick={() => setSheet({})}><Plus className="h-4 w-4" />Nova matéria-prima</Button>}>
+      actions={<>{canStock ? <Button variant="outline" asChild><Link href="/estoque?aba=movimentacoes">Movimentos, inventário e depósitos</Link></Button> : null}<Button onClick={() => setSheet({})}><Plus className="h-4 w-4" />Nova matéria-prima</Button></>}>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard title="Matérias-primas" value={rows.length} note={status ? `${status === "Ativo" ? "ativas" : "inativas"} na lista` : "na lista"} icon={Boxes} />
         <MetricCard title="Abaixo do mínimo" value={below} note="saldo físico menor que o estoque mínimo" icon={AlertTriangle} onClick={() => setOnlyBelow(!onlyBelow)} />
