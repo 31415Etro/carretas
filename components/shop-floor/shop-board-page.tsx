@@ -28,6 +28,7 @@ export function ShopBoardPage() {
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(true)
   const [notice, setNotice] = useState("")
+  const [failure, setFailure] = useState("")
   const [unit, setUnit] = useState<Row | null>(null)
 
   const load = useCallback(async () => {
@@ -37,8 +38,8 @@ export function ShopBoardPage() {
   useEffect(() => { void load(); const timer = setInterval(() => void load(), 30000); return () => clearInterval(timer) }, [load])
 
   async function act(body: Record<string, unknown>, success = "Feito.") {
-    setNotice("")
-    try { const next = await post(body); setData(next); setNotice(success); return next } catch (failure) { setNotice(failure instanceof Error ? failure.message : "Ação não concluída."); return null }
+    setNotice(""); setFailure("")
+    try { const next = await post(body); setData(next); setNotice(success); return next } catch (reason) { const message = reason instanceof Error ? reason.message : "Ação não concluída."; setNotice(message); setFailure(message); return null }
   }
 
   const board = data?.board
@@ -98,7 +99,7 @@ export function ShopBoardPage() {
               </SectionCard>
             </TabsContent>
             <TabsContent value="alertas" className="mt-4 space-y-4"><Alerts board={board} onAct={act} /></TabsContent>
-            <TabsContent value="colaboradores" className="mt-4"><Workers workers={data.workers} steps={data.steps} onAct={act} /></TabsContent>
+            <TabsContent value="colaboradores" className="mt-4"><Workers workers={data.workers} steps={data.steps} onAct={act} failure={failure} clearFailure={() => setFailure("")} /></TabsContent>
             <TabsContent value="etapas" className="mt-4"><Steps steps={data.steps} kits={data.kits} onAct={act} /></TabsContent>
             <TabsContent value="terceirizados" className="mt-4"><External board={board} onAct={act} /></TabsContent>
             <TabsContent value="indicadores" className="mt-4"><Productivity data={data.productivity} /></TabsContent>
@@ -146,15 +147,18 @@ function Alerts({ board, onAct }: { board: Row; onAct: (body: Record<string, unk
   )
 }
 
-function Workers({ workers, steps, onAct }: { workers: Row[]; steps: Row[]; onAct: (body: Record<string, unknown>, success?: string) => Promise<unknown> }) {
+function Workers({ workers, steps, onAct, failure, clearFailure }: { workers: Row[]; steps: Row[]; onAct: (body: Record<string, unknown>, success?: string) => Promise<unknown>; failure: string; clearFailure: () => void }) {
+  const [saving, setSaving] = useState(false)
+  // sugestão de matrícula (o banco novo gera a sua própria; o antigo usa esta): próximo F#### livre
+  const nextCode = () => `F${String(workers.reduce((max, w) => Math.max(max, Number(/^F(\d+)$/.exec(String(w.code))?.[1] || 0)), 0) + 1).padStart(4, "0")}`
   const sectors = useMemo(() => Array.from(new Set(steps.map((s) => s.sector).filter(Boolean) as string[])), [steps])
   const [edit, setEdit] = useState<Row | null>(null)
   const blank = { code: "", name: "", sectors: [] as string[], shift: "", hourly_rate: "", pin: "", is_inspector: false, is_supervisor: false, active: true }
   return (
     <SectionCard title="Colaboradores da fábrica">
-      <div className="mb-3 flex justify-between gap-2"><p className="text-sm text-muted-foreground">Cada colaborador usa matrícula e PIN próprios no tablet. O PIN é guardado só como hash.</p><Button onClick={() => setEdit({ ...blank })}><Plus className="h-4 w-4" />Novo colaborador</Button></div>
+      <div className="mb-3 flex justify-between gap-2"><p className="text-sm text-muted-foreground">Cada colaborador usa matrícula e PIN próprios no tablet. O PIN é guardado só como hash.</p><Button onClick={() => { clearFailure(); setEdit({ ...blank }) }}><Plus className="h-4 w-4" />Novo colaborador</Button></div>
       <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-2">Matrícula</th><th>Nome</th><th>Setores</th><th>Turno</th><th>R$/hora</th><th>Perfil</th><th>PIN</th><th /></tr></thead>
-        <tbody>{workers.map((w) => <tr key={w.id} className={`border-b ${w.active ? "" : "opacity-50"}`}><td className="p-2 font-mono">{w.code}</td><td>{w.name}</td><td>{(w.sectors || []).join(", ")}</td><td>{w.shift || "-"}</td><td>{brl(w.hourly_rate)}</td><td>{[w.is_supervisor && "Supervisor", w.is_inspector && "Inspetor"].filter(Boolean).join(", ") || "-"}</td><td>{w.locked ? "bloqueado" : w.has_pin ? "definido" : "sem PIN"}</td><td><Button size="sm" variant="outline" onClick={() => setEdit({ worker_id: w.id, code: w.code, name: w.name, sectors: w.sectors || [], shift: w.shift || "", hourly_rate: String(w.hourly_rate), pin: "", is_inspector: w.is_inspector, is_supervisor: w.is_supervisor, active: w.active })}>Editar</Button></td></tr>)}</tbody></table></div>
+        <tbody>{workers.map((w) => <tr key={w.id} className={`border-b ${w.active ? "" : "opacity-50"}`}><td className="p-2 font-mono">{w.code}</td><td>{w.name}</td><td>{(w.sectors || []).join(", ")}</td><td>{w.shift || "-"}</td><td>{brl(w.hourly_rate)}</td><td>{[w.is_supervisor && "Supervisor", w.is_inspector && "Inspetor"].filter(Boolean).join(", ") || "-"}</td><td>{w.locked ? "bloqueado" : w.has_pin ? "definido" : "sem PIN"}</td><td><Button size="sm" variant="outline" onClick={() => { clearFailure(); setEdit({ worker_id: w.id, code: w.code, name: w.name, sectors: w.sectors || [], shift: w.shift || "", hourly_rate: String(w.hourly_rate), pin: "", is_inspector: w.is_inspector, is_supervisor: w.is_supervisor, active: w.active }) }}>Editar</Button></td></tr>)}</tbody></table></div>
       <Dialog open={Boolean(edit)} onOpenChange={(open) => !open && setEdit(null)}>
         <DialogContent>
           <DialogHeader><DialogTitle>{edit?.worker_id ? "Editar colaborador" : "Novo colaborador"}</DialogTitle></DialogHeader>
@@ -165,7 +169,14 @@ function Workers({ workers, steps, onAct }: { workers: Row[]; steps: Row[]; onAc
               <div><p className="mb-1">Setores em que pode apontar</p><div className="flex flex-wrap gap-2">{sectors.map((sector) => <label key={sector} className="flex items-center gap-1 rounded border px-2 py-1"><input type="checkbox" checked={edit.sectors.includes(sector)} onChange={(event) => setEdit({ ...edit, sectors: event.target.checked ? [...edit.sectors, sector] : edit.sectors.filter((s: string) => s !== sector) })} />{sector}</label>)}</div></div>
               <div className="flex gap-4"><label className="flex items-center gap-1"><input type="checkbox" checked={edit.is_inspector} onChange={(event) => setEdit({ ...edit, is_inspector: event.target.checked })} />Inspetor</label><label className="flex items-center gap-1"><input type="checkbox" checked={edit.is_supervisor} onChange={(event) => setEdit({ ...edit, is_supervisor: event.target.checked })} />Supervisor (vê e aponta todas as etapas)</label>{edit.worker_id ? <label className="flex items-center gap-1"><input type="checkbox" checked={edit.active} onChange={(event) => setEdit({ ...edit, active: event.target.checked })} />Ativo</label> : null}</div>
               <label className="block">{edit.worker_id ? "Novo PIN (deixe vazio para manter)" : "PIN (4 a 8 números)"}<Input inputMode="numeric" value={edit.pin} onChange={(event) => setEdit({ ...edit, pin: event.target.value.replace(/\D/g, "").slice(0, 8) })} /></label>
-              <Button disabled={!edit.name.trim() || (!edit.worker_id && edit.pin.length < 4)} onClick={async () => { const body = { ...edit, hourly_rate: edit.hourly_rate || 0, pin: edit.pin || undefined }; setEdit(null); const next = await onAct({ action: "worker_save", worker: body }, edit.worker_id ? "Colaborador salvo." : "Colaborador cadastrado: a matrícula foi gerada pelo sistema (veja na lista)."); void next }}>Salvar</Button>
+              {failure ? <p className="rounded-md border border-destructive/40 bg-destructive/5 p-2 text-sm text-destructive" role="alert">{failure}</p> : null}
+              <Button disabled={saving || !edit.name.trim() || (!edit.worker_id && edit.pin.length < 4)} onClick={async () => {
+                setSaving(true)
+                const body = { ...edit, code: edit.worker_id ? edit.code : nextCode(), hourly_rate: edit.hourly_rate || 0, pin: edit.pin || undefined }
+                const saved = await onAct({ action: "worker_save", worker: body }, edit.worker_id ? "Colaborador salvo." : "Colaborador cadastrado: a matrícula foi gerada pelo sistema (veja na lista).")
+                setSaving(false)
+                if (saved) setEdit(null)
+              }}>{saving ? "Salvando..." : "Salvar"}</Button>
             </div>
           ) : null}
         </DialogContent>
