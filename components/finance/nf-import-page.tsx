@@ -53,7 +53,12 @@ function PartyBox({ title, party, highlight }: { title: string; party: Party | n
   )
 }
 
-export function NfImportPage() {
+function Shell({ embedded, title, description, children }: { embedded: boolean; title: string; description: string; children: React.ReactNode }) {
+  if (embedded) return <div className="space-y-4">{children}</div>
+  return <PageShell title={title} description={description} actions={<Button variant="outline" asChild><Link href="/financeiro"><ArrowLeft className="h-4 w-4" />Voltar ao Financeiro</Link></Button>}>{children}</PageShell>
+}
+
+export function NfImportPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { toast } = useCrudFeedback()
   const [role, setRole] = useState<Role | "">("")
   const [file, setFile] = useState<File | null>(null)
@@ -135,8 +140,7 @@ export function NfImportPage() {
   ]
 
   return (
-    <PageShell title="Importar NF" description="Leia o XML (ou PDF) de uma nota fiscal, informe se você é o remetente ou o destinatário e escolha se a parte contrária deve ser cadastrada."
-      actions={<Button variant="outline" asChild><Link href="/financeiro"><ArrowLeft className="h-4 w-4" />Voltar ao Financeiro</Link></Button>}>
+    <Shell embedded={embedded} title="Importar NF" description="Leia o XML (ou PDF) de uma nota fiscal, informe se você é o remetente ou o destinatário e escolha se a parte contrária deve ser cadastrada como cliente ou fornecedor.">
       <SectionCard title="1. Nota fiscal" description="XML de NF-e, NFC-e ou NFS-e (recomendado). Também aceita PDF do DANFE e FOTO ou escaneamento da nota (JPG, PNG, PDF de scanner/CamScanner): nesses casos o sistema lê por OCR e você confere os dados antes de importar.">
         <div className="grid gap-3 md:grid-cols-2">
           {roleButton("remetente", "Sou o remetente", "Eu emiti a nota (venda/serviço). A parte contrária é o destinatário, meu possível cliente.")}
@@ -201,6 +205,6 @@ export function NfImportPage() {
       </> : null}
 
       <NfLedger refreshKey={ledgerKey} />
-    </PageShell>
+    </Shell>
   )
 }

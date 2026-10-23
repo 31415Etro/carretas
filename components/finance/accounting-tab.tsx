@@ -7,16 +7,18 @@ import { Input } from "@/components/ui/input"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DataTable, FormSheet, SectionCard } from "@/components/operations/shared"
-import { aggregateMaterials, type AccountingInvoice } from "@/lib/accounting-invoice"
+import { NfImportPage } from "@/components/finance/nf-import-page"
+import type { AccountingInvoice } from "@/lib/accounting-invoice"
+import type { AccountingAnalysis } from "@/lib/accounting-analysis"
 
 type Operation = "Entrada" | "Saída"
 type Row = {
   id: string; operation: Operation; kind: string; access_key: string | null; number: string | null; series: string | null; issued_at: string | null; nature: string | null
   issuer_document: string | null; issuer_name: string | null; recipient_document: string | null; recipient_name: string | null
   total_products: number; total_invoice: number; total_icms_base: number; total_icms: number; total_icms_st: number; total_ipi: number; total_pis: number; total_cofins: number
-  total_iss: number; total_freight: number; total_discount: number; total_taxes: number; data: Omit<AccountingInvoice, "fields">; file_name: string | null
+  total_iss: number; total_freight: number; total_discount: number; total_taxes: number; file_name: string | null
 }
-type Detail = Row & { fields: Array<[string, string]>; xml: string | null }
+type Detail = Row & { data: Omit<AccountingInvoice, "fields">; fields: Array<[string, string]>; xml: string | null }
 
 const brl = (value: unknown) => Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
 const qty = (value: number) => Number(value || 0).toLocaleString("pt-BR", { maximumFractionDigits: 4 })
@@ -173,14 +175,110 @@ function InvoiceDetail({ id }: { id: string }) {
   )
 }
 
-export function AccountingTab() {
+function Card({ label, value, hint, tone }: { label: string; value: string; hint?: string; tone?: "warn" | "good" }) {
+  return (
+    <div className={`rounded-md border p-3 ${tone === "warn" ? "border-amber-500/50 bg-amber-500/5" : tone === "good" ? "border-emerald-500/40 bg-emerald-500/5" : ""}`}>
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="text-xl font-semibold">{value}</div>
+      {hint ? <div className="mt-0.5 text-xs text-muted-foreground">{hint}</div> : null}
+    </div>
+  )
+}
+
+type Bucket = AccountingAnalysis["suppliers"][number]
+function BarTable({ title, rows, labelHead }: { title: string; rows: Bucket[]; labelHead: string }) {
+  const max = Math.max(1, ...rows.map((row) => row.total))
+  return (
+    <div className="rounded-md border p-3">
+      <div className="mb-2 text-sm font-semibold">{title}</div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead className="text-left text-muted-foreground"><tr><th className="py-1 pr-2 font-medium">{labelHead}</th><th className="px-2 font-medium">Notas</th><th className="px-2 text-right font-medium">Total</th><th className="px-2 text-right font-medium">Impostos</th><th className="px-2 text-right font-medium">ICMS</th></tr></thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.key} className="border-t align-top">
+                <td className="max-w-[260px] py-1.5 pr-2"><div className="truncate" title={row.label}>{row.label}</div><div className="mt-1 h-1.5 rounded bg-muted"><div className="h-1.5 rounded bg-primary" style={{ width: `${Math.max(2, (row.total / max) * 100)}%` }} /></div></td>
+                <td className="px-2 py-1.5">{row.notes}</td><td className="px-2 py-1.5 text-right">{brl(row.total)}</td><td className="px-2 py-1.5 text-right">{brl(row.taxes)}</td><td className="px-2 py-1.5 text-right">{brl(row.icms)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+const monthLabel = (key: string) => (/^\d{4}-\d{2}$/.test(key) ? `${key.slice(5)}/${key.slice(0, 4)}` : "Sem data")
+
+function AnalysisPanel({ analysis }: { analysis: AccountingAnalysis }) {
+  const t = analysis.totals
+  const taxRows = [["ICMS", t.icms], ["ICMS ST", t.icmsSt], ["IPI", t.ipi], ["PIS", t.pis], ["COFINS", t.cofins], ["ISS", t.iss], ["Imposto de importação", t.importTax]] as Array<[string, number]>
+  const maxTax = Math.max(1, ...taxRows.map(([, value]) => value))
+  const maxMonth = Math.max(1, ...analysis.months.map((month) => month.total))
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Card label="Total em impostos destacados" value={brl(analysis.taxesTotal)} hint={`${pct(analysis.taxBurden)} do valor das notas`} tone="warn" />
+        <Card label="Total das notas" value={brl(t.total)} hint={`${t.notes.toLocaleString("pt-BR")} nota(s) · ticket médio ${brl(analysis.averageTicket)}`} />
+        <Card label="Produtos / serviços" value={brl(t.products)} hint={`Frete ${brl(t.freight)} · desconto ${brl(t.discount)}`} />
+        <Card label="Impostos com potencial de crédito" value={brl(analysis.potentialCredit)} hint="ICMS + IPI + PIS + COFINS destacados; a contabilidade confirma o que é aproveitável pelo regime" tone="good" />
+        <Card label="ICMS" value={brl(t.icms)} hint={`ST: ${brl(t.icmsSt)} em ${analysis.substitution.notes} nota(s)`} />
+        <Card label="IPI" value={brl(t.ipi)} />
+        <Card label="PIS + COFINS" value={brl(t.pis + t.cofins)} hint={`PIS ${brl(t.pis)} · COFINS ${brl(t.cofins)}`} />
+        <Card label="Tributos aprox. (Lei da Transparência)" value={brl(t.approxTaxes)} hint="Valor informado pelo emitente, só referência" />
+        <Card label="Notas sem imposto destacado" value={`${analysis.withoutTax.notes}`} hint={`${brl(analysis.withoutTax.total)} (ex.: Simples, isentas ou remessas)`} tone={analysis.withoutTax.notes ? "warn" : undefined} />
+        <Card label="Compras de fornecedores do Simples" value={pct(analysis.simples.share)} hint={`${analysis.simples.notes} nota(s) · ${brl(analysis.simples.total)} (crédito de ICMS limitado)`} />
+        <Card label="Maior nota" value={brl(analysis.biggest?.total || 0)} hint={analysis.biggest ? `NF ${analysis.biggest.number} · ${analysis.biggest.supplier}` : ""} />
+        <Card label="Produtos distintos comprados" value={`${analysis.materials.length}`} hint="Veja em Materiais comprados" />
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        <div className="rounded-md border p-3">
+          <div className="mb-2 text-sm font-semibold">Impostos por tipo</div>
+          <div className="space-y-2">
+            {taxRows.map(([label, value]) => (
+              <div key={label}><div className="flex justify-between text-xs"><span>{label}</span><span>{brl(value)} · {pct(analysis.taxesTotal ? (value / analysis.taxesTotal) * 100 : 0)}</span></div><div className="mt-1 h-2 rounded bg-muted"><div className="h-2 rounded bg-primary" style={{ width: `${Math.max(value ? 2 : 0, (value / maxTax) * 100)}%` }} /></div></div>
+            ))}
+          </div>
+        </div>
+        <div className="rounded-md border p-3">
+          <div className="mb-2 text-sm font-semibold">Evolução por mês de emissão</div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="text-left text-muted-foreground"><tr><th className="py-1 pr-2 font-medium">Mês</th><th className="px-2 font-medium">Notas</th><th className="px-2 text-right font-medium">Total</th><th className="px-2 text-right font-medium">Impostos</th><th className="px-2 text-right font-medium">ICMS</th></tr></thead>
+              <tbody>
+                {analysis.months.map((month) => (
+                  <tr key={month.key} className="border-t"><td className="py-1.5 pr-2"><div>{monthLabel(month.key)}</div><div className="mt-1 h-1.5 rounded bg-muted"><div className="h-1.5 rounded bg-primary" style={{ width: `${Math.max(2, (month.total / maxMonth) * 100)}%` }} /></div></td><td className="px-2">{month.notes}</td><td className="px-2 text-right">{brl(month.total)}</td><td className="px-2 text-right">{brl(month.taxes)}</td><td className="px-2 text-right">{brl(month.icms)}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        <BarTable title="Maiores fornecedores (por valor)" rows={analysis.suppliers} labelHead="Fornecedor" />
+        <BarTable title="Fornecedores que mais destacam imposto" rows={analysis.suppliersByTaxes} labelHead="Fornecedor" />
+        <BarTable title="Por CFOP (itens)" rows={analysis.cfops} labelHead="CFOP" />
+        <BarTable title="Por NCM (itens)" rows={analysis.ncms} labelHead="NCM" />
+        <BarTable title="Por estado do fornecedor" rows={analysis.states} labelHead="UF" />
+        <BarTable title="Por regime tributário do fornecedor" rows={analysis.regimes} labelHead="Regime" />
+      </div>
+    </div>
+  )
+}
+
+export function AccountingTab({ emitir }: { emitir?: React.ReactNode }) {
   const input = useRef<HTMLInputElement>(null)
+  const [sub, setSub] = useState("analise")
+  const off = sub === "emitir" || sub === "importar" ? "hidden " : ""
   const [operation, setOperation] = useState<Operation>("Entrada")
   const [filter, setFilter] = useState<"" | Operation>("")
   const [q, setQ] = useState("")
   const [de, setDe] = useState("")
   const [ate, setAte] = useState("")
   const [rows, setRows] = useState<Row[]>([])
+  const [analysis, setAnalysis] = useState<AccountingAnalysis | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [progress, setProgress] = useState("")
@@ -195,8 +293,8 @@ export function AccountingTab() {
       if (q.trim()) params.set("q", q.trim())
       if (de) params.set("de", de)
       if (ate) params.set("ate", ate)
-      const result = await send<{ invoices: Row[] }>(`/api/contabilidade/notas?${params}`)
-      setRows(result.invoices); setError("")
+      const [result, summary] = await Promise.all([send<{ invoices: Row[] }>(`/api/contabilidade/notas?${params}`), send<{ analysis: AccountingAnalysis }>(`/api/contabilidade/notas?${params}&analise=1`)])
+      setRows(result.invoices); setAnalysis(summary.analysis); setError("")
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível carregar.") } finally { setLoading(false) }
   }, [filter, q, de, ate])
   useEffect(() => { const timer = setTimeout(() => void load(), 250); return () => clearTimeout(timer) }, [load])
@@ -222,21 +320,26 @@ export function AccountingTab() {
   }
 
   const sums = useMemo(() => rows.reduce((acc, row) => ({ invoice: acc.invoice + Number(row.total_invoice), products: acc.products + Number(row.total_products), icms: acc.icms + Number(row.total_icms), st: acc.st + Number(row.total_icms_st), ipi: acc.ipi + Number(row.total_ipi), pis: acc.pis + Number(row.total_pis), cofins: acc.cofins + Number(row.total_cofins), iss: acc.iss + Number(row.total_iss) }), { invoice: 0, products: 0, icms: 0, st: 0, ipi: 0, pis: 0, cofins: 0, iss: 0 }), [rows])
-  const materials = useMemo(() => aggregateMaterials(rows.map((row) => ({ number: row.number || "", issuedAt: row.issued_at || "", issuerName: row.issuer_name || "", items: row.data?.items || [] }))), [rows])
+  const materials = analysis?.materials || []
 
   function exportNotes() {
     downloadCsv("contabilidade-notas.csv", ["Operação", "Tipo", "Número", "Série", "Emissão", "Chave", "Natureza", "Emitente", "CNPJ emitente", "Destinatário", "CNPJ destinatário", "Produtos", "Frete", "Desconto", "Base ICMS", "ICMS", "ICMS ST", "IPI", "PIS", "COFINS", "ISS", "Tributos aprox.", "Total da nota"],
       rows.map((row) => [row.operation, row.kind, row.number || "", row.series || "", day(row.issued_at), row.access_key || "", row.nature || "", row.issuer_name || "", row.issuer_document || "", row.recipient_name || "", row.recipient_document || "", row.total_products, row.total_freight, row.total_discount, row.total_icms_base, row.total_icms, row.total_icms_st, row.total_ipi, row.total_pis, row.total_cofins, row.total_iss, row.total_taxes, row.total_invoice]))
   }
-  function exportItems() {
-    const lines: Array<Array<string | number>> = []
-    for (const row of rows) for (const item of row.data?.items || []) lines.push([row.operation, row.number || "", day(row.issued_at), row.issuer_name || "", row.issuer_document || "", item.number, item.code, item.description, item.ncm, item.cfop, item.unit, item.quantity, item.unitPrice, item.total, item.icms.cst, item.icms.baseAmount, item.icms.rate, item.icms.amount, item.icmsSt.amount, item.ipi.cst, item.ipi.amount, item.pis.cst, item.pis.amount, item.cofins.cst, item.cofins.amount])
-    downloadCsv("contabilidade-itens.csv", ["Operação", "NF", "Emissão", "Emitente", "CNPJ emitente", "Item", "Código", "Descrição", "NCM", "CFOP", "Un.", "Qtd.", "Vl. unit.", "Total", "CST ICMS", "Base ICMS", "Alíq. ICMS", "ICMS", "ICMS ST", "CST IPI", "IPI", "CST PIS", "PIS", "CST COFINS", "COFINS"], lines)
+  async function exportItems() {
+    const params = new URLSearchParams({ analise: "1", itens: "1" })
+    if (filter) params.set("operacao", filter)
+    if (q.trim()) params.set("q", q.trim())
+    if (de) params.set("de", de)
+    if (ate) params.set("ate", ate)
+    const { items } = await send<{ items: Array<{ operation: string; number: string; issued_at: string; issuer_name: string; issuer_document: string; item: AccountingInvoice["items"][number] }> }>(`/api/contabilidade/notas?${params}`)
+    downloadCsv("contabilidade-itens.csv", ["Operação", "NF", "Emissão", "Emitente", "CNPJ emitente", "Item", "Código", "Descrição", "NCM", "CFOP", "Un.", "Qtd.", "Vl. unit.", "Total", "CST ICMS", "Base ICMS", "Alíq. ICMS", "ICMS", "ICMS ST", "CST IPI", "IPI", "CST PIS", "PIS", "CST COFINS", "COFINS"],
+      items.map(({ operation: op, number, issued_at, issuer_name, issuer_document, item }) => [op, number || "", day(issued_at), issuer_name || "", issuer_document || "", item.number, item.code, item.description, item.ncm, item.cfop, item.unit, item.quantity, item.unitPrice, item.total, item.icms.cst, item.icms.baseAmount, item.icms.rate, item.icms.amount, item.icmsSt.amount, item.ipi.cst, item.ipi.amount, item.pis.cst, item.pis.amount, item.cofins.cst, item.cofins.amount]))
   }
 
   return (
     <div className="space-y-4">
-      <SectionCard title="Contabilidade: subir notas fiscais" description="Envie os XML das notas (NF-e, NFC-e ou NFS-e), de uma só vez ou várias. Cada nota é guardada com todos os campos, impostos destacados e itens, e a mesma nota não entra duas vezes.">
+      <div className={off}><SectionCard title="Contabilidade: subir notas fiscais" description="Envie os XML das notas (NF-e, NFC-e ou NFS-e), de uma só vez ou várias. Cada nota é guardada com todos os campos, impostos destacados e itens, e a mesma nota não entra duas vezes.">
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex rounded-md border p-0.5 text-sm">
             {(["Entrada", "Saída"] as Operation[]).map((value) => (
@@ -248,27 +351,29 @@ export function AccountingTab() {
           {progress ? <span className="text-sm text-muted-foreground">{progress}</span> : null}
         </div>
         {report.length ? <div className="mt-3 max-h-40 overflow-auto rounded-md border bg-muted/30 p-2 text-xs">{report.map((line, index) => <div key={index} className={line.startsWith("ERRO") ? "text-destructive" : ""}>{line}</div>)}</div> : null}
-      </SectionCard>
+      </SectionCard></div>
 
-      <Tabs defaultValue="notas">
+      <Tabs value={sub} onValueChange={setSub}>
         <div className="flex flex-wrap items-end gap-3">
-          <TabsList><TabsTrigger value="notas">Notas</TabsTrigger><TabsTrigger value="materiais">Materiais comprados</TabsTrigger><TabsTrigger value="impostos">Resumo de impostos</TabsTrigger></TabsList>
-          <div className="flex rounded-md border p-0.5 text-sm">
+          <TabsList><TabsTrigger value="analise">Análise</TabsTrigger><TabsTrigger value="notas">Notas</TabsTrigger><TabsTrigger value="materiais">Materiais comprados</TabsTrigger><TabsTrigger value="emitir">Emitir NF</TabsTrigger><TabsTrigger value="importar">Importar NF (clientes e fornecedores)</TabsTrigger></TabsList>
+          <div className={`${off}flex rounded-md border p-0.5 text-sm`}>
             {([["", "Todas"], ["Entrada", "Entradas"], ["Saída", "Saídas"]] as Array<["" | Operation, string]>).map(([value, label]) => (
               <button key={value || "todas"} type="button" onClick={() => setFilter(value)} className={`rounded px-3 py-1.5 ${filter === value ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>{label}</button>
             ))}
           </div>
-          <div className="relative min-w-[220px] flex-1"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input value={q} onChange={(event) => setQ(event.target.value)} placeholder="Emitente, destinatário, CNPJ, número, chave ou natureza" className="pl-9" /></div>
-          <label className="text-xs text-muted-foreground">De<Input type="date" value={de} onChange={(event) => setDe(event.target.value)} className="mt-1 w-40" /></label>
-          <label className="text-xs text-muted-foreground">Até<Input type="date" value={ate} onChange={(event) => setAte(event.target.value)} className="mt-1 w-40" /></label>
+          <div className={`${off}relative min-w-[220px] flex-1`}><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input value={q} onChange={(event) => setQ(event.target.value)} placeholder="Emitente, destinatário, CNPJ, número, chave ou natureza" className="pl-9" /></div>
+          <label className={`${off}text-xs text-muted-foreground`}>De<Input type="date" value={de} onChange={(event) => setDe(event.target.value)} className="mt-1 w-40" /></label>
+          <label className={`${off}text-xs text-muted-foreground`}>Até<Input type="date" value={ate} onChange={(event) => setAte(event.target.value)} className="mt-1 w-40" /></label>
         </div>
-        {error ? <p className="mt-3 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{error}</p> : null}
-        <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
+        {error && !off ? <p className="mt-3 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{error}</p> : null}
+        <div className={`${off}mt-3 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm`}>
           <span><strong>{rows.length}</strong> nota(s)</span><span>Total das notas: <strong>{brl(sums.invoice)}</strong></span>{loading ? <span className="text-muted-foreground">Carregando...</span> : null}
         </div>
 
+        <TabsContent value="analise" className="mt-3">{analysis ? <AnalysisPanel analysis={analysis} /> : <p className="text-sm text-muted-foreground">Carregando indicadores...</p>}</TabsContent>
+
         <TabsContent value="notas" className="mt-3">
-          <div className="mb-2 flex gap-2"><Button type="button" variant="outline" size="sm" onClick={exportNotes} disabled={!rows.length}><Download className="h-4 w-4" />Planilha das notas</Button><Button type="button" variant="outline" size="sm" onClick={exportItems} disabled={!rows.length}><Download className="h-4 w-4" />Planilha dos itens com impostos</Button></div>
+          <div className="mb-2 flex gap-2"><Button type="button" variant="outline" size="sm" onClick={exportNotes} disabled={!rows.length}><Download className="h-4 w-4" />Planilha das notas</Button><Button type="button" variant="outline" size="sm" onClick={() => void exportItems()} disabled={!rows.length}><Download className="h-4 w-4" />Planilha dos itens com impostos</Button></div>
           <DataTable headers={["Emissão", "Op.", "NF", "Emitente", "Destinatário", "Produtos", "ICMS", "ICMS ST", "IPI", "PIS", "COFINS", "ISS", "Total"]} empty={!rows.length && !loading}>
             {rows.map((row) => (
               <TableRow key={row.id} className="cursor-pointer" onClick={() => setOpen(row.id)}>
@@ -280,6 +385,9 @@ export function AccountingTab() {
             ))}
           </DataTable>
         </TabsContent>
+
+        <TabsContent value="emitir" className="mt-3">{emitir}</TabsContent>
+        <TabsContent value="importar" className="mt-3"><NfImportPage embedded /></TabsContent>
 
         <TabsContent value="materiais" className="mt-3">
           <p className="mb-2 text-sm text-muted-foreground">Tudo o que aparece nas notas filtradas acima, somado por produto (código e descrição). Use o filtro de Entradas para ver só o que foi comprado.</p>
@@ -296,14 +404,6 @@ export function AccountingTab() {
           <div className="mt-2"><Button type="button" variant="outline" size="sm" disabled={!materials.length} onClick={() => downloadCsv("contabilidade-materiais.csv", ["Código", "Descrição", "NCM", "Un.", "Quantidade", "Preço médio", "Total", "ICMS", "IPI", "PIS", "COFINS", "Notas", "Fornecedores"], materials.map((item) => [item.code, item.description, item.ncm, item.unit, item.quantity, item.averagePrice, item.total, item.icms, item.ipi, item.pis, item.cofins, item.notes, item.suppliers.join(", ")]))}><Download className="h-4 w-4" />Planilha dos materiais</Button></div>
         </TabsContent>
 
-        <TabsContent value="impostos" className="mt-3">
-          <div className="grid gap-3 sm:grid-cols-4">
-            {([["Produtos/serviços", sums.products], ["ICMS", sums.icms], ["ICMS ST", sums.st], ["IPI", sums.ipi], ["PIS", sums.pis], ["COFINS", sums.cofins], ["ISS", sums.iss], ["Total das notas", sums.invoice]] as Array<[string, number]>).map(([label, value]) => (
-              <div key={label} className="rounded-md border p-3"><div className="text-xs text-muted-foreground">{label}</div><div className="text-lg font-semibold">{brl(value)}</div></div>
-            ))}
-          </div>
-          <p className="mt-2 text-xs text-muted-foreground">Somas das notas filtradas. Entradas e saídas ficam separadas pelo filtro acima.</p>
-        </TabsContent>
       </Tabs>
 
       <FormSheet open={!!open} onOpenChange={(value) => !value && setOpen(null)} title="Nota fiscal completa" description="Todos os campos lidos do XML.">
