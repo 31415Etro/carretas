@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { AlertTriangle, Camera, CheckCircle2, Clock, Loader2, Pencil, Receipt, Trash2, TriangleAlert, X } from "lucide-react"
+import { AlertTriangle, Camera, CheckCircle2, Clock, ImagePlus, Loader2, Pencil, Receipt, Trash2, TriangleAlert, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -69,6 +69,7 @@ export function TravelAdvancePortal({ token }: { token: string }) {
   const [editDraft, setEditDraft] = useState({ amount: "", establishment: "", occurredAt: "", category: "" })
   const [finalizing, setFinalizing] = useState(false)
   const input = useRef<HTMLInputElement>(null)
+  const gallery = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async () => {
     try {
@@ -85,39 +86,49 @@ export function TravelAdvancePortal({ token }: { token: string }) {
   }, [token])
   useEffect(() => { void load() }, [load])
 
-  async function handleFile(event: React.ChangeEvent<HTMLInputElement>) {
-    const original = event.target.files?.[0]
+  /** Câmera (foto na hora) ou biblioteca do celular (uma ou várias notas): sobe todas primeiro, lê os valores depois. */
+  async function handleFiles(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files || [])
     event.target.value = ""
-    if (!original) return
+    if (!files.length) return
     setUploading(true)
-    let uploaded: { receipt: { id: string } } | null = null
-    let photo: File = original
-    try {
-      // 1) reduz a foto (celular: 5 a 12 MB -> ~0,5 MB) e envia JÁ, sem esperar a leitura
-      setStage("Preparando a foto...")
-      try { photo = await compressPhoto(original) } catch { if (original.size > 4 * 1024 * 1024) throw new Error("Não consegui preparar esta foto. Tire outra em JPG ou reduza a resolução da câmera.") }
-      setStage("Enviando a foto...")
-      const form = new FormData()
-      form.set("file", photo)
-      uploaded = await send<{ receipt: { id: string } }>(`/api/viagem/portal/${token}/recibos`, { method: "POST", body: form })
-      await load()
-    } catch (reason) {
-      alert(reason instanceof Error ? reason.message : "Erro ao enviar a notinha.")
-      setUploading(false); setStage("")
-      return
+    const sent: Array<{ id: string; photo: File }> = []
+    const problems: string[] = []
+    for (const [index, original] of files.entries()) {
+      const label = files.length > 1 ? ` (${index + 1} de ${files.length})` : ""
+      try {
+        if (!original.type.startsWith("image/") && !/\.(jpe?g|png|webp|heic|heif)$/i.test(original.name)) throw new Error("Escolha uma foto (JPG, PNG ou WEBP).")
+        // reduz a foto (celular: 5 a 12 MB -> ~0,5 MB) e envia JÁ, sem esperar a leitura
+        setStage(`Preparando a foto${label}...`)
+        let photo: File = original
+        try { photo = await compressPhoto(original) } catch { if (original.size > 4 * 1024 * 1024) throw new Error("Não consegui preparar esta foto. Escolha outra em JPG ou reduza a resolução.") }
+        setStage(`Enviando a foto${label}...`)
+        const form = new FormData()
+        form.set("file", photo)
+        const uploaded = await send<{ receipt: { id: string } }>(`/api/viagem/portal/${token}/recibos`, { method: "POST", body: form })
+        sent.push({ id: uploaded.receipt.id, photo })
+        await load()
+      } catch (reason) {
+        problems.push(`${original.name || "foto"}: ${reason instanceof Error ? reason.message : "erro ao enviar"}`)
+      }
     }
     setUploading(false); setStage("")
-    // 2) leitura automática do valor e do estabelecimento em segundo plano, com prazo; se não der, a pessoa corrige na lista
-    if (!uploaded) return
+    if (problems.length) alert(`${sent.length ? `${sent.length} nota(s) enviada(s). ` : ""}Não foi possível enviar:\n${problems.join("\n")}`)
+    if (!sent.length) return
+    // leitura automática do valor e do estabelecimento em segundo plano, com prazo por nota; se não der, a pessoa corrige na lista
     setReading(true)
     try {
-      const text = await withTimeout(ocrReceiptImage(photo, () => undefined), 45000)
-      if (text && text.trim()) {
-        await send(`/api/viagem/portal/${token}/recibos/${uploaded.receipt.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ocrText: text }) }, 30000)
-        await load()
+      for (const item of sent) {
+        try {
+          const text = await withTimeout(ocrReceiptImage(item.photo, () => undefined), 45000)
+          if (text && text.trim()) {
+            await send(`/api/viagem/portal/${token}/recibos/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ocrText: text }) }, 30000)
+            await load()
+          }
+        } catch {
+          /* a foto já foi enviada: valor e estabelecimento ficam para preencher à mão */
+        }
       }
-    } catch {
-      /* a foto já foi enviada: valor e estabelecimento ficam para preencher à mão */
     } finally {
       setReading(false)
     }
@@ -215,10 +226,16 @@ export function TravelAdvancePortal({ token }: { token: string }) {
 
       {state.canUpload ? (
         <Card>
-          <input ref={input} type="file" accept="image/*" capture="environment" hidden onChange={handleFile} />
-          <Button className="w-full bg-[var(--brand)] hover:bg-[var(--brand-dark)]" disabled={uploading} onClick={() => input.current?.click()}>
-            {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}{uploading ? stage || "Enviando..." : "Tirar foto da notinha"}
-          </Button>
+          <input ref={input} type="file" accept="image/*" capture="environment" hidden onChange={handleFiles} />
+          <input ref={gallery} type="file" accept="image/*" multiple hidden onChange={handleFiles} />
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Button className="w-full bg-[var(--brand)] hover:bg-[var(--brand-dark)]" disabled={uploading} onClick={() => input.current?.click()}>
+              {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}{uploading ? stage || "Enviando..." : "Tirar foto da notinha"}
+            </Button>
+            <Button variant="outline" className="w-full" disabled={uploading} onClick={() => gallery.current?.click()}>
+              <ImagePlus className="h-4 w-4" />Escolher da galeria
+            </Button>
+          </div>
           {reading ? <p className="mt-2 flex items-center gap-2 text-xs text-slate-500"><Loader2 className="h-3 w-3 animate-spin" />Foto enviada. Lendo o valor e o estabelecimento em segundo plano; se não aparecerem, corrija na lista.</p> : null}
         </Card>
       ) : null}
