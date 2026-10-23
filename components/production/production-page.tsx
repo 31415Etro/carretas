@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { AlertTriangle, Boxes, ClipboardList, Factory, Loader2, PackageCheck, RefreshCw, ShoppingCart, TimerOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { ManualOrderSheet } from "@/components/production/manual-order-sheet"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { DataTable, MetricCard, PageShell, SectionCard } from "@/components/operations/shared"
@@ -39,6 +40,7 @@ export function ProductionPage() {
   const [busy, setBusy] = useState("")
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
+  const [newOrder, setNewOrder] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true); setError("")
@@ -68,8 +70,8 @@ export function ProductionPage() {
   const cost = d.cost_completed || { orders: 0, estimated: 0, actual: 0 }
 
   return (
-    <PageShell title="Produção e planejamento de materiais" description="Ordens de produção geradas pelos pedidos confirmados, necessidade consolidada de materiais (MRP) e solicitações de compra da empresa em uso."
-      actions={<><Button variant="outline" asChild><Link href="/producao/esteira">Esteira da fábrica</Link></Button><Button variant="outline" asChild><Link href="/estoque?aba=movimentacoes">Movimentos e inventário</Link></Button><Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />Atualizar</Button></>}>
+    <PageShell title="Produção e planejamento de materiais" description="Ordens de produção geradas pelos pedidos (ou abertas aqui, sem pedido) confirmados, necessidade consolidada de materiais (MRP) e solicitações de compra da empresa em uso."
+      actions={<><Button onClick={() => setNewOrder(true)}>Nova ordem de produção</Button><Button variant="outline" asChild><Link href="/producao/esteira">Esteira da fábrica</Link></Button><Button variant="outline" asChild><Link href="/estoque?aba=movimentacoes">Movimentos e inventário</Link></Button><Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />Atualizar</Button></>}>
       {error ? <p className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{error}</p> : null}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard title="Pedidos aguardando produção" value={Number(d.sales_awaiting_production || 0)} note={`${Number(d.sales_awaiting_confirmation || 0)} aguardando confirmação`} icon={ClipboardList} />
@@ -172,6 +174,7 @@ export function ProductionPage() {
           </SectionCard>
         </TabsContent>
       </Tabs>
+    <ManualOrderSheet open={newOrder} onOpenChange={setNewOrder} onCreated={(result) => { setNotice(`Ordem ${result.code} criada sem pedido de venda${result.documentation_created ? ` e ${result.documentation_created} documentação(ões) veicular(es) aberta(s)` : ""}. As tarefas já estão na esteira.`); void load() }} />
     </PageShell>
   )
 }

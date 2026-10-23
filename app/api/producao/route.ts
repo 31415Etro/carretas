@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { stockContext } from "@/lib/stock-api"
-import { listProductionOrders, productionDashboard, salesError } from "@/lib/sales-server"
+import { createManualProductionOrder, listProductionOrders, productionDashboard, salesError } from "@/lib/sales-server"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -13,6 +13,20 @@ export async function GET(request: Request) {
     const params = new URL(request.url).searchParams
     const list = await listProductionOrders(context.admin, { q: params.get("q") || "", status: params.get("status") || "", page: Number(params.get("pagina")) || 1, pageSize: Number(params.get("tamanho")) || 25 })
     return NextResponse.json(params.get("painel") ? { ...list, dashboard: await productionDashboard(context.admin) } : list)
+  } catch (error) {
+    const mapped = salesError(error)
+    return NextResponse.json({ error: mapped.message }, { status: mapped.status })
+  }
+}
+
+/** Abre uma ordem de produção direto na produção, sem pedido de venda. */
+export async function POST(request: Request) {
+  const context = await stockContext()
+  if ("error" in context) return context.error
+  try {
+    const body = await request.json()
+    const result = await createManualProductionOrder(context.admin, { productId: String(body.productId || ""), quantity: Number(body.quantity), plannedEnd: body.plannedEnd, priority: Number(body.priority) || 3, clientId: body.clientId, responsible: body.responsible, notes: body.notes, createDocumentation: Boolean(body.createDocumentation) }, context.responsible)
+    return NextResponse.json({ result })
   } catch (error) {
     const mapped = salesError(error)
     return NextResponse.json({ error: mapped.message }, { status: mapped.status })

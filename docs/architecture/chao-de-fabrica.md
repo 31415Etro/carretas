@@ -41,3 +41,9 @@ O 224 exigia a documentação aprovada para iniciar/consumir/concluir a produç�
 - Os itens de checklist e os tempos previstos por etapa precisam ser cadastrados pelo gestor; a associação de kits às etapas usa a categoria do kit (ex.: "Chassi") ou seleção manual.
 - Quantidades por unidade vêm do total da ordem dividido pelo número de unidades.
 - Troca rápida de colaborador usa PIN (sem crachá/QR do colaborador).
+
+## Matrícula, ordem avulsa e documentação avulsa (script 228)
+- **Matrícula**: gerada pelo sistema na criação (F0001, F0002... por empresa), ignora o que vier no formulário e não muda na edição.
+- **Ordem de produção sem pedido**: botão "Nova ordem de produção" em Produção e MRP. Usa a estrutura ativa do produto (kits e materiais congelados), reserva materiais e gera as tarefas da esteira; opcionalmente cria a documentação veicular de cada unidade (exige cliente). Não há pedido, financeiro nem reserva de acabado a pedido.
+- **Documentação sem pedido**: botão "Nova documentação" em Documentação veicular, avulsa (cliente + produto) ou ligada a uma ordem (próxima unidade livre). O chassi dessa documentação libera as tarefas da esteira da ordem avulsa.
+- **Contratos** já podem ser criados sem orçamento ("Novo contrato"); nada mudou.

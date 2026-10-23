@@ -124,3 +124,7 @@ export const releaseException = (admin: Admin, orderId: string, reason: string, 
 export const generateDocumentation = (admin: Admin, orderId: string, user: string) => rpc<number>(admin, "vehicle_documentation_generate", { p_sales_order_id: orderId, p_user: user })
 export const salesSettingsGet = (admin: Admin) => rpc<Record<string, any>>(admin, "sales_settings_get")
 export const salesSettingsUpdate = (admin: Admin, input: Record<string, unknown>, user: string) => rpc<Record<string, any>>(admin, "sales_settings_update", { p: input, p_user: user })
+
+/** Documentação veicular sem pedido de venda (avulsa ou ligada a uma ordem de produção). */
+export const createManualDocumentation = (admin: Admin, input: { clientId: string; productId?: string; productionOrderId?: string; vin?: string; notes?: string }, user: string) =>
+  rpc<Record<string, any>>(admin, "vehicle_documentation_create_manual", { p: { client_id: input.clientId, product_id: input.productId || null, production_order_id: input.productionOrderId || null, vin: input.vin || null, notes: input.notes || null }, p_user: user })

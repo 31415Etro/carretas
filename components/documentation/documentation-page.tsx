@@ -8,6 +8,7 @@ import { TableCell, TableRow } from "@/components/ui/table"
 import { DataTable, MetricCard, PageShell, SectionCard } from "@/components/operations/shared"
 import { api, dateBr, SearchBox } from "@/components/catalog/catalog-fields"
 import { DocumentationSheet } from "@/components/documentation/documentation-sheet"
+import { ManualDocumentationSheet } from "@/components/documentation/manual-documentation-sheet"
 import { docStatusLabel, docStatusTone } from "@/lib/vehicle-documentation"
 
 type Row = {
@@ -27,6 +28,7 @@ export function DocumentationPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [selected, setSelected] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true); setError("")
@@ -39,8 +41,8 @@ export function DocumentationPage() {
 
   const pages = Math.max(1, Math.ceil(total / SIZE))
   return (
-    <PageShell title="Documentação veicular" description="Pré-cadastro de cada carreta vendida, uma documentação por unidade. A fabricação só começa depois da liberação calculada pelo sistema."
-      actions={<Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />Atualizar</Button>}>
+    <PageShell title="Documentação veicular" description="Pré-cadastro de cada carreta (vendida ou aberta sem pedido), uma documentação por unidade. Ela corre em paralelo à fabricação; a expedição exige a documentação liberada."
+      actions={<><Button onClick={() => setCreating(true)}>Nova documentação</Button><Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />Atualizar</Button></>}>
       {error ? <p className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{error}</p> : null}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard title="Em andamento" value={Number(dashboard.open || 0)} note={`${Number(dashboard.pending_data || 0)} pendentes de dados · ${Number(dashboard.ready || 0)} prontas para envio`} icon={FileCheck2} />
@@ -81,6 +83,7 @@ export function DocumentationPage() {
         </div>
         <p className="mt-2 flex items-center gap-1 text-xs text-muted-foreground"><Send className="h-3 w-3" />O acompanhamento dos protocolos roda no servidor uma vez por dia (e pelo botão "Consultar andamento"); não depende desta página aberta.</p>
       </SectionCard>
+      <ManualDocumentationSheet open={creating} onOpenChange={setCreating} onCreated={(id) => { void load(); setSelected(id) }} />
       <DocumentationSheet id={selected} onClose={() => setSelected(null)} onChanged={() => void load()} />
     </PageShell>
   )

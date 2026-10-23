@@ -83,3 +83,10 @@ export const generatePurchaseRequest = (admin: Admin, user: string) => rpc<strin
 export const generateOrderPurchaseRequest = (admin: Admin, orderId: string, user: string) => rpc<string>(admin, "generate_purchase_request", { p_production_order_id: orderId, p_requested_by: user })
 export const listPurchaseRequests = (admin: Admin, status?: string) => rpc<Array<Record<string, any>>>(admin, "purchase_request_list", { p_status: status || null })
 export const setPurchaseRequestStatus = (admin: Admin, id: string, status: string, user: string) => rpc(admin, "purchase_request_set_status", { p_request: id, p_status: status, p_user: user })
+
+/** Ordem de produção aberta direto na produção (sem pedido de venda): estrutura ativa congelada, materiais reservados e tarefas da esteira. */
+export const createManualProductionOrder = (admin: Admin, input: { productId: string; quantity: number; plannedEnd?: string; priority?: number; clientId?: string; responsible?: string; notes?: string; createDocumentation?: boolean }, user: string) =>
+  rpc<Record<string, any>>(admin, "production_order_create_manual", {
+    p: { product_id: input.productId, quantity: input.quantity, planned_end: input.plannedEnd || null, priority: input.priority || 3, client_id: input.clientId || null, responsible: input.responsible || null, notes: input.notes || null, create_documentation: Boolean(input.createDocumentation) },
+    p_user: user,
+  })
