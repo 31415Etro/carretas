@@ -3,6 +3,7 @@
 //   node scripts/nfemail/sincronizar.mjs                       últimos 15 dias, entrada e saída, todas as empresas do login
 //   node scripts/nfemail/sincronizar.mjs --desde 2026-01-01    carga inicial / reprocesso (notas já importadas são ignoradas)
 //   node scripts/nfemail/sincronizar.mjs --tipo entrada        só entrada (ou: saida)
+//   node scripts/nfemail/sincronizar.mjs --contabil --desde 2026-01-01 --ate 2026-10-01   só entradas, só na aba Contabilidade (não cria financeiro)
 //   node scripts/nfemail/sincronizar.mjs --simular             não grava nada no ERP
 //   node scripts/nfemail/sincronizar.mjs --zip pasta           usa ZIPs já baixados (nomes <cnpj>-entrada.zip / <cnpj>-saida.zip)
 //
@@ -35,7 +36,8 @@ const iso = (date) => date.toISOString().slice(0, 10)
 const today = new Date()
 const from = option("desde") || iso(new Date(today.getTime() - 15 * 86_400_000))
 const to = option("ate") || iso(today)
-const tipos = option("tipo") ? [option("tipo")] : ["entrada", "saida"]
+const accountingOnly = flag("contabil")
+const tipos = accountingOnly ? ["entrada"] : option("tipo") ? [option("tipo")] : ["entrada", "saida"]
 const dryRun = flag("simular")
 const zipDir = option("zip")
 const limit = Number(option("limite")) || 0 // teste: só os N primeiros XMLs de cada ZIP
@@ -77,6 +79,7 @@ async function send(cnpj, files) {
   const form = new FormData()
   form.set("companyCnpj", cnpj)
   if (dryRun) form.set("dryRun", "1")
+  if (accountingOnly) form.set("destino", "contabilidade")
   for (const file of files) form.append("files", new File([fs.readFileSync(file)], path.basename(file), { type: "text/xml" }))
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
@@ -182,7 +185,7 @@ try {
       }
       log(`${company.cnpj} ${tipo}:`, JSON.stringify({ ...entry.tipos[tipo], problemas: undefined, motivosIgnoradas: undefined }))
     }
-    if (!dryRun) await postSaidas(company.cnpj).catch((error) => log(`${company.cnpj}: falha ao lançar saídas: ${error.message}`))
+    if (!dryRun && !accountingOnly) await postSaidas(company.cnpj).catch((error) => log(`${company.cnpj}: falha ao lançar saídas: ${error.message}`))
     report.empresas.push(entry)
   }
 } finally {

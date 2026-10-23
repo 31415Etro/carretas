@@ -5,6 +5,7 @@ import { importInvoice } from "@/lib/nf-import-server"
 import { generatesTitle, planSync, type SyncResult } from "@/lib/nf-sync"
 import { outflowRows, type StoredInvoice } from "@/lib/nf-outflows"
 import { parseInvoiceXml } from "@/lib/nfe-parser"
+import { importAccountingXml } from "@/lib/accounting-server"
 
 type Admin = ReturnType<typeof createAdminClient>
 export const SYNC_RESPONSIBLE = "Importação automática (NFeMail)"
@@ -41,6 +42,23 @@ export async function syncXml(admin: Admin, companyId: string, companyCnpj: stri
   } catch (error) {
     const message = error instanceof Error ? error.message : (error as { message?: string })?.message || "Erro ao importar."
     if (/já foi importada/i.test(message)) return { file: fileName, status: "duplicada" }
+    return { file: fileName, status: "erro", detail: message.slice(0, 300) }
+  }
+}
+
+/** Só Contabilidade (aba Financeiro > Contabilidade): guarda a nota de ENTRADA com todos os campos e NÃO cria conta a pagar, fornecedor nem lançamento. */
+export async function syncXmlAccounting(admin: Admin, companyCnpj: string, fileName: string, xml: string, dryRun = false): Promise<SyncResult> {
+  try {
+    const invoice = parseInvoiceXml(xml)
+    const plan = planSync(invoice, companyCnpj)
+    const base = { file: fileName, number: invoice.number, total: invoice.total }
+    if (plan.action === "ignorar") return { ...base, status: "ignorada", detail: plan.reason }
+    if (plan.role !== "destinatario") return { ...base, status: "ignorada", detail: "Nota de saída: só as entradas vão para a Contabilidade." }
+    if (dryRun) return { ...base, status: "importada", detail: "simulação" }
+    const result = await importAccountingXml(admin, { xml, fileName, operation: "Entrada", responsible: SYNC_RESPONSIBLE })
+    return { ...base, status: result.status === "duplicada" ? "duplicada" : "importada" }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : (error as { message?: string })?.message || "Erro ao importar."
     return { file: fileName, status: "erro", detail: message.slice(0, 300) }
   }
 }

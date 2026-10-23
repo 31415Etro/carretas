@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
-import { companyByCnpj, lancarSaidas, syncXml, validSyncSecret } from "@/lib/nf-sync-server"
+import { companyByCnpj, lancarSaidas, syncXml, syncXmlAccounting, validSyncSecret } from "@/lib/nf-sync-server"
 import { summarize } from "@/lib/nf-sync"
 
 export const runtime = "nodejs"
@@ -28,7 +28,8 @@ export async function POST(request: Request) {
     if (action === "lancar-saidas") return NextResponse.json({ company: company.name, ...(await lancarSaidas(admin)) })
     const dryRun = String(form.get("dryRun") || "") === "1"
     const results = []
-    for (const file of files) results.push(await syncXml(admin, String(company.id), String(company.cnpj), file.name, await file.text(), dryRun))
+    const accountingOnly = String(form.get("destino") || "") === "contabilidade"
+    for (const file of files) results.push(accountingOnly ? await syncXmlAccounting(admin, String(company.cnpj), file.name, await file.text(), dryRun) : await syncXml(admin, String(company.id), String(company.cnpj), file.name, await file.text(), dryRun))
     return NextResponse.json({ company: company.name, summary: summarize(results), results })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Erro na importação automática." }, { status: 500 })
