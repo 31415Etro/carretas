@@ -203,6 +203,19 @@ export async function editReceipt(admin: Admin, token: string, receiptId: string
   if (error) throw error
 }
 
+/** Aplica a leitura automática (feita depois do envio, em segundo plano) numa notinha que ainda está sem valor e sem estabelecimento. */
+export async function applyReceiptOcr(admin: Admin, token: string, receiptId: string, ocrText: string) {
+  const { advance, receipts } = await getByToken(admin, token)
+  if (!canUpload(advance.status, advance.end_date)) return { applied: false }
+  const receipt = receipts.find((row) => row.id === receiptId)
+  if (!receipt || receipt.status === "Aprovado" || Number(receipt.amount) > 0 || String(receipt.establishment || "").trim() || !ocrText.trim()) return { applied: false }
+  const parsed = parseReceiptText(ocrText)
+  if (!(parsed.amount > 0) && !parsed.establishment) return { applied: false }
+  const { error } = await admin.from("travel_advance_receipts").update({ amount: parsed.amount, establishment: parsed.establishment, category: parsed.category, occurred_at: parsed.occurredAt }).eq("id", receiptId)
+  if (error) throw error
+  return { applied: true, ...parsed }
+}
+
 export async function deleteReceipt(admin: Admin, token: string, receiptId: string) {
   const { advance, receipts } = await getByToken(admin, token)
   if (!canUpload(advance.status, advance.end_date)) throw new Error("Não é mais possível remover: o link não está mais aberto.")

@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { BrandMark } from "@/components/shell/brand-mark"
 import { AppFooter } from "@/components/shell/app-footer"
 import { ocrReceiptImage } from "@/lib/ocr-client"
+import { compressPhoto } from "@/lib/image-compress"
 import { CATEGORY_LABEL } from "@/lib/travel-advance"
 
 type PortalReceipt = { id: string; photoUrl: string; amount: number; establishment: string; category: string; occurredAt: string | null; status: string; reviewNote: string }
@@ -24,11 +25,27 @@ type PortalState = {
 const brl = (value: unknown) => Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
 const day = (value?: string | null) => (value ? value.split("-").reverse().join("/") : "-")
 
-async function send<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, { cache: "no-store", ...init })
-  const payload = await response.json().catch(() => null)
-  if (!response.ok) throw new Error(payload?.error || `Erro ${response.status}`)
-  return payload as T
+async function send<T>(url: string, init?: RequestInit, timeoutMs = 60000): Promise<T> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const response = await fetch(url, { cache: "no-store", signal: controller.signal, ...init })
+    const payload = await response.json().catch(() => null)
+    if (response.status === 413) throw new Error("A foto ficou grande demais para enviar. Tire outra foto mais de perto ou use o modo de menor resolução da câmera.")
+    if (!response.ok) throw new Error(payload?.error || `Erro ${response.status}`)
+    return payload as T
+  } catch (reason) {
+    if (reason instanceof DOMException && reason.name === "AbortError") throw new Error("O envio demorou demais (internet fraca?). Tente de novo.")
+    if (reason instanceof TypeError) throw new Error("Sem conexão com a internet. Confira o sinal e tente de novo.")
+    throw reason
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** Leitura automática com prazo: no celular o OCR pode demorar muito; passado o prazo, a pessoa preenche à mão. */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  return Promise.race([promise, new Promise<null>((resolve) => setTimeout(() => resolve(null), ms))])
 }
 
 const STATUS_STYLE: Record<string, string> = {
@@ -45,6 +62,7 @@ export function TravelAdvancePortal({ token }: { token: string }) {
   const [loading, setLoading] = useState(true)
   const [stage, setStage] = useState("")
   const [uploading, setUploading] = useState(false)
+  const [reading, setReading] = useState(false)
   const [justification, setJustification] = useState("")
   const [settlement, setSettlement] = useState<"devolver" | "desconto_folha" | "">("")
   const [editingId, setEditingId] = useState("")
@@ -68,24 +86,40 @@ export function TravelAdvancePortal({ token }: { token: string }) {
   useEffect(() => { void load() }, [load])
 
   async function handleFile(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0]
+    const original = event.target.files?.[0]
     event.target.value = ""
-    if (!file) return
+    if (!original) return
     setUploading(true)
-    setStage("Lendo a notinha...")
+    let uploaded: { receipt: { id: string } } | null = null
+    let photo: File = original
     try {
-      const text = await ocrReceiptImage(file, setStage)
-      setStage("Enviando...")
+      // 1) reduz a foto (celular: 5 a 12 MB -> ~0,5 MB) e envia JÁ, sem esperar a leitura
+      setStage("Preparando a foto...")
+      try { photo = await compressPhoto(original) } catch { if (original.size > 4 * 1024 * 1024) throw new Error("Não consegui preparar esta foto. Tire outra em JPG ou reduza a resolução da câmera.") }
+      setStage("Enviando a foto...")
       const form = new FormData()
-      form.set("file", file)
-      form.set("ocrText", text)
-      await send(`/api/viagem/portal/${token}/recibos`, { method: "POST", body: form })
+      form.set("file", photo)
+      uploaded = await send<{ receipt: { id: string } }>(`/api/viagem/portal/${token}/recibos`, { method: "POST", body: form })
       await load()
     } catch (reason) {
       alert(reason instanceof Error ? reason.message : "Erro ao enviar a notinha.")
+      setUploading(false); setStage("")
+      return
+    }
+    setUploading(false); setStage("")
+    // 2) leitura automática do valor e do estabelecimento em segundo plano, com prazo; se não der, a pessoa corrige na lista
+    if (!uploaded) return
+    setReading(true)
+    try {
+      const text = await withTimeout(ocrReceiptImage(photo, () => undefined), 45000)
+      if (text && text.trim()) {
+        await send(`/api/viagem/portal/${token}/recibos/${uploaded.receipt.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ocrText: text }) }, 30000)
+        await load()
+      }
+    } catch {
+      /* a foto já foi enviada: valor e estabelecimento ficam para preencher à mão */
     } finally {
-      setUploading(false)
-      setStage("")
+      setReading(false)
     }
   }
 
@@ -185,6 +219,7 @@ export function TravelAdvancePortal({ token }: { token: string }) {
           <Button className="w-full bg-[var(--brand)] hover:bg-[var(--brand-dark)]" disabled={uploading} onClick={() => input.current?.click()}>
             {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}{uploading ? stage || "Enviando..." : "Tirar foto da notinha"}
           </Button>
+          {reading ? <p className="mt-2 flex items-center gap-2 text-xs text-slate-500"><Loader2 className="h-3 w-3 animate-spin" />Foto enviada. Lendo o valor e o estabelecimento em segundo plano; se não aparecerem, corrija na lista.</p> : null}
         </Card>
       ) : null}
 

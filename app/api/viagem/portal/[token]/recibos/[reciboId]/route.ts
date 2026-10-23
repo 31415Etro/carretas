@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
-import { advanceError, companyScopedByToken, deleteReceipt, editReceipt } from "@/lib/travel-advance-server"
+import { advanceError, applyReceiptOcr, companyScopedByToken, deleteReceipt, editReceipt } from "@/lib/travel-advance-server"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -11,6 +11,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ to
     const { token, reciboId } = await params
     const admin = await companyScopedByToken(createAdminClient, token)
     const body = await request.json()
+    if (typeof body.ocrText === "string") return NextResponse.json({ ok: true, ...(await applyReceiptOcr(admin, token, reciboId, body.ocrText)) })
     await editReceipt(admin, token, reciboId, {
       amount: body.amount !== undefined ? Number(body.amount) : undefined,
       establishment: body.establishment !== undefined ? String(body.establishment) : undefined,
