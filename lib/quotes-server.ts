@@ -145,10 +145,12 @@ async function catalogSnapshot(admin: Admin, lines: QuoteSaveInput["lines"]) {
 
 /** Valida e grava o orçamento (rascunho). Preços dos itens já existentes ficam congelados. */
 export async function saveQuote(admin: Admin, input: QuoteSaveInput, responsible: string) {
+  // a fábrica vende só produto: orçamento é sempre do tipo Produto, sem serviços e sem imposto destacado
+  if (input.lines.some((line) => line.lineType !== "Produto")) fail("O orçamento é só de produtos: remova os itens de serviço.")
   const normalized: QuoteInput = {
-    clientId: text(input.clientId), salespersonId: text(input.salespersonId), issueDate: text(input.issueDate) || today(), validUntil: text(input.validUntil), quoteType: text(input.quoteType),
+    clientId: text(input.clientId), salespersonId: text(input.salespersonId), issueDate: text(input.issueDate) || today(), validUntil: text(input.validUntil), quoteType: "Produto",
     paymentConditionId: text(input.paymentConditionId), discountAmount: num(input.discountAmount), freightAmount: num(input.freightAmount), expensesAmount: num(input.expensesAmount),
-    taxPercent: num(input.taxPercent), warrantyDays: Math.round(num(input.warrantyDays)),
+    taxPercent: 0, warrantyDays: Math.round(num(input.warrantyDays)),
     lines: input.lines.map((line) => ({ lineType: line.lineType, catalogId: text(line.catalogId), description: text(line.description), quantity: num(line.quantity), unitPrice: num(line.unitPrice), unitCost: 0, discountPercent: num(line.discountPercent) })),
   }
   const invalid = validateQuote(normalized)
@@ -403,9 +405,14 @@ export async function formalizeQuote(admin: Admin, id: string, options: { target
  * Converte o orçamento APROVADO em pedido de venda (função sales_order_from_quote). Idempotente: repetir devolve o mesmo pedido.
  * Não reserva nem consome estoque e não gera títulos a receber: a confirmação do pedido é que dispara estoque de acabados e produção.
  */
-export async function convertQuoteToSalesOrder(admin: Admin, id: string, responsible: string) {
-  const { data: quote } = await admin.from("quotes").select("*").eq("id", id).maybeSingle()
+export async function convertQuoteToSalesOrder(admin: Admin, id: string, responsible: string, options: { approveFirst?: boolean; role?: string } = {}) {
+  let { data: quote } = await admin.from("quotes").select("*").eq("id", id).maybeSingle()
   if (!quote) fail("Orçamento não encontrado.")
+  // dentro do próprio orçamento: se ainda não foi aprovado, a aprovação é registrada junto (com o aceite do usuário e a regra de desconto de sempre)
+  if (options.approveFirst && quote!.status !== "Aprovado" && quote!.status !== "Convertido") {
+    await changeQuoteStatus(admin, id, "Aprovado", { acceptedBy: responsible, acceptNotes: "Aprovado ao gerar o pedido de venda." }, responsible, options.role)
+    quote = (await admin.from("quotes").select("*").eq("id", id).maybeSingle()).data
+  }
   const { data, error } = await admin.rpc("sales_order_from_quote", { p_quote_id: id, p_user: responsible })
   if (error) fail(error.message)
   if (!data.duplicate) await winOpportunity(admin, quote, responsible)

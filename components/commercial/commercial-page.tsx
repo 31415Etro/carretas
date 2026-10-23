@@ -165,8 +165,8 @@ export function CommercialPage() {
     const item = { ...oppSheet, ...patch }
     setSaving(true)
     try {
-      const { opportunity } = await api<{ opportunity: Opportunity }>("/api/comercial/opportunities", { method: "POST", body: JSON.stringify({ opportunity: { ...item, estimatedValue: Number(item.estimatedValue) || 0 } }) })
-      toast({ title: "Oportunidade salva" })
+      const { opportunity } = await api<{ opportunity: Opportunity & { salesOrder?: { id: string; number: string } | null } }>("/api/comercial/opportunities", { method: "POST", body: JSON.stringify({ opportunity: { ...item, estimatedValue: Number(item.estimatedValue) || 0 } }) })
+      toast(opportunity.salesOrder ? { title: "Negociação ganha: pedido de venda gerado", description: `Pedido ${opportunity.salesOrder.number}. Abra em Pedidos de venda para confirmar e liberar a produção.` } : { title: "Oportunidade salva" })
       await load()
       if (closeAfter) setOppSheet(null)
       return opportunity
@@ -182,7 +182,8 @@ export function CommercialPage() {
     if (stage === "Perdido") return openOpportunity({ ...emptyOpportunity(), ...item, estimatedValue: item.estimatedValue, stage, probability: String(stageProbability.Perdido), reopenReason: "" })
     setSaving(true)
     try {
-      await api("/api/comercial/opportunities", { method: "POST", body: JSON.stringify({ opportunity: { ...item, stage, probability: stageProbability[stage as keyof typeof stageProbability], reopenReason: "" } }) })
+      const moved = await api<{ opportunity: { salesOrder?: { number: string } | null } }>("/api/comercial/opportunities", { method: "POST", body: JSON.stringify({ opportunity: { ...item, stage, probability: stageProbability[stage as keyof typeof stageProbability], reopenReason: "" } }) })
+      if (moved.opportunity?.salesOrder) toast({ title: "Negociação ganha: pedido de venda gerado", description: `Pedido ${moved.opportunity.salesOrder.number}. Abra em Pedidos de venda para confirmar e liberar a produção.` })
       await load()
     } catch (reason) {
       toast({ title: "Etapa não alterada", description: reason instanceof Error ? reason.message : "", variant: "destructive" })

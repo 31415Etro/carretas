@@ -22,7 +22,7 @@ export async function POST(request: Request) {
   if ("error" in context) return context.error
   try {
     const { opportunity } = await request.json()
-    return NextResponse.json({ opportunity: await saveOpportunity(context.admin, opportunity || {}, context.responsible) })
+    return NextResponse.json({ opportunity: await saveOpportunity(context.admin, opportunity || {}, context.responsible, context.role) })
   } catch (error) {
     return bad(error, "Erro ao salvar oportunidade.")
   }

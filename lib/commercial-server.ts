@@ -215,7 +215,7 @@ async function convertLead(admin: Admin, clientId: string) {
   await admin.from("clients").update({ status: "Ativo" }).eq("id", clientId)
 }
 
-export async function saveOpportunity(admin: Admin, input: Record<string, any>, responsible: string) {
+export async function saveOpportunity(admin: Admin, input: Record<string, any>, responsible: string, role?: string) {
   const data = {
     title: text(input.title), clientId: text(input.clientId), salespersonId: text(input.salespersonId), interest: text(input.interest), estimatedValue: Number(input.estimatedValue) || 0,
     stage: text(input.stage) || "Novo lead", probability: input.probability === "" || input.probability == null ? NaN : Number(input.probability), expectedCloseDate: text(input.expectedCloseDate),
@@ -237,6 +237,21 @@ export async function saveOpportunity(admin: Admin, input: Record<string, any>, 
     }
   }
   if (data.stage === "Ganho") await convertLead(admin, data.clientId)
+  // GANHAR gera o pedido de venda: usa o orçamento da oportunidade (aprova e converte, se preciso). Sem orçamento não há o que vender.
+  let salesOrder: { id: string; number: string; duplicate: boolean } | null = null
+  if (data.stage === "Ganho" && previous?.stage !== "Ganho") {
+    let quoteRow: any = null
+    if (input.quoteId || previous?.quote_id) quoteRow = (await admin.from("quotes").select("id,status,quote_number").eq("id", input.quoteId || previous.quote_id).maybeSingle()).data
+    if (!quoteRow && previous?.id) {
+      const found = await admin.from("quotes").select("id,status,quote_number").eq("opportunity_id", previous.id).not("status", "in", "(Cancelado,Recusado)").order("created_at", { ascending: false }).limit(1)
+      quoteRow = found.data?.[0] || null
+    }
+    if (!quoteRow) fail("Para ganhar a negociação é preciso um orçamento: use \"Gerar orçamento\" nesta oportunidade e depois marque como ganha.")
+    const { convertQuoteToSalesOrder } = await import("@/lib/quotes-server")
+    const converted = await convertQuoteToSalesOrder(admin, quoteRow.id, responsible, { approveFirst: true, role })
+    salesOrder = converted.salesOrder
+    input = { ...input, quoteId: quoteRow.id, quoteNumber: quoteRow.quote_number }
+  }
   const closing = data.stage === "Ganho" || data.stage === "Perdido"
   const row = {
     ...(input.id ? { id: input.id } : { created_by: responsible }),
@@ -251,7 +266,7 @@ export async function saveOpportunity(admin: Admin, input: Record<string, any>, 
   else if (previous.stage !== saved.stage) await logInteraction(admin, saved.id, "Etapa", `Etapa alterada de ${previous.stage} para ${saved.stage}.${saved.stage === "Perdido" ? ` Motivo: ${data.lossReason}.` : ""}${previous.stage === "Perdido" ? ` Reaberta: ${text(input.reopenReason)}.` : ""}`, responsible)
   if (previous && !previous.quote_number && saved.quote_number) await logInteraction(admin, saved.id, "Orçamento", `Orçamento ${saved.quote_number} associado.`, responsible)
   const lookup = await lookups(admin)
-  return toOpportunity(saved, lookup.clients, lookup.salespeople)
+  return { ...toOpportunity(saved, lookup.clients, lookup.salespeople), salesOrder }
 }
 
 export async function addInteraction(admin: Admin, opportunityId: string, input: Record<string, any>, responsible: string) {

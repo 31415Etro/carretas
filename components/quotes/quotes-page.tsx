@@ -14,7 +14,7 @@ import { emitSalesOrderPdf } from "@/lib/sales-pdf-client"
 import { ConfiguratorDialog } from "@/components/configurator/configurator-dialog"
 import { configStatusLabel, configStatusTone } from "@/lib/configurator"
 import { resolveTablePrice } from "@/lib/config"
-import { buildInstallments, quoteTotals, quoteTypes, shareMessage } from "@/lib/quotes"
+import { buildInstallments, quoteTotals, shareMessage } from "@/lib/quotes"
 import { buildQuotePdf } from "@/lib/quote-pdf"
 
 type Row = Record<string, any>
@@ -53,7 +53,7 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
   return payload as T
 }
 
-const emptyForm = (): Row => ({ id: "", title: "", clientId: "", salespersonId: "", opportunityId: "", issueDate: today(), validUntil: plusDays(15), quoteType: "Misto", paymentConditionId: "", deliveryText: "", warrantyDays: "0", discountAmount: "0", freightAmount: "0", expensesAmount: "0", taxPercent: "0", notes: "" })
+const emptyForm = (): Row => ({ id: "", title: "", clientId: "", salespersonId: "", opportunityId: "", issueDate: today(), validUntil: plusDays(15), quoteType: "Produto", paymentConditionId: "", deliveryText: "", warrantyDays: "0", discountAmount: "0", freightAmount: "0", expensesAmount: "0", taxPercent: "0", notes: "" })
 
 function Opts({ label, value, onChange, items, placeholder = "Selecione", disabled }: { label: string; value: string; onChange: (value: string) => void; items: Array<{ value: string; label: string }>; placeholder?: string; disabled?: boolean }) {
   return <div className={disabled ? "pointer-events-none opacity-70" : ""}><SelectField label={label} value={value || none} onChange={(next) => onChange(next === none ? "" : next)} options={[{ value: none, label: placeholder }, ...items]} /></div>
@@ -175,11 +175,12 @@ export function QuotesPage() {
     }
   }
 
-  async function convertToOrder() {
+  async function convertToOrder(approveFirst = false) {
     if (!detail) return
+    if (approveFirst && !window.confirm("Este orçamento ainda não foi aprovado. Aprovar agora e gerar o pedido de venda?")) return
     setSaving(true)
     try {
-      const data = await api<Detail & { salesOrder: { id: string; number: string; duplicate: boolean } }>(`/api/orcamentos/${detail.quote.id}`, { method: "POST", body: JSON.stringify({ action: "to_order" }) })
+      const data = await api<Detail & { salesOrder: { id: string; number: string; duplicate: boolean } }>(`/api/orcamentos/${detail.quote.id}`, { method: "POST", body: JSON.stringify({ action: "to_order", approveFirst }) })
       hydrate(data)
       let pdfNote = ""
       if (!data.salesOrder.duplicate) {
@@ -384,7 +385,6 @@ export function QuotesPage() {
               <div className={`md:col-span-2 ${readOnly ? "pointer-events-none opacity-70" : ""}`}><SearchableSelectField label="Cliente *" value={form.clientId || none} onChange={(value) => setForm({ ...form, clientId: value === none ? "" : value })} options={[{ value: none, label: "Selecione" }, ...clientItems]} /></div>
               <Opts label="Vendedor / responsável *" value={form.salespersonId} onChange={(value) => setForm({ ...form, salespersonId: value })} items={(options?.salespeople || []).map((item) => ({ value: item.id, label: item.name }))} disabled={readOnly} />
               <TextField label="Título (opcional)" value={form.title} onChange={(value) => setForm({ ...form, title: value })} />
-              <Opts label="Tipo *" value={form.quoteType} onChange={(value) => setForm({ ...form, quoteType: value || "Misto" })} items={quoteTypes.map((value) => ({ value, label: value }))} disabled={readOnly} />
               <Opts label="Oportunidade (funil)" value={form.opportunityId} onChange={(value) => setForm({ ...form, opportunityId: value })} items={(options?.opportunities || []).filter((item) => !form.clientId || item.clientId === form.clientId).map((item) => ({ value: item.id, label: `${item.code} · ${item.title}` }))} placeholder="Nenhuma" disabled={readOnly || Boolean(detail)} />
               <TextField label="Emissão" type="date" value={form.issueDate} onChange={() => undefined} />
               <TextField label="Validade *" type="date" value={form.validUntil} onChange={(value) => !readOnly && setForm({ ...form, validUntil: value })} />
@@ -400,8 +400,8 @@ export function QuotesPage() {
             <div className="space-y-2">
               <h3 className="text-sm font-medium">Itens</h3>
               {!readOnly && (
-                <div className="grid items-end gap-2 md:grid-cols-[10rem_1fr_auto]">
-                  <Opts label="Adicionar do catálogo" value={adding.kind} onChange={(value) => setAdding({ kind: (value || "Produto") as "Produto" | "Serviço", id: "" })} items={[{ value: "Produto", label: "Produto" }, { value: "Serviço", label: "Serviço" }]} />
+                <div className="grid items-end gap-2 md:grid-cols-[8rem_1fr_auto]">
+                  <div className="pb-2 text-sm font-medium">Adicionar produto</div>
                   <SearchableSelectField label="Item" value={adding.id || none} onChange={(value) => setAdding({ ...adding, id: value === none ? "" : value })} options={[{ value: none, label: "Pesquisar no catálogo" }, ...catalogItems]} />
                   <Button type="button" variant="outline" onClick={addLine} disabled={!adding.id}><Plus className="h-4 w-4" />Adicionar</Button>
                 </div>
@@ -447,14 +447,12 @@ export function QuotesPage() {
                 <TextField label="Desconto global (R$)" type="number" value={form.discountAmount} onChange={(value) => !readOnly && setForm({ ...form, discountAmount: value })} />
                 <TextField label="Frete (R$)" type="number" value={form.freightAmount} onChange={(value) => !readOnly && setForm({ ...form, freightAmount: value })} />
                 <TextField label="Despesas adicionais (R$)" type="number" value={form.expensesAmount} onChange={(value) => !readOnly && setForm({ ...form, expensesAmount: value })} />
-                <TextField label="Impostos a destacar (%)" type="number" value={form.taxPercent} onChange={(value) => !readOnly && setForm({ ...form, taxPercent: value })} />
               </div>
               <div className="space-y-1 rounded-md border bg-muted/30 p-3 text-sm">
                 <div className="flex justify-between"><span>Subtotal dos itens</span><span>{brl(totals.subtotal)}</span></div>
                 {totals.discount > 0 && <div className="flex justify-between"><span>Desconto global</span><span>- {brl(totals.discount)}</span></div>}
                 {num(form.freightAmount) > 0 && <div className="flex justify-between"><span>Frete</span><span>{brl(num(form.freightAmount))}</span></div>}
                 {num(form.expensesAmount) > 0 && <div className="flex justify-between"><span>Despesas</span><span>{brl(num(form.expensesAmount))}</span></div>}
-                {totals.taxes > 0 && <div className="flex justify-between"><span>Impostos</span><span>{brl(totals.taxes)}</span></div>}
                 <div className="flex justify-between text-base font-semibold"><span>Total</span><span>{brl(totals.total)}</span></div>
                 <div className={`flex justify-between border-t pt-1 ${totals.margin < 0 ? "text-destructive" : "text-muted-foreground"}`}><span>Custo estimado {brl(totals.cost)}</span><span>Margem {brl(totals.margin)}{totals.marginPercent != null ? ` (${totals.marginPercent.toLocaleString("pt-BR")}%)` : ""}</span></div>
                 {totals.margin < 0 && <p className="text-xs text-destructive">Margem negativa: os preços estão abaixo do custo.</p>}
@@ -472,7 +470,7 @@ export function QuotesPage() {
               {detail && status === "Enviado" && <Button variant="outline" onClick={() => void run({ action: "status", to: "Em negociação" }, "Orçamento em negociação")} disabled={saving}>Em negociação</Button>}
               {detail && ["Enviado", "Em negociação"].includes(status) && <Button variant="outline" onClick={() => setAction({ kind: "approve", acceptedBy: "", acceptNotes: "" })}>Registrar aprovação</Button>}
               {detail && ["Enviado", "Em negociação"].includes(status) && <Button variant="outline" onClick={() => setAction({ kind: "refuse", reason: "" })}>Registrar recusa</Button>}
-              {detail && status === "Aprovado" && <Button onClick={() => void convertToOrder()} disabled={saving}>Converter em pedido de venda</Button>}
+              {detail && ["Rascunho", "Enviado", "Em negociação", "Aprovado"].includes(status) && <Button onClick={() => void convertToOrder(status !== "Aprovado")} disabled={saving}>Gerar pedido de venda</Button>}
                                           {detail && status === "Aprovado" && <Button variant="outline" asChild><Link href={`/contratos?quoteId=${detail.quote.id}`}>Gerar contrato</Link></Button>}
               {detail && ["Enviado", "Em negociação", "Aprovado", "Recusado", "Expirado"].includes(status) && <Button variant="outline" onClick={() => void run({ action: "version" }, "Nova versão criada")} disabled={saving}>Nova versão</Button>}
               {detail && <Button variant="outline" onClick={() => void run({ action: "duplicate" }, "Orçamento duplicado")} disabled={saving}>Duplicar</Button>}
