@@ -363,26 +363,16 @@ function PhotoButton({ photos, onChange }: { photos: string[]; onChange: (photos
 }
 
 function FinishPanel({ busy, onCancel, onConfirm }: { busy: boolean; onCancel: () => void; onConfirm: (form: Record<string, unknown>) => void }) {
-  const [quantityDone, setQuantity] = useState("1")
   const [notes, setNotes] = useState("")
-  const [occurrence, setOccurrence] = useState("")
-  const [photos, setPhotos] = useState<string[]>([])
   return (
     <Sheet title="Você concluiu esta tarefa?" onClose={onCancel}>
       <div className="space-y-4">
-        <label className="block text-xl">Quantidade executada
-          <input inputMode="decimal" value={quantityDone} onChange={(event) => setQuantity(event.target.value.replace(",", "."))} className="mt-2 w-full rounded-2xl bg-slate-800 p-4 text-3xl" />
-        </label>
         <label className="block text-xl">Observações (opcional)
           <textarea rows={2} value={notes} onChange={(event) => setNotes(event.target.value)} className="mt-2 w-full rounded-2xl bg-slate-800 p-4 text-xl" />
         </label>
-        <label className="block text-xl">Algum problema? (opcional)
-          <textarea rows={2} value={occurrence} onChange={(event) => setOccurrence(event.target.value)} placeholder="Descreva a ocorrência, se houver" className="mt-2 w-full rounded-2xl bg-slate-800 p-4 text-xl" />
-        </label>
-        <PhotoButton photos={photos} onChange={setPhotos} />
         <div className="grid gap-3 sm:grid-cols-2">
           <Big tone="bg-slate-700" onClick={onCancel}>NÃO, VOLTAR</Big>
-          <Big tone="bg-emerald-600" disabled={busy || !(Number(quantityDone) > 0)} onClick={() => onConfirm({ quantityDone: Number(quantityDone), notes, occurrence, photos })}>{busy ? <Loader2 className="h-6 w-6 animate-spin" /> : <CheckCircle2 className="h-6 w-6" />}SIM, CONCLUÍ</Big>
+          <Big tone="bg-emerald-600" disabled={busy} onClick={() => onConfirm({ quantityDone: 1, notes })}>{busy ? <Loader2 className="h-6 w-6 animate-spin" /> : <CheckCircle2 className="h-6 w-6" />}SIM, CONCLUÍ</Big>
         </div>
       </div>
     </Sheet>
