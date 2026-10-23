@@ -12,6 +12,7 @@ export class DocError extends Error {
 export function docError(error: unknown, fallback = "Erro ao processar a documentação.") {
   if (error instanceof DocError) return error
   const message = error instanceof Error ? error.message : (error as { message?: string })?.message || fallback
+  if (/vehicle_documentation_create_manual/.test(message) && /Could not find|does not exist|schema cache/i.test(message)) return new DocError("A documentação sem pedido ainda não está instalada no banco. Rode o script 228 no SQL Editor do Supabase (depois do 227).", 503)
   if (isDocStructureMissing(message)) return new DocError(DOC_MIGRATION_HINT, 503)
   if (/não encontrad/i.test(message)) return new DocError(message, 404)
   if (/outra empresa/i.test(message)) return new DocError(message, 403)
