@@ -25,25 +25,44 @@ const validDate = (iso: string) => {
 const TOTAL_LABELS = /TOTAL\s*(A\s*PAGAR|GERAL|L[ÍI]QUIDO|DA\s*COMPRA|DO\s*PEDIDO)?|VALOR\s*TOTAL|VALOR\s*PAGO|VALOR\s*A\s*PAGAR/i
 const SUBTOTAL_LABEL = /SUB\s*-?\s*TOTAL/i
 
-/** Palavras-chave por categoria (maiúsculas/minúsculas e acentos variam no cupom; comparação é sem acento). */
+/** Palavras-chave por categoria (comparação sem acento e sem diferença de maiúsculas; palavra inteira ou começo de palavra). */
 const KEYWORDS: Record<Exclude<ReceiptCategory, "Outros">, string[]> = {
-  Combustivel: ["posto", "combustivel", "gasolina", "etanol", "alcool", "diesel", "gnv", "arla", "petrobras", "ipiranga", "shell", "raizen", "ale combustiveis"],
-  Alimentacao: ["restaurante", "lanchonete", "padaria", "churrascaria", "pizzaria", "hamburgueria", "cafe", "bar ", "mercado", "supermercado", "mercearia", "ifood", "rede", "self service", "self-service", "almoco", "jantar", "lanche", "pastelaria", "acai", "sorveteria"],
-  Hospedagem: ["hotel", "pousada", "hostel", "hospedagem", "booking", "airbnb", "motel", "resort", "diaria"],
-  Transporte: ["uber", "99", "taxi", "táxi", "ônibus", "onibus", "rodoviaria", "passagem", "locadora", "localiza", "movida", "unidas", "aeroporto", "latam", "gol linhas", "azul linhas"],
-  Estacionamento: ["estacionamento", "estapar", "zona azul", "parking"],
-  Pedagio: ["pedagio", "pedágio", "sem parar", "conectcar", "veloe", "praca de pedagio"],
+  Combustivel: ["posto", "combustivel", "combustiveis", "gasolina", "etanol", "alcool", "diesel", "gnv", "arla", "petrobras", "ipiranga", "shell", "raizen", "br mania", "auto posto", "autoposto", "abastecimento", "bomba", "litros", "lubrificante"],
+  Alimentacao: ["restaurante", "lanchonete", "padaria", "panificadora", "churrascaria", "pizzaria", "hamburgueria", "hamburguer", "cafe", "cafeteria", "bar", "boteco", "mercado", "supermercado", "mercearia", "acougue", "sorveteria", "confeitaria", "doceria", "lanches", "lanche", "marmita", "marmitaria", "ifood", "self service", "buffet", "refeicao", "almoco", "janta", "jantar", "prato", "bebida", "refrigerante", "suco", "cerveja", "agua mineral", "pao", "salgado", "coca cola", "couvert", "garcom", "taxa de servico", "servico 10", "mesa"],
+  Hospedagem: ["hotel", "pousada", "hostel", "hospedagem", "booking", "airbnb", "motel", "resort", "diaria", "apart hotel", "flat"],
+  Transporte: ["uber", "taxi", "onibus", "rodoviaria", "passagem", "locadora", "localiza", "movida", "unidas", "aeroporto", "latam", "gol linhas", "azul linhas", "cabify", "bilhete", "corrida", "embarque", "frete"],
+  Estacionamento: ["estacionamento", "estapar", "zona azul", "parking", "garagem", "vaga", "manobrista"],
+  Pedagio: ["pedagio", "sem parar", "conectcar", "veloe", "praca de pedagio", "autopista", "ecovias", "arteris", "rodovia", "concessionaria", "tag "],
 }
 
 const stripAccents = (value: string) => value.normalize("NFD").replace(/[̀-ͯ]/g, "")
+const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+const KEYWORD_PATTERNS = (Object.entries(KEYWORDS) as Array<[Exclude<ReceiptCategory, "Outros">, string[]]>).map(([category, words]) => ({
+  category,
+  patterns: words.map((word) => new RegExp(`(?<![a-z0-9])${escapeRegex(stripAccents(word).trim()).replace(/ /g, "\\s+")}`)),
+}))
 
-/** Categoria pelo texto do cupom (nome do estabelecimento + conteúdo); "Outros" quando nada bate. */
-export function categorizeReceipt(text: string): ReceiptCategory {
+/** Quantas palavras-chave de cada categoria aparecem no trecho. */
+function scoreText(text: string, weight: number, scores: Map<ReceiptCategory, number>) {
   const flat = stripAccents(text.toLowerCase())
-  for (const [category, words] of Object.entries(KEYWORDS) as Array<[Exclude<ReceiptCategory, "Outros">, string[]]>) {
-    if (words.some((word) => flat.includes(stripAccents(word)))) return category
+  for (const { category, patterns } of KEYWORD_PATTERNS) {
+    const hits = patterns.filter((pattern) => pattern.test(flat)).length
+    if (hits) scores.set(category, (scores.get(category) || 0) + hits * weight)
   }
-  return "Outros"
+}
+
+/**
+ * Categoria pelo texto do cupom: pontua cada categoria pelas palavras-chave achadas (o nome do estabelecimento, nas primeiras
+ * linhas, pesa mais que o resto) e fica com a de maior pontuação; "Outros" só quando nada bate.
+ */
+export function categorizeReceipt(text: string): ReceiptCategory {
+  const scores = new Map<ReceiptCategory, number>()
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+  scoreText(lines.slice(0, 4).join("\n"), 3, scores)
+  scoreText(text, 1, scores)
+  let best: ReceiptCategory = "Outros", bestScore = 0
+  for (const [category, score] of scores) if (score > bestScore) { best = category; bestScore = score }
+  return best
 }
 
 /** Linha mais provável de ser o nome do estabelecimento: perto do topo, com letras, sem ser cabeçalho fiscal comum. */

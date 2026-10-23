@@ -31,3 +31,12 @@ test("sem data legível: usa hoje e avisa", () => {
   assert.ok(result.warnings.some((warning) => /data/i.test(warning)))
   assert.equal(result.category, "Alimentacao")
 })
+
+test("categoria: nome do estabelecimento pesa e números soltos não enganam", () => {
+  assert.equal(categorizeReceipt("RESTAURANTE SABOR CASEIRO\nCNPJ 12.345.678/0001-95\nPRATO FEITO 29,99\nTOTAL 29,99"), "Alimentacao")
+  assert.equal(categorizeReceipt("AUTO POSTO BR 101\nDIESEL S10 45,3 LITROS\nTOTAL 299,99"), "Combustivel")
+  assert.equal(categorizeReceipt("SUPERMERCADO BOM PRECO\nARROZ 28,90\nCAFE 22,30\nTOTAL 68,45"), "Alimentacao")
+  assert.equal(categorizeReceipt("HOTEL PALACE\nDIARIA 1 NOITE 99,00\nTOTAL 99,00"), "Hospedagem")
+  assert.equal(categorizeReceipt("CCR AUTOPISTA LITORAL SUL\nPRACA DE PEDAGIO P3\nTOTAL 12,90"), "Pedagio")
+  assert.equal(categorizeReceipt("PREDIAL SERVICOS\nTOTAL 99,90"), "Outros")
+})
