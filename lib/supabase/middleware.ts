@@ -22,6 +22,8 @@ const publicPaths = [
   // Portal de orçamento de viagem (link enviado ao funcionário): sem login; o token da URL é a autorização, validado dentro da rota.
   "/portal-viagem",
   "/api/viagem/portal",
+  // Idioma do leitor de texto (OCR) das notinhas: o funcionário do portal não está logado e o navegador precisa baixar o arquivo.
+  "/tessdata",
 ]
 
 const pagePermissions = [

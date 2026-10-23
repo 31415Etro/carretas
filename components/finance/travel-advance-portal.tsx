@@ -63,6 +63,7 @@ export function TravelAdvancePortal({ token }: { token: string }) {
   const [stage, setStage] = useState("")
   const [uploading, setUploading] = useState(false)
   const [reading, setReading] = useState(false)
+  const [readNote, setReadNote] = useState("")
   const [justification, setJustification] = useState("")
   const [settlement, setSettlement] = useState<"devolver" | "desconto_folha" | "">("")
   const [editingId, setEditingId] = useState("")
@@ -116,21 +117,26 @@ export function TravelAdvancePortal({ token }: { token: string }) {
     if (problems.length) alert(`${sent.length ? `${sent.length} nota(s) enviada(s). ` : ""}Não foi possível enviar:\n${problems.join("\n")}`)
     if (!sent.length) return
     // leitura automática do valor e do estabelecimento em segundo plano, com prazo por nota; se não der, a pessoa corrige na lista
-    setReading(true)
+    setReading(true); setReadNote("")
+    let failed = 0
     try {
       for (const item of sent) {
+        let applied = false
         try {
           const text = await withTimeout(ocrReceiptImage(item.photo, () => undefined), 45000)
           if (text && text.trim()) {
-            await send(`/api/viagem/portal/${token}/recibos/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ocrText: text }) }, 30000)
+            const result = await send<{ applied?: boolean }>(`/api/viagem/portal/${token}/recibos/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ocrText: text }) }, 30000)
+            applied = Boolean(result.applied)
             await load()
           }
         } catch {
-          /* a foto já foi enviada: valor e estabelecimento ficam para preencher à mão */
+          applied = false
         }
+        if (!applied) failed += 1
       }
     } finally {
       setReading(false)
+      if (failed) setReadNote(`Não consegui ler o valor de ${failed === 1 ? "1 nota" : `${failed} notas`}. A foto foi enviada: toque no lápis da nota e digite o valor e o estabelecimento.`)
     }
   }
 
@@ -236,6 +242,7 @@ export function TravelAdvancePortal({ token }: { token: string }) {
               <ImagePlus className="h-4 w-4" />Escolher da galeria
             </Button>
           </div>
+          {readNote ? <p className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900" role="status">{readNote}</p> : null}
           {reading ? <p className="mt-2 flex items-center gap-2 text-xs text-slate-500"><Loader2 className="h-3 w-3 animate-spin" />Foto enviada. Lendo o valor e o estabelecimento em segundo plano; se não aparecerem, corrija na lista.</p> : null}
         </Card>
       ) : null}
