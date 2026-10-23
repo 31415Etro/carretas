@@ -740,6 +740,24 @@ function accountForm(item: AccountsPayable | AccountsReceivable, kind: "pagar" |
   }
 }
 
+/** Origem para o filtro: agrupa (ex.: todas as OS juntas) em vez de uma opção por número. */
+function accountOriginGroup(item: AccountsPayable | AccountsReceivable) {
+  if (item.sourceType && item.sourceType !== "Manual") return item.sourceType
+  return item.origin || "Manual"
+}
+
+function OriginFilter({ value, onChange, options }: { value: string; onChange: (value: string) => void; options: string[] }) {
+  return (
+    <div className="space-y-1.5">
+      <Label>Origem</Label>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger className="min-w-[180px]"><SelectValue placeholder="Todas as origens" /></SelectTrigger>
+        <SelectContent><SelectItem value="todas">Todas as origens</SelectItem>{options.map((option) => <SelectItem key={option} value={option}>{option}</SelectItem>)}</SelectContent>
+      </Select>
+    </div>
+  )
+}
+
 function accountOriginLabel(item: AccountsPayable | AccountsReceivable, orderNumber?: string) {
   if (item.sourceType === "OS") return `OS ${orderNumber || ""}`.trim()
   if (item.sourceType && item.sourceType !== "Manual") return `${item.sourceType} ${item.sourceReference || ""}`.trim()
@@ -1447,6 +1465,9 @@ export default function FinanceiroPage() {
   const [editingAccount, setEditingAccount] = useState<AccountEditTarget>(null)
   const [activeTab, setActiveTab] = useState("visao")
   const [query, setQuery] = useState("")
+  const [transactionOrigin, setTransactionOrigin] = useState("todas")
+  const [payableOrigin, setPayableOrigin] = useState("todas")
+  const [receivableOrigin, setReceivableOrigin] = useState("todas")
   const [monthFilter, setMonthFilter] = useState("todos")
   const [yearFilter, setYearFilter] = useState("todos")
   const currentYear = String(new Date().getFullYear())
@@ -1467,8 +1488,10 @@ export default function FinanceiroPage() {
     const textMatch = [item.description, item.type, item.status, categoryName(state, item.categoryId), item.origin].join(" ").toLowerCase().includes(query.toLowerCase())
     const monthMatch = monthFilter === "todos" || date.slice(5, 7) === monthFilter
     const yearMatch = yearFilter === "todos" || date.slice(0, 4) === yearFilter
-    return textMatch && monthMatch && yearMatch
+    const originMatch = transactionOrigin === "todas" || (item.origin || "Manual") === transactionOrigin
+    return textMatch && monthMatch && yearMatch && originMatch
   })
+  const transactionOriginOptions = useMemo(() => Array.from(new Set(visibleTransactions.map((item) => item.origin || "Manual"))).sort((a, b) => a.localeCompare(b, "pt-BR")), [visibleTransactions])
   const overviewTransactions = useMemo(() => visibleTransactions.filter((item) => {
     const date = financialOverviewDate(item)
     return isInAccountPeriod(date, overviewPeriod)
@@ -1488,6 +1511,7 @@ export default function FinanceiroPage() {
   const filteredPayables = useMemo(() => {
     const search = normalizeDescription(payableQuery)
     return state.accountsPayable.filter((item) => {
+      if (payableOrigin !== "todas" && accountOriginGroup(item) !== payableOrigin) return false
       if (item.status === "Paga") return false // paga sai daqui e fica em Entradas e Saidas como lancamento realizado
       if (!isInAccountPeriod(item.dueDate, payablePeriod)) return false
       if (!search) return true
@@ -1501,7 +1525,8 @@ export default function FinanceiroPage() {
       ].join(" "))
       return searchableText.includes(search)
     })
-  }, [state.accountsPayable, payablePeriod, payableQuery])
+  }, [state.accountsPayable, payablePeriod, payableQuery, payableOrigin])
+  const payableOriginOptions = useMemo(() => Array.from(new Set(state.accountsPayable.filter((item) => item.status !== "Paga").map(accountOriginGroup))).sort((a, b) => a.localeCompare(b, "pt-BR")), [state.accountsPayable])
   const sortedPayables = useMemo(() => [...filteredPayables].sort((left, right) => {
     const [field, direction] = payableSort.split("-") as ["supplier" | "due" | "amount", "asc" | "desc"]
     const multiplier = direction === "asc" ? 1 : -1
@@ -1525,9 +1550,10 @@ export default function FinanceiroPage() {
     return String(left.supplierName || "").trim().localeCompare(String(right.supplierName || "").trim(), "pt-BR", { sensitivity: "base", numeric: true })
   }), [filteredPayables, payableSort])
   const filteredReceivables = useMemo(
-    () => state.accountsReceivable.filter((item) => isInAccountPeriod(item.dueDate, receivablePeriod)),
-    [state.accountsReceivable, receivablePeriod],
+    () => state.accountsReceivable.filter((item) => isInAccountPeriod(item.dueDate, receivablePeriod) && (receivableOrigin === "todas" || accountOriginGroup(item) === receivableOrigin)),
+    [state.accountsReceivable, receivablePeriod, receivableOrigin],
   )
+  const receivableOriginOptions = useMemo(() => Array.from(new Set(state.accountsReceivable.map(accountOriginGroup))).sort((a, b) => a.localeCompare(b, "pt-BR")), [state.accountsReceivable])
   const { sorted: orderedPayables, sortState: payableSortState } = useColumnSort(sortedPayables, {
     due: (item) => item.dueDate, supplier: (item) => item.supplierName, description: (item) => item.description, document: (item) => item.documentNumber, installment: (item) => item.installmentNumber ?? 0,
     category: (item) => categoryName(state, item.categoryId), amount: (item) => accountSettlementAmount(item), paid: (item) => Number(item.paidAmount || 0), status: (item) => payableAutoStatus(item), origin: (item) => accountOriginLabel(item),
@@ -1810,7 +1836,7 @@ export default function FinanceiroPage() {
           </div>
           <SectionCard title="Fluxo do periodo"><TransactionsTable state={state} transactions={overviewTransactions} opNames={opNames} compact /></SectionCard>
         </TabsContent>
-        <TabsContent value="lancamentos" className="space-y-4"><div className="grid gap-2 md:grid-cols-[minmax(260px,1fr)_160px_160px] lg:max-w-4xl"><Input placeholder="Filtrar lancamentos" value={query} onChange={(event) => setQuery(event.target.value)} /><Select value={monthFilter} onValueChange={setMonthFilter}><SelectTrigger><SelectValue placeholder="Mes" /></SelectTrigger><SelectContent><SelectItem value="todos">Todos os meses</SelectItem><SelectItem value="01">Janeiro</SelectItem><SelectItem value="02">Fevereiro</SelectItem><SelectItem value="03">Marco</SelectItem><SelectItem value="04">Abril</SelectItem><SelectItem value="05">Maio</SelectItem><SelectItem value="06">Junho</SelectItem><SelectItem value="07">Julho</SelectItem><SelectItem value="08">Agosto</SelectItem><SelectItem value="09">Setembro</SelectItem><SelectItem value="10">Outubro</SelectItem><SelectItem value="11">Novembro</SelectItem><SelectItem value="12">Dezembro</SelectItem></SelectContent></Select><Select value={yearFilter} onValueChange={setYearFilter}><SelectTrigger><SelectValue placeholder="Ano" /></SelectTrigger><SelectContent><SelectItem value="todos">Todos os anos</SelectItem>{yearOptions.map((year) => <SelectItem key={year} value={year}>{year}</SelectItem>)}</SelectContent></Select></div><TransactionsTable state={state} transactions={filteredTransactions} opNames={opNames} /></TabsContent>
+        <TabsContent value="lancamentos" className="space-y-4"><div className="grid items-end gap-2 md:grid-cols-[minmax(260px,1fr)_160px_160px_200px] lg:max-w-5xl"><Input placeholder="Filtrar lancamentos" value={query} onChange={(event) => setQuery(event.target.value)} /><Select value={monthFilter} onValueChange={setMonthFilter}><SelectTrigger><SelectValue placeholder="Mes" /></SelectTrigger><SelectContent><SelectItem value="todos">Todos os meses</SelectItem><SelectItem value="01">Janeiro</SelectItem><SelectItem value="02">Fevereiro</SelectItem><SelectItem value="03">Marco</SelectItem><SelectItem value="04">Abril</SelectItem><SelectItem value="05">Maio</SelectItem><SelectItem value="06">Junho</SelectItem><SelectItem value="07">Julho</SelectItem><SelectItem value="08">Agosto</SelectItem><SelectItem value="09">Setembro</SelectItem><SelectItem value="10">Outubro</SelectItem><SelectItem value="11">Novembro</SelectItem><SelectItem value="12">Dezembro</SelectItem></SelectContent></Select><Select value={yearFilter} onValueChange={setYearFilter}><SelectTrigger><SelectValue placeholder="Ano" /></SelectTrigger><SelectContent><SelectItem value="todos">Todos os anos</SelectItem>{yearOptions.map((year) => <SelectItem key={year} value={year}>{year}</SelectItem>)}</SelectContent></Select><OriginFilter value={transactionOrigin} onChange={setTransactionOrigin} options={transactionOriginOptions} /></div><TransactionsTable state={state} transactions={filteredTransactions} opNames={opNames} /></TabsContent>
         <TabsContent value="pagar">
           <SectionCard title="Contas a Pagar">
             <DueAlertsPanel state={state} clientName={opNames.client} kind="pagar" />
@@ -1827,6 +1853,7 @@ export default function FinanceiroPage() {
                     <Input id="payable-search" className="pl-9" value={payableQuery} onChange={(event) => setPayableQuery(event.target.value)} placeholder="Fornecedor, descricao ou valor" />
                   </div>
                 </div>
+                <OriginFilter value={payableOrigin} onChange={setPayableOrigin} options={payableOriginOptions} />
                 <div className="space-y-1.5">
                   <Label htmlFor="payable-period-start">Data inicial</Label>
                   <Input id="payable-period-start" type="date" value={payablePeriod.start} onChange={(event) => setPayablePeriod((current) => ({ ...current, start: event.target.value }))} />
@@ -1864,7 +1891,7 @@ export default function FinanceiroPage() {
             </DataTable>
           </SectionCard>
         </TabsContent>
-        <TabsContent value="receber"><SectionCard title="Contas a Receber"><DueAlertsPanel state={state} clientName={opNames.client} kind="receber" /><div className="mb-4 space-y-4"><div className="flex flex-wrap gap-2"><Button onClick={() => openNewAccount("receber")}><Plus className="h-4 w-4" />Nova Conta a Receber</Button><Button variant="outline" onClick={() => generateAccountsReport("receber")}><FileText className="h-4 w-4" />Gerar relatorio do periodo</Button></div><div className="grid gap-3 rounded-md border bg-muted/20 p-4 md:grid-cols-[minmax(180px,240px)_minmax(180px,240px)_auto]"><div className="space-y-1.5"><Label htmlFor="receivable-period-start">Data inicial</Label><Input id="receivable-period-start" type="date" value={receivablePeriod.start} onChange={(event) => setReceivablePeriod((current) => ({ ...current, start: event.target.value }))} /></div><div className="space-y-1.5"><Label htmlFor="receivable-period-end">Data final</Label><Input id="receivable-period-end" type="date" value={receivablePeriod.end} min={receivablePeriod.start || undefined} onChange={(event) => setReceivablePeriod((current) => ({ ...current, end: event.target.value }))} /></div><div className="flex items-end"><Button variant="ghost" onClick={() => setReceivablePeriod({ start: "", end: "" })}><CalendarRange className="h-4 w-4" />Limpar periodo</Button></div></div><div className="grid gap-3 md:grid-cols-3"><div className="rounded-md border p-3"><p className="text-xs text-muted-foreground">Previsto no periodo</p><strong>{money(receivableTotals.expected)}</strong></div><div className="rounded-md border p-3"><p className="text-xs text-muted-foreground">Recebido no periodo</p><strong>{money(receivableTotals.done)}</strong></div><div className="rounded-md border p-3"><p className="text-xs text-muted-foreground">Saldo a receber</p><strong>{money(Math.max(receivableTotals.expected - receivableTotals.done, 0))}</strong></div></div></div><DataTable headers={["Vencimento", "Cliente", "Descricao", "Documento", "Parcela", "Valor", "Recebido", "Status", "Origem", "Acoes"]} empty={!filteredReceivables.length} sort={receivableSortState(["due", "client", "description", "document", "installment", "amount", "received", "status", "origin", null])} stickyHeader viewportClassName={financeTableViewport} tableClassName={`min-w-[1500px] ${financeTableRows}`}>{orderedReceivables.map((item) => <TableRow key={item.id}><TableCell>{formatDate(item.dueDate)}</TableCell><TableCell>{opNames.client(item.clientId)}</TableCell><TableCell>{item.description}</TableCell><TableCell>{item.documentNumber || "-"}</TableCell><TableCell>{installmentLabel(item)}</TableCell><TableCell>{money(accountSettlementAmount(item))}</TableCell><TableCell>{money(item.receivedAmount)}</TableCell><TableCell><StatusBadge status={receivableAutoStatus(item)} /></TableCell><TableCell>{accountOriginLabel(item, operational.state.serviceOrders.find((order) => order.id === item.serviceOrderId)?.orderNumber)}</TableCell><TableCell className="space-x-1">{item.origin.toLowerCase().includes("asaas") ? <AsaasSavedChargeButton accountsReceivableId={item.id} /> : null}<Button size="sm" variant="outline" onClick={() => markReceivableReceived(item)}>Receber</Button><Button size="sm" variant="outline" onClick={() => markReceivableReceived(item, true)}>Parcial</Button><Button size="sm" variant="outline" title="Editar conta" onClick={() => openAccountEdit({ kind: "receber", item })}><Pencil className="h-4 w-4" />Editar</Button><Button size="sm" variant="destructive" title="Excluir conta" onClick={() => deleteAccount({ kind: "receber", item })}><Trash2 className="h-4 w-4" />Excluir</Button></TableCell></TableRow>)}</DataTable></SectionCard></TabsContent>
+        <TabsContent value="receber"><SectionCard title="Contas a Receber"><DueAlertsPanel state={state} clientName={opNames.client} kind="receber" /><div className="mb-4 space-y-4"><div className="flex flex-wrap gap-2"><Button onClick={() => openNewAccount("receber")}><Plus className="h-4 w-4" />Nova Conta a Receber</Button><Button variant="outline" onClick={() => generateAccountsReport("receber")}><FileText className="h-4 w-4" />Gerar relatorio do periodo</Button></div><div className="grid gap-3 rounded-md border bg-muted/20 p-4 md:grid-cols-[minmax(180px,240px)_minmax(180px,240px)_auto]"><div className="space-y-1.5"><Label htmlFor="receivable-period-start">Data inicial</Label><Input id="receivable-period-start" type="date" value={receivablePeriod.start} onChange={(event) => setReceivablePeriod((current) => ({ ...current, start: event.target.value }))} /></div><div className="space-y-1.5"><Label htmlFor="receivable-period-end">Data final</Label><Input id="receivable-period-end" type="date" value={receivablePeriod.end} min={receivablePeriod.start || undefined} onChange={(event) => setReceivablePeriod((current) => ({ ...current, end: event.target.value }))} /></div><div className="flex items-end gap-2"><OriginFilter value={receivableOrigin} onChange={setReceivableOrigin} options={receivableOriginOptions} /><Button variant="ghost" onClick={() => setReceivablePeriod({ start: "", end: "" })}><CalendarRange className="h-4 w-4" />Limpar periodo</Button></div></div><div className="grid gap-3 md:grid-cols-3"><div className="rounded-md border p-3"><p className="text-xs text-muted-foreground">Previsto no periodo</p><strong>{money(receivableTotals.expected)}</strong></div><div className="rounded-md border p-3"><p className="text-xs text-muted-foreground">Recebido no periodo</p><strong>{money(receivableTotals.done)}</strong></div><div className="rounded-md border p-3"><p className="text-xs text-muted-foreground">Saldo a receber</p><strong>{money(Math.max(receivableTotals.expected - receivableTotals.done, 0))}</strong></div></div></div><DataTable headers={["Vencimento", "Cliente", "Descricao", "Documento", "Parcela", "Valor", "Recebido", "Status", "Origem", "Acoes"]} empty={!filteredReceivables.length} sort={receivableSortState(["due", "client", "description", "document", "installment", "amount", "received", "status", "origin", null])} stickyHeader viewportClassName={financeTableViewport} tableClassName={`min-w-[1500px] ${financeTableRows}`}>{orderedReceivables.map((item) => <TableRow key={item.id}><TableCell>{formatDate(item.dueDate)}</TableCell><TableCell>{opNames.client(item.clientId)}</TableCell><TableCell>{item.description}</TableCell><TableCell>{item.documentNumber || "-"}</TableCell><TableCell>{installmentLabel(item)}</TableCell><TableCell>{money(accountSettlementAmount(item))}</TableCell><TableCell>{money(item.receivedAmount)}</TableCell><TableCell><StatusBadge status={receivableAutoStatus(item)} /></TableCell><TableCell>{accountOriginLabel(item, operational.state.serviceOrders.find((order) => order.id === item.serviceOrderId)?.orderNumber)}</TableCell><TableCell className="space-x-1">{item.origin.toLowerCase().includes("asaas") ? <AsaasSavedChargeButton accountsReceivableId={item.id} /> : null}<Button size="sm" variant="outline" onClick={() => markReceivableReceived(item)}>Receber</Button><Button size="sm" variant="outline" onClick={() => markReceivableReceived(item, true)}>Parcial</Button><Button size="sm" variant="outline" title="Editar conta" onClick={() => openAccountEdit({ kind: "receber", item })}><Pencil className="h-4 w-4" />Editar</Button><Button size="sm" variant="destructive" title="Excluir conta" onClick={() => deleteAccount({ kind: "receber", item })}><Trash2 className="h-4 w-4" />Excluir</Button></TableCell></TableRow>)}</DataTable></SectionCard></TabsContent>
         <TabsContent value="dre"><DreTab state={state} transactions={state.transactions} commit={commit} operationalState={operational.state} opNames={opNames} openDreSheet={setSheet} loading={loading} loadError={loadError} /></TabsContent>
         <TabsContent value="contabilidade"><AccountingTab emitir={<NotaAsInvoicePanel state={operational.state} />} /></TabsContent>
         <TabsContent value="cartao"><CreditCardTab state={state} commit={commit} openCard={() => setSheet("cartao")} /></TabsContent>
