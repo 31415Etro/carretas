@@ -1487,6 +1487,7 @@ export default function FinanceiroPage() {
   const filteredPayables = useMemo(() => {
     const search = normalizeDescription(payableQuery)
     return state.accountsPayable.filter((item) => {
+      if (item.status === "Paga") return false // paga sai daqui e fica em Entradas e Saidas como lancamento realizado
       if (!isInAccountPeriod(item.dueDate, payablePeriod)) return false
       if (!search) return true
       const searchableText = normalizeDescription([
