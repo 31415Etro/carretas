@@ -33,11 +33,14 @@ export async function GET() {
       if (error) break // script 222 ainda não instalado: segue com os dados do cadastro
       for (const row of (data || []) as any[]) snapshots.set(row.id as string, row)
     }
+    const withEngineering = new Set<string>()
+    const engineering = await context.admin.from("product_engineering_revisions").select("product_id").neq("status", "Obsoleta")
+    if (!engineering.error) for (const row of engineering.data || []) withEngineering.add(row.product_id as string)
     return NextResponse.json({
       clients: clients.map((row) => ({ id: row.id, name: row.name, document: row.document || "", status: row.status, phone: row.phone || "", email: row.email || "" })),
       salespeople: (people.data || []).map((row) => ({ id: row.id, name: row.name })),
       paymentConditions: (conditions.data || []).map((row) => ({ id: row.id, name: row.name, installments: Number(row.installments || 1), firstDueDays: Number(row.first_due_days || 0), intervalDays: Number(row.interval_days ?? 30) })),
-      products: sellable.map((row) => { const snap = snapshots.get(row.id); return ({ id: row.id, name: row.name, code: row.internal_code || "", unit: row.unit || "UN", price: Number(row.sale_price || 0), cost: snap?.bom_version_id ? Number(snap.est_cost || 0) : Number(row.average_cost || row.cost_price || 0), bomVersion: snap?.bom_version ?? null, leadTimeDays: snap?.lead_time_days ?? (row.lead_time_days ? Number(row.lead_time_days) : null), marginPercent: snap?.bom_version_id ? snap.margin_percent : null, stock: Number(row.current_stock || 0), reserved: Number(row.reserved_stock || 0), controlsStock: row.controls_stock !== false }) }),
+      products: sellable.map((row) => { const snap = snapshots.get(row.id); return ({ id: row.id, name: row.name, code: row.internal_code || "", unit: row.unit || "UN", price: Number(row.sale_price || 0), cost: snap?.bom_version_id ? Number(snap.est_cost || 0) : Number(row.average_cost || row.cost_price || 0), bomVersion: snap?.bom_version ?? null, hasEngineering: withEngineering.has(row.id), leadTimeDays: snap?.lead_time_days ?? (row.lead_time_days ? Number(row.lead_time_days) : null), marginPercent: snap?.bom_version_id ? snap.margin_percent : null, stock: Number(row.current_stock || 0), reserved: Number(row.reserved_stock || 0), controlsStock: row.controls_stock !== false }) }),
       services: (services.data || []).map((row) => ({ id: row.id, name: row.name, code: row.code || "", unit: row.billing_unit || "Servico", price: Number(row.default_price || 0), cost: Number(row.estimated_cost || 0), warrantyDays: Number(row.warranty_days || 0) })),
       warehouses: (warehouses.data || []).map((row) => ({ id: row.id, name: row.name, isDefault: Boolean(row.is_default) })),
       opportunities: (opportunities.data || []).map((row) => ({ id: row.id, code: row.code, title: row.title, clientId: row.client_id, salespersonId: row.salesperson_id, interest: row.interest, estimatedValue: Number(row.estimated_value || 0), stage: row.stage })),

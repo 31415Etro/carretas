@@ -69,6 +69,7 @@ export function ProductionDetailPage({ id }: { id: string }) {
     <PageShell title={`Ordem ${order.code}`} description={`${order.product_name} (${order.sku}) · estrutura v${order.bom_version}${order.order_number ? ` · pedido ${order.order_number}` : ""}${order.client_name ? ` · ${order.client_name}` : ""}`}
       actions={<>
         <Button variant="outline" asChild><Link href="/producao"><ArrowLeft className="h-4 w-4" />Voltar</Link></Button>
+        <Button variant="outline" asChild><Link href={`/producao/${id}/ficha`}>Ficha de fabricação</Link></Button>
         {order.sales_order_id ? <Button variant="outline" asChild><Link href={entityHref("salesOrder", order.sales_order_id) || "#"}>Ver pedido</Link></Button> : null}
         <Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />Atualizar</Button>
       </>}>

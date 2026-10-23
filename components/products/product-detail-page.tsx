@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { DataTable, MetricCard, PageShell, SectionCard, StatusBadge } from "@/components/operations/shared"
 import { api, brl, dateBr, qty } from "@/components/catalog/catalog-fields"
+import { EngineeringTab } from "@/components/products/engineering-tab"
 import { ProductSheet, type ProductSheetTarget } from "@/components/products/product-sheet"
 import { entityHref } from "@/lib/entity-links"
 import { formFromProductDetail, margin } from "@/lib/products"
@@ -125,6 +126,7 @@ export function ProductDetailPage({ id }: { id: string }) {
           <TabsTrigger value="estoque">Estoque</TabsTrigger>
           <TabsTrigger value="producao">Produção ({detail.orders.length})</TabsTrigger>
           <TabsTrigger value="engenharia">Engenharia</TabsTrigger>
+          <TabsTrigger value="homologacao">Engenharia e Homologação</TabsTrigger>
           <TabsTrigger value="historico">Histórico ({detail.change_log.length})</TabsTrigger>
         </TabsList>
 
@@ -339,6 +341,8 @@ export function ProductDetailPage({ id }: { id: string }) {
             ) : <p className="text-sm text-muted-foreground">Escolha duas versões diferentes para ver as diferenças.</p>}
           </SectionCard>
         </TabsContent>
+
+        <TabsContent value="homologacao" className="mt-4"><EngineeringTab productId={id} productName={product.name} /></TabsContent>
 
         <TabsContent value="historico" className="mt-4">
           <SectionCard title="Histórico de alterações" description="Quem alterou o quê e quando (cadastro, preço, versões e kits).">

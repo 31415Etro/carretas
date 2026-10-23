@@ -925,13 +925,13 @@ begin
   v_n := greatest(coalesce(nullif(v_rule->>'installments', '')::integer, 1), 1);
   v_first := coalesce(nullif(v_rule->>'firstDueDays', '')::integer, 0);
   v_interval := coalesce(nullif(v_rule->>'intervalDays', '')::integer, 30);
-  v_each := round(v_order.total_amount / v_n, 2);
+  v_each := floor(v_order.total_amount * 100 / v_n) / 100;   -- mesma regra do orçamento: parcelas em centavos inteiros, o resto na última
   for v_i in 1..v_n loop
     v_amount := case when v_i = v_n then v_order.total_amount - v_each * (v_n - 1) else v_each end;
     insert into public.accounts_receivable (client_id, description, competence_date, due_date, expected_amount, received_amount, receipt_method, status, origin,
                                             installment_number, installment_count, installment_group_id, payment_condition_id, source_type, source_reference, notes)
     values (v_order.client_id, 'Pedido ' || v_order.order_number || case when v_n > 1 then ' - parcela ' || v_i || '/' || v_n else '' end || case when v_i = 1 and v_first = 0 then ' (entrada)' else '' end,
-            current_date, current_date + v_first + (v_i - 1) * v_interval, v_amount, 0, coalesce(v_rule->>'paymentMethod', ''), 'Aberta', 'Pedido de venda',
+            current_date, case when v_interval = 30 then (current_date + v_first + make_interval(months => v_i - 1))::date else current_date + v_first + (v_i - 1) * v_interval end, v_amount, 0, coalesce(v_rule->>'paymentMethod', ''), 'Aberta', 'Pedido de venda',
             case when v_n > 1 then v_i end, case when v_n > 1 then v_n end, case when v_n > 1 then v_group end, v_order.payment_condition_id, 'Pedido de venda', v_order.order_number,
             'Gerado na confirmação do pedido ' || v_order.order_number || '.');
   end loop;

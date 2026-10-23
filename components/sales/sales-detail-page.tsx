@@ -9,6 +9,10 @@ import { TableCell, TableRow } from "@/components/ui/table"
 import { DataTable, MetricCard, PageShell, SectionCard } from "@/components/operations/shared"
 import { api, brl, dateBr, qty } from "@/components/catalog/catalog-fields"
 import { DocumentationSheet } from "@/components/documentation/documentation-sheet"
+import { ConfiguratorDialog } from "@/components/configurator/configurator-dialog"
+import { TrailerDrawingView } from "@/components/configurator/trailer-drawing-view"
+import { buildSalesOrderPdf, configurationFacts, type SalesPdfData } from "@/lib/sales-order-pdf"
+import { configStatusLabel, configStatusTone } from "@/lib/configurator"
 import { useAuth } from "@/lib/auth-context"
 import { docStatusLabel, docStatusTone, releaseLabel } from "@/lib/vehicle-documentation"
 import { entityHref } from "@/lib/entity-links"
@@ -16,6 +20,7 @@ import { fulfilment, productionStatusLabel, productionTone, salesActions, salesS
 
 type Item = SalesItemView & Record<string, any>
 type Detail = {
+  configurations?: Record<string, any>; productIds?: Record<string, string>
   release?: { eligible: boolean; blockers: Array<{ code: string; message: string; waivable: boolean }> }; documentation?: { summary: Record<string, any>; items: Array<Record<string, any>> }; settings?: Record<string, any>
   order: Record<string, any>; require_payment: boolean; items: Item[]; production_orders: Array<Record<string, any>>; deliveries: Array<Record<string, any>>; events: Array<Record<string, any>>; availability: Array<Record<string, any>>
 }
@@ -36,6 +41,9 @@ export function SalesDetailPage({ id }: { id: string }) {
   const [docId, setDocId] = useState<string | null>(null)
   const [exceptionReason, setExceptionReason] = useState("")
   const [revokeReason, setRevokeReason] = useState("")
+  const [reconfiguring, setReconfiguring] = useState<string | null>(null)
+  const [reconfigReason, setReconfigReason] = useState("")
+  const [pdfBusy, setPdfBusy] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true); setError("")
@@ -55,6 +63,17 @@ export function SalesDetailPage({ id }: { id: string }) {
     } catch (failure) { setNotice(failure instanceof Error ? failure.message : "Ação não concluída.") } finally { setBusy("") }
   }
 
+  async function downloadPdf() {
+    setPdfBusy(true); setNotice("")
+    try {
+      const response = await api<{ data: SalesPdfData & { items: Array<{ photo: { problem: string } }> } }>(`/api/vendas/${id}/pdf`)
+      const { doc, fileName } = await buildSalesOrderPdf(response.data)
+      doc.save(fileName)
+      const problems = response.data.items.map((item) => item.photo.problem).filter(Boolean)
+      if (problems.length) setNotice(`PDF gerado, mas: ${problems.join(" ")}`)
+    } catch (failure) { setNotice(failure instanceof Error ? failure.message : "PDF não gerado.") } finally { setPdfBusy(false) }
+  }
+
   if (!detail) {
     return (
       <PageShell title="Pedido de venda" description="Carregando..." actions={<Button variant="outline" asChild><Link href="/vendas"><ArrowLeft className="h-4 w-4" />Voltar</Link></Button>}>
@@ -72,6 +91,7 @@ export function SalesDetailPage({ id }: { id: string }) {
     <PageShell title={`Pedido ${order.order_number}`} description={`${order.client_name}${order.quote_number ? ` · orçamento ${order.quote_number} v${order.quote_version}` : ""} · ${order.payment_condition_name || "sem condição de pagamento"}`}
       actions={<>
         <Button variant="outline" asChild><Link href="/vendas"><ArrowLeft className="h-4 w-4" />Voltar</Link></Button>
+        <Button variant="outline" onClick={() => void downloadPdf()} disabled={pdfBusy}>{pdfBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Pedido em PDF</Button>
         <Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />Atualizar</Button>
         {actions.confirm ? <Button onClick={() => void act("confirm")} disabled={Boolean(busy)}>{busy === "confirm" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Confirmar pedido</Button> : null}
         {actions.deliver ? <Button onClick={() => void act("deliver", { requestKey: deliveryKey.current }, "Entrega registrada: baixa dos acabados feita.")} disabled={Boolean(busy)}>{busy === "deliver" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Truck className="h-4 w-4" />}Entregar {qty(actions.readyUnits)} pronta(s)</Button> : null}
@@ -135,6 +155,34 @@ export function SalesDetailPage({ id }: { id: string }) {
           </div>
           <p className="mt-2 text-xs text-muted-foreground">Documentação veicular é requisito legal e não pode ser dispensada. Só a exigência comercial (sinal) admite exceção, e apenas se a empresa tiver a regra formal ligada, com justificativa e auditoria.</p>
           <DocumentationSheet id={docId} onClose={() => setDocId(null)} onChanged={() => void load()} />
+        </SectionCard>
+      ) : null}
+
+      {Object.keys(detail.configurations || {}).length ? (
+        <SectionCard title="Configuração vendida (congelada)" description="Medidas, opções, versões e quantidades como foram confirmadas na venda. Mudanças no cadastro do produto não alteram o que foi vendido.">
+          <div className="space-y-4">
+            {detail.items.filter((item) => detail.configurations?.[item.id]).map((item) => {
+              const cfg = detail.configurations![item.id]
+              return (
+                <div key={item.id} className="grid gap-4 lg:grid-cols-[1fr_1.4fr]">
+                  <div className="space-y-2 text-sm">
+                    <div className="flex flex-wrap items-center gap-2"><strong>{cfg.summary}</strong><span className={`rounded px-2 py-0.5 text-xs font-medium ${configStatusTone(cfg.status)}`}>{configStatusLabel(cfg.status)}</span></div>
+                    <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">{configurationFacts(cfg).map(([label, value]) => [<dt key={`l${label}`} className="text-xs text-muted-foreground">{label}</dt>, <dd key={`v${label}`}>{value}</dd>])}</dl>
+                    <p className="text-xs text-muted-foreground">Estrutura v{cfg.bom_version} · revisão de engenharia {cfg.revision_label || "-"} · congelada em {dateBr(cfg.frozen_at)} por {cfg.frozen_by || "-"} · custo {brl(cfg.cost_total)} · preço {brl(cfg.price)}</p>
+                    {cfg.drift && (cfg.drift.bom_changed || cfg.drift.revision_changed || Math.abs(Number(cfg.drift.cost_now) - Number(cfg.drift.cost_at_quote)) > 0.01) ? <p className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs">Na confirmação, o cadastro já tinha mudado desde o orçamento (estrutura/revisão/custo). A venda manteve a configuração aprovada.</p> : null}
+                    {manager && !["Entregue", "Cancelado"].includes(order.status) ? (
+                      reconfiguring === item.id ? (
+                        <div className="space-y-2"><Input placeholder="Motivo da alteração (mín. 10 caracteres)" value={reconfigReason} onChange={(event) => setReconfigReason(event.target.value)} />
+                          <ConfiguratorDialog open productId={detail.productIds?.[item.id] || ""} productName={cfg.summary} initial={{ configurationId: cfg.id }} onClose={() => setReconfiguring(null)}
+                            onApply={(result) => { void act("reconfigure", { itemId: item.id, configurationId: result.configuration_id, reason: reconfigReason }, "Configuração revisada: produção replanejada e documentação sinalizada."); setReconfiguring(null) }} /></div>
+                      ) : <Button size="sm" variant="outline" onClick={() => { setReconfigReason(""); setReconfiguring(item.id) }}>Revisar configuração (controlado)</Button>
+                    ) : null}
+                  </div>
+                  {cfg.params?.comprimento ? <TrailerDrawingView product={cfg.summary} params={cfg.params} grade={cfg.drawing_spec?.grade === "validado" && cfg.homologated ? "validado" : "ilustrativo"} revision={cfg.revision_label} geometry={cfg.drawing_spec?.geometry} finish={cfg.options?.selected?.find((o: any) => o.group === "acabamento")?.label} accessories={(cfg.options?.selected || []).filter((o: any) => o.group === "acessorio").map((o: any) => o.label)} /> : null}
+                </div>
+              )
+            })}
+          </div>
         </SectionCard>
       ) : null}
 

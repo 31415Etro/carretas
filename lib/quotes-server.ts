@@ -28,7 +28,7 @@ const toItem = (row: any) => ({
   id: row.id, lineType: row.line_type as "Produto" | "Serviço", catalogId: row.material_id || row.service_type_id || "", description: row.description, unit: row.unit,
   quantity: Number(row.quantity), unitPrice: Number(row.unit_price), catalogPrice: Number(row.catalog_price), unitCost: Number(row.unit_cost), discountPercent: Number(row.discount_percent),
   total: Number(row.total), notes: row.notes || "",
-  bomVersionId: (row.bom_version_id || "") as string, bomVersionNumber: row.bom_version_number === null || row.bom_version_number === undefined ? null : Number(row.bom_version_number),
+  configurationId: (row.configuration_id || "") as string, bomVersionId: (row.bom_version_id || "") as string, bomVersionNumber: row.bom_version_number === null || row.bom_version_number === undefined ? null : Number(row.bom_version_number),
   leadTimeDays: row.lead_time_days === null || row.lead_time_days === undefined ? null : Number(row.lead_time_days), productSku: (row.product_sku || "") as string,
 })
 
@@ -79,9 +79,16 @@ export async function getQuote(admin: Admin, id: string) {
     admin.from("service_orders").select("id,order_number,status").eq("source_quote_id", id),
     admin.from("accounts_receivable").select("id,due_date,expected_amount,received_amount,status,installment_number,installment_count").eq("source_type", "Orçamento").eq("source_reference", `${row!.quote_number} v${row!.version}`).order("due_date"),
   ])
+  // configuração do produto (medidas/opções) de cada item; se o script 225 não estiver instalado, a leitura segue sem ela
+  const configurationIds = (items.data || []).map((item: any) => item.configuration_id).filter(Boolean)
+  const configurations = new Map<string, any>()
+  if (configurationIds.length) {
+    const found = await admin.from("product_configurations").select("id,status,summary,price,cost_total,frozen_at,homologated").in("id", configurationIds)
+    for (const config of found.data || []) configurations.set(config.id as string, config)
+  }
   return {
     quote: toQuote(row, lookup.clients, lookup.people),
-    items: (items.data || []).map(toItem),
+    items: (items.data || []).map((item: any) => ({ ...toItem(item), config: item.configuration_id && configurations.get(item.configuration_id) ? { status: configurations.get(item.configuration_id).status as string, summary: configurations.get(item.configuration_id).summary as string, frozen: Boolean(configurations.get(item.configuration_id).frozen_at), homologated: Boolean(configurations.get(item.configuration_id).homologated) } : null })),
     events: (events.data || []).map((event) => ({ id: event.id, event: event.event, description: event.description, author: event.author || "", at: event.created_at })),
     attachments: (attachments.data || []).map((file) => ({ id: file.id, path: file.file_path, name: file.file_name, at: file.created_at })),
     versions: (versions.data || []).map((version) => ({ id: version.id, version: Number(version.version), status: effectiveStatus(version.status, version.valid_until), total: Number(version.total_amount), at: version.created_at })),
@@ -113,7 +120,7 @@ export type QuoteSaveInput = {
   deliveryText?: string
   warrantyDays: number | string
   notes?: string
-  lines: Array<{ id?: string; lineType: "Produto" | "Serviço"; catalogId: string; description: string; unit?: string; quantity: number | string; unitPrice: number | string; discountPercent?: number | string; notes?: string }>
+  lines: Array<{ id?: string; lineType: "Produto" | "Serviço"; catalogId: string; configurationId?: string; description: string; unit?: string; quantity: number | string; unitPrice: number | string; discountPercent?: number | string; notes?: string }>
 }
 
 async function catalogSnapshot(admin: Admin, lines: QuoteSaveInput["lines"]) {
@@ -160,6 +167,13 @@ export async function saveQuote(admin: Admin, input: QuoteSaveInput, responsible
   const { data: condition } = await admin.from("payment_conditions").select("*").eq("id", normalized.paymentConditionId).maybeSingle()
   if (!condition) fail("Condição de pagamento não encontrada.")
   const catalog = await catalogSnapshot(admin, input.lines)
+  // linhas com produto personalizado: a configuração precisa existir, ser do mesmo produto e não estar inválida; o custo do item é o da configuração
+  const configIds = [...new Set(input.lines.map((line) => text(line.configurationId)).filter(Boolean))]
+  const configRows = new Map<string, any>()
+  if (configIds.length) {
+    const found = await admin.from("product_configurations").select("id,product_id,status,cost_total,summary").in("id", configIds)
+    for (const config of found.data || []) configRows.set(config.id as string, config)
+  }
 
   const lines = input.lines.map((line, index) => {
     const existing = line.id ? previousItems.find((item) => item.id === line.id) : null
@@ -169,6 +183,12 @@ export async function saveQuote(admin: Admin, input: QuoteSaveInput, responsible
       ? { price: Number(source.sale_price || 0), cost: Number(source.average_cost || source.cost_price || 0), unit: source.unit || "UN" }
       : { price: Number(source.default_price || 0), cost: Number(source.estimated_cost || 0), unit: source.billing_unit || "Servico" }
     const sameCatalogItem = existing && (existing.material_id || existing.service_type_id) === line.catalogId
+    const config = line.configurationId ? configRows.get(text(line.configurationId)) : null
+    if (line.configurationId) {
+      if (!config || config.product_id !== line.catalogId) fail(`A personalização do item "${text(line.description)}" não é deste produto.`)
+      if (config.status === "Invalida") fail(`Corrija a configuração do item "${text(line.description)}": ela tem erros.`)
+      fresh.cost = Number(config.cost_total || 0)
+    }
     // produto com estrutura: o custo do orçamento é o da estrutura vigente (kits + mão de obra + indiretos) e a versão fica registrada
     const product = line.lineType === "Produto" ? catalog.product.get(line.catalogId) : null
     if (product && product.bom_version_id && !sameCatalogItem) fresh.cost = Number(product.est_cost || 0)
@@ -178,11 +198,11 @@ export async function saveQuote(admin: Admin, input: QuoteSaveInput, responsible
     return {
       quote_item: {
         ...(existing && line.id ? { id: line.id } : {}), position: index, line_type: line.lineType, material_id: line.lineType === "Produto" ? line.catalogId : null, service_type_id: line.lineType === "Serviço" ? line.catalogId : null,
-        description: text(line.description), unit: text(line.unit) || fresh.unit, quantity: num(line.quantity), unit_price: num(line.unitPrice),
-        catalog_price: sameCatalogItem ? Number(existing.catalog_price) : fresh.price, unit_cost: sameCatalogItem ? Number(existing.unit_cost) : fresh.cost,
+        configuration_id: line.configurationId ? text(line.configurationId) : null, description: text(line.description), unit: text(line.unit) || fresh.unit, quantity: num(line.quantity), unit_price: num(line.unitPrice),
+        catalog_price: sameCatalogItem ? Number(existing.catalog_price) : fresh.price, unit_cost: config ? fresh.cost : sameCatalogItem ? Number(existing.unit_cost) : fresh.cost,
         discount_percent: num(line.discountPercent), notes: text(line.notes) || null, ...productFields,
       },
-      calc: { lineType: line.lineType, quantity: num(line.quantity), unitPrice: num(line.unitPrice), discountPercent: num(line.discountPercent), unitCost: sameCatalogItem ? Number(existing.unit_cost) : fresh.cost },
+      calc: { lineType: line.lineType, quantity: num(line.quantity), unitPrice: num(line.unitPrice), discountPercent: num(line.discountPercent), unitCost: config ? fresh.cost : sameCatalogItem ? Number(existing.unit_cost) : fresh.cost },
     }
   })
   const totals = quoteTotals(lines.map((line) => line.calc), normalized)

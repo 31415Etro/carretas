@@ -182,8 +182,50 @@ const demoDocDetail = () => ({ detail: {
   release: { eligible: false, blockers: [{ code: "documentacao", message: "Documentação veicular: 0 de 2 unidade(s) liberada(s).", waivable: false }, { code: "autorizacao", message: "Falta a autorização operacional da produção.", waivable: false }] },
 } })
 
+/** Engenharia e configurador FICTÍCIOS (dados do modelo FZ 1E só para ver as telas no modo de demonstração; nada é homologado). */
+const demoEngDocs = [
+  { id: "ed1", revision_id: "rev1", kind: "CCT", name: "CCT — Certificado de Capacitação Técnica (FZ 1E)", file_path: null, document_number: "A0.051.856", issuer: "CIVA (OIA-SV 1014)", issued_at: "2025-05-23", valid_until: "2027-05-19", notes: "", created_by: "demo", created_at: "2026-10-22T12:00:00Z" },
+  { id: "ed2", revision_id: "rev1", kind: "Desenho tecnico", name: "Desenho técnico — R/ND Carretas FZ 1E", file_path: "2026-10/x-desenho.pdf", document_number: "8102.12.170-1", issuer: "VIP Engenharia", issued_at: "2025-05-24", valid_until: null, notes: "", created_by: "demo", created_at: "2026-10-22T12:00:00Z" },
+  { id: "ed3", revision_id: "rev1", kind: "CAT", name: "CAT nº 1143/2019", file_path: null, document_number: "1143/2019", issuer: "SENATRAN/INMETRO", issued_at: null, valid_until: null, notes: "", created_by: "demo", created_at: "2026-10-22T12:00:00Z" },
+]
+const demoEngSources = (rows: Array<[string, string, number | null, number | null, number | null]>) => rows.map(([id, document, min, max, fixed]) => ({ id, document_id: id, document, min, max, fixed, note: null }))
+const demoEngOverview = () => ({ overview: {
+  current_revision_id: "rev1",
+  revisions: [{ id: "rev1", revision: "R1", status: "Em validacao", bom_version: null, brand_model_version_code: "R/ND CARRETAS FZ 1E", cat_number: "1143/2019", cct_number: "A0.051.856", cct_valid_until: "2027-05-19", technical_responsible: "Igor Vigorito (CREA 2608328377)", revised_at: "2025-05-19", notes: "", validated_by: null, validated_at: null, open_issues: 2 }],
+  documents: demoEngDocs,
+  parameters: [
+    { id: "pp1", revision_id: "rev1", key: "comprimento", label: "Comprimento", unit: "mm", scope: "nao_declarada", configurable: true, integer_only: false, step: null, default_value: null, adopted_min: null, adopted_max: null, adopted_fixed: null, adoption_note: null, sources: demoEngSources([["ed1", "CCT A0.051.856", 2000, 6000, null], ["ed2", "Desenho técnico 8102.12.170-1", null, 6000, null]]), in_conflict: false },
+    { id: "pp2", revision_id: "rev1", key: "largura", label: "Largura", unit: "mm", scope: "nao_declarada", configurable: true, integer_only: false, step: null, default_value: null, adopted_min: null, adopted_max: null, adopted_fixed: null, adoption_note: null, sources: demoEngSources([["ed1", "CCT A0.051.856", 1000, 2000, null], ["ed2", "Desenho técnico 8102.12.170-1", null, 2300, null]]), in_conflict: true },
+    { id: "pp3", revision_id: "rev1", key: "altura", label: "Altura", unit: "mm", scope: "nao_declarada", configurable: true, integer_only: false, step: null, default_value: null, adopted_min: null, adopted_max: null, adopted_fixed: null, adoption_note: null, sources: demoEngSources([["ed1", "CCT A0.051.856", 500, 2500, null], ["ed2", "Desenho técnico 8102.12.170-1", null, 2200, null]]), in_conflict: true },
+    { id: "pp4", revision_id: "rev1", key: "pbt", label: "PBT", unit: "kg", scope: "referencia", configurable: false, integer_only: false, step: null, default_value: null, adopted_min: null, adopted_max: null, adopted_fixed: null, adoption_note: null, sources: demoEngSources([["ed1", "CCT A0.051.856", null, null, 750]]), in_conflict: false },
+  ],
+  issues: [
+    { id: "i1", revision_id: "rev1", parameter_key: "largura", kind: "conflito_documental", description: "Conflito no máximo de \"Largura\": 2000 x 2300 (fontes: CCT A0.051.856; Desenho tecnico 8102.12.170-1). A engenharia precisa decidir qual vale.", status: "Aberta" },
+    { id: "i2", revision_id: "rev1", parameter_key: "altura", kind: "conflito_documental", description: "Conflito no máximo de \"Altura\": 2200 x 2500 (fontes: CCT A0.051.856; Desenho tecnico 8102.12.170-1). A engenharia precisa decidir qual vale.", status: "Aberta" },
+  ],
+  options: [], rules: [], formulas: [], templates: [{ revision_id: "rev1", template_key: "reboque_aberto_1_eixo", template_version: 1, grade: "ilustrativo", geometry: {} }],
+  bom_kits: [{ kit_id: "k1", name: "Kit Chassi FZ 1E (DEMO)", components: [{ material_id: "11111111-1111-4111-8111-111111111111", name: "Perfil de aço U 6 m (DEMO)", unit: "M", quantity: 6, comp_unit: "M" }] }],
+} })
+const demoConfigResult = { configuration_id: "cfg1", status: "Requer analise tecnica", homologated: false, errors: [], warnings: [{ code: "conflito", message: "Os documentos divergem sobre largura: usado o limite mais restritivo até a engenharia decidir." }], review_reasons: ["A revisão de engenharia R1 ainda não foi validada: os limites não são homologados.", "Conflito documental em largura (pendência de engenharia)."],
+  params: { comprimento: 4000, largura: 1800, altura: 1200, pbt: 750, tara: 200, lotacao: 550, eixos: 1 }, summary: "Carreta Náutica FZ 1E (DEMO) 4.000 x 1.800 x 1.200 mm", options: { acabamento: null, acessorios: [], selected: [] },
+  materials: [{ name: "Perfil de aço U 6 m (DEMO)", kit_name: "Kit Chassi FZ 1E (DEMO)", quantity: 6.3, unit: "M", source: "fixa", cost: 78.12 }], cut_list: [], kits: [],
+  costs: { materials: 5370.5, labor: 900, overhead: 150, other: 0, finishing: 0, total: 6420.5 }, price: 9800, margin: 3379.5, margin_percent: 34.49, margin_alert: false, revision: "R1", bom_version: 2, drawing: { grade: "ilustrativo", geometry: {} } }
+const demoConfigurator = { spec: { has_engineering: true, homologated: false, revision: "R1", revision_status: "Em validacao", base_price: 9800, open_issues: 2,
+  params: [{ key: "comprimento", label: "Comprimento", unit: "mm", min: 2000, max: 6000, step: null, default: null, in_conflict: false }, { key: "largura", label: "Largura", unit: "mm", min: 1000, max: 2000, step: null, default: null, in_conflict: true }, { key: "altura", label: "Altura", unit: "mm", min: 500, max: 2200, step: null, default: null, in_conflict: true }],
+  reference: [{ key: "pbt", label: "PBT", unit: "kg", value: 750 }, { key: "tara", label: "Tara de referência", unit: "kg", value: 200 }, { key: "lotacao", label: "Lotação de referência", unit: "kg", value: 550 }],
+  options: [], drawing: { template_key: "reboque_aberto_1_eixo", grade: "ilustrativo", geometry: {} } }, result: demoConfigResult, configuration: null }
+const demoFicha = { sheet: { order: { id: "o1", code: "OP-2026-00001", quantity: 3, status: "Em producao", planned_end: "2026-11-10", priority: 2 }, product: { name: "Carreta Náutica FZ 1E (DEMO)", sku: "PRD-000001", model: "FZ 1E" },
+  sales_order: { order_number: "PV-2026-00001", client: "Náutica Exemplo Ltda (DEMO)" }, bom: { version: 2, notes: "Soldar conforme o gabarito do chassi.", estimated_days: 12 },
+  configuration: { ...demoConfigResult, id: "cfg1", status: "Valida", homologated: true, revision_label: "R1", frozen_at: "2026-10-18T12:00:00Z", cost_total: 6420.5, drawing_spec: { grade: "ilustrativo", geometry: {} },
+    options: { selected: [{ group: "acabamento", label: "Galvanizado a fogo", code: "galv" }] }, cut_list: [{ name: "Perfil de aço U 6 m (DEMO)", plan: { bars: 3, bar_length_mm: 6000, waste_mm: 2000, pieces: [{ label: "Longarina", length_mm: 4000, count: 2 }, { label: "Travessa", length_mm: 1800, count: 3 }] } }] },
+  kits: [{ name: "Kit Chassi FZ 1E (DEMO)", sku: "KIT-000001", version: 2, quantity: 3 }], materials: [{ name: "Perfil de aço U 6 m (DEMO)", sku: "MP-000001", kit: "Kit Chassi FZ 1E (DEMO)", unit: "M", required: 18.9 }],
+  release: { eligible: false, blockers: [{ code: "documentacao", message: "Documentação veicular: 0 de 3 unidade(s) liberada(s).", waivable: false }] } } }
+
 /** Resposta genérica das APIs no modo de demonstração. */
 export function demoApiPayload(pathname: string, search = "") {
+  if (/^\/api\/engenharia\/[0-9a-f-]{36}$/.test(pathname)) return demoEngOverview()
+  if (pathname === "/api/configurador") return demoConfigurator
+  if (/^\/api\/producao\/[0-9a-f-]{36}\/ficha$/.test(pathname)) return demoFicha
   if (pathname === "/api/documentacao") return { items: demoDocs, total: demoDocs.length, page: 1, pageSize: 25, dashboard: demoDocDashboard }
   if (/^\/api\/documentacao\/[0-9a-f-]{36}$/.test(pathname)) return demoDocDetail()
   if (pathname === "/api/vendas") return { items: demoSales, total: demoSales.length, page: 1, pageSize: 25 }

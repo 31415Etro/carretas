@@ -10,6 +10,8 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { DataTable, MetricCard, PageShell, SearchableSelectField, SectionCard, SelectField, StatusBadge, TextAreaField, TextField, useCrudFeedback } from "@/components/operations/shared"
+import { ConfiguratorDialog } from "@/components/configurator/configurator-dialog"
+import { configStatusLabel, configStatusTone } from "@/lib/configurator"
 import { resolveTablePrice } from "@/lib/config"
 import { buildInstallments, quoteTotals, quoteTypes, shareMessage } from "@/lib/quotes"
 import { buildQuotePdf } from "@/lib/quote-pdf"
@@ -19,7 +21,7 @@ type Options = {
   clients: Array<{ id: string; name: string; document: string; status: string; phone: string; email: string }>
   salespeople: Array<{ id: string; name: string }>
   paymentConditions: Array<{ id: string; name: string; installments: number; firstDueDays: number; intervalDays: number }>
-  products: Array<{ id: string; name: string; code: string; unit: string; price: number; cost: number; stock: number; reserved: number; controlsStock: boolean; bomVersion?: number | null; leadTimeDays?: number | null; marginPercent?: number | null }>
+  products: Array<{ id: string; name: string; code: string; unit: string; price: number; cost: number; stock: number; reserved: number; controlsStock: boolean; bomVersion?: number | null; leadTimeDays?: number | null; marginPercent?: number | null; hasEngineering?: boolean }>
   services: Array<{ id: string; name: string; code: string; unit: string; price: number; cost: number; warrantyDays: number }>
   warehouses: Array<{ id: string; name: string; isDefault: boolean }>
   opportunities: Array<{ id: string; code: string; title: string; clientId: string; salespersonId: string; interest: string; estimatedValue: number; stage: string }>
@@ -30,7 +32,7 @@ type Options = {
   emailConfigured: boolean
   canConfigure: boolean
 }
-type Line = { key: string; id?: string; lineType: "Produto" | "Serviço"; catalogId: string; description: string; unit: string; quantity: string; unitPrice: string; discountPercent: string; notes: string; catalogPrice: number; unitCost: number }
+type Line = { key: string; id?: string; lineType: "Produto" | "Serviço"; catalogId: string; description: string; unit: string; quantity: string; unitPrice: string; discountPercent: string; notes: string; catalogPrice: number; unitCost: number; configurationId?: string; configStatus?: string; configSummary?: string; configParams?: Record<string, number> }
 type Detail = { quote: Row; items: Row[]; events: Row[]; attachments: Row[]; versions: Row[]; orders: Row[]; receivables: Row[] }
 type Action = null | { kind: "approve" | "refuse" | "cancel" | "formalize" | "email" | "whatsapp"; acceptedBy?: string; acceptNotes?: string; reason?: string; warehouseId?: string; baseDate?: string; to?: string; message?: string; phone?: string }
 
@@ -58,6 +60,7 @@ function Opts({ label, value, onChange, items, placeholder = "Selecione", disabl
 
 export function QuotesPage() {
   const router = useRouter()
+  const [configuring, setConfiguring] = useState<Line | null>(null)
   const { toast } = useCrudFeedback()
   const [quotes, setQuotes] = useState<Row[]>([])
   const [options, setOptions] = useState<Options | null>(null)
@@ -129,7 +132,7 @@ export function QuotesPage() {
       paymentConditionId: quote.paymentConditionId, deliveryText: quote.deliveryText, warrantyDays: String(quote.warrantyDays), discountAmount: String(quote.discountAmount), freightAmount: String(quote.freightAmount),
       expensesAmount: String(quote.expensesAmount), taxPercent: String(quote.taxPercent), notes: quote.notes,
     })
-    setLines(data.items.map((item) => ({ key: item.id, id: item.id, lineType: item.lineType, catalogId: item.catalogId, description: item.description, unit: item.unit, quantity: String(item.quantity), unitPrice: String(item.unitPrice), discountPercent: String(item.discountPercent), notes: item.notes, catalogPrice: item.catalogPrice, unitCost: item.unitCost })))
+    setLines(data.items.map((item) => ({ key: item.id, id: item.id, lineType: item.lineType, catalogId: item.catalogId, description: item.description, unit: item.unit, quantity: String(item.quantity), unitPrice: String(item.unitPrice), discountPercent: String(item.discountPercent), notes: item.notes, catalogPrice: item.catalogPrice, unitCost: item.unitCost, configurationId: item.configurationId || undefined, configStatus: item.config?.status, configSummary: item.config?.summary })))
   }
 
   const catalogNow = (line: Line) => (line.lineType === "Produto" ? options?.products.find((item) => item.id === line.catalogId) : options?.services.find((item) => item.id === line.catalogId))
@@ -151,7 +154,7 @@ export function QuotesPage() {
   const patchLine = (lineKey: string, patch: Partial<Line>) => setLines((current) => current.map((line) => (line.key === lineKey ? { ...line, ...patch } : line)))
 
   const payload = () => ({
-    ...form, lines: lines.map((line) => ({ id: line.id, lineType: line.lineType, catalogId: line.catalogId, description: line.description, unit: line.unit, quantity: line.quantity, unitPrice: line.unitPrice, discountPercent: line.discountPercent, notes: line.notes })),
+    ...form, lines: lines.map((line) => ({ id: line.id, lineType: line.lineType, catalogId: line.catalogId, description: line.description, unit: line.unit, quantity: line.quantity, unitPrice: line.unitPrice, discountPercent: line.discountPercent, notes: line.notes, configurationId: line.configurationId })),
   })
 
   async function save(closeAfter = false) {
@@ -404,6 +407,12 @@ export function QuotesPage() {
                       <TableCell className="min-w-[14rem]">
                         <div className="text-xs text-muted-foreground">{line.lineType}</div>
                         <input className="w-full rounded border bg-background px-2 py-1 text-sm" value={line.description} readOnly={readOnly} onChange={(event) => patchLine(line.key, { description: event.target.value })} />
+                        {line.lineType === "Produto" && (line.configurationId || (now && "hasEngineering" in now && now.hasEngineering)) ? (
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+                            {line.configurationId ? <span className={`rounded px-1.5 py-0.5 font-medium ${configStatusTone(line.configStatus || "")}`}>{configStatusLabel(line.configStatus || "")}</span> : <span className="text-muted-foreground">Produto padrão</span>}
+                            {!readOnly ? <button type="button" className="text-primary underline" onClick={() => setConfiguring(line)}>{line.configurationId ? "Editar personalização" : "Personalizar produto"}</button> : null}
+                          </div>
+                        ) : null}
                       </TableCell>
                       <TableCell><input className="w-20 rounded border bg-background px-2 py-1 text-sm" type="number" value={line.quantity} readOnly={readOnly} onChange={(event) => patchLine(line.key, { quantity: event.target.value })} /><div className="text-xs text-muted-foreground">{line.unit}</div></TableCell>
                       <TableCell>
@@ -540,6 +549,12 @@ export function QuotesPage() {
           </div>
         </SheetContent>
       </Sheet>
+      {configuring ? (
+        <ConfiguratorDialog open productId={configuring.catalogId} productName={options?.products.find((item) => item.id === configuring.catalogId)?.name || configuring.description} quoteItemId={configuring.id}
+          initial={configuring.configurationId ? { configurationId: configuring.configurationId } : undefined}
+          onClose={() => setConfiguring(null)}
+          onApply={(result) => { patchLine(configuring.key, { configurationId: result.configuration_id, configStatus: result.status, configSummary: result.summary, unitPrice: String(result.price), unitCost: result.costs.total, description: result.summary || configuring.description }); setConfiguring(null) }} />
+      ) : null}
     </PageShell>
   )
 }

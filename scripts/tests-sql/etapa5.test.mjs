@@ -28,7 +28,7 @@ const structure = (kits, extra = {}) => ({ kits: kits.map(([kit_id, quantity, pi
 const saveProduct = (payload) => rpc("product_save", payload)
 
 before(async () => {
-  db = await createDatabase({ extra: ["217_itens_estrutura.sql", "218_kits_e_estrutura_de_produto.sql", "219_vendas_producao_mrp.sql", "220_materia_prima_consultas.sql", "221_kits_consultas_e_conversao.sql", "222_produtos_finais.sql", "223_pedido_producao_integracao.sql", "224_documentacao_veicular.sql"] })
+  db = await createDatabase({ extra: ["217_itens_estrutura.sql", "218_kits_e_estrutura_de_produto.sql", "219_vendas_producao_mrp.sql", "220_materia_prima_consultas.sql", "221_kits_consultas_e_conversao.sql", "222_produtos_finais.sql", "223_pedido_producao_integracao.sql", "224_documentacao_veicular.sql", "225_engenharia_parametrica.sql"] })
   await db.exec(`select public.sales_settings_update('{"require_documentation_before_production":false,"require_operational_authorization":false}'::jsonb, 'teste')`)  // estas suítes testam outras regras; a liberação por documentação tem a suíte etapa7
   await db.exec(`insert into public.system_companies (id, name, legal_name, trade_name) values ('${COMPANY_B}', 'Empresa B', 'Empresa B', 'Empresa B') on conflict do nothing`)
   await asCompany(COMPANY_B)

@@ -9,7 +9,7 @@
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --experimental-strip-types lib/*.test.ts",
     "start": "next start",
     "test:rpc": "node scripts/tests-sql/rpc-check.mjs",
-    "test:sql": "node --test scripts/tests-sql/etapa2.test.mjs scripts/tests-sql/etapa3.test.mjs scripts/tests-sql/etapa4.test.mjs scripts/tests-sql/etapa5.test.mjs scripts/tests-sql/etapa6.test.mjs scripts/tests-sql/etapa7.test.mjs"
+    "test:sql": "node --test scripts/tests-sql/etapa2.test.mjs scripts/tests-sql/etapa3.test.mjs scripts/tests-sql/etapa4.test.mjs scripts/tests-sql/etapa5.test.mjs scripts/tests-sql/etapa6.test.mjs scripts/tests-sql/etapa7.test.mjs scripts/tests-sql/etapa8.test.mjs"
   },
   "dependencies": {
     "@emotion/is-prop-valid": "latest",

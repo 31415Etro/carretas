@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { stockContext } from "@/lib/stock-api"
 import { cancelSalesOrder, confirmSalesOrder, confirmSalesPayment, deliverSalesOrder, salesError, salesOrderDetail } from "@/lib/sales-server"
+import { configurationGet, reconfigureItem } from "@/lib/engineering-server"
 import { authorizeProduction, docError, documentationSummary, generateDocumentation, listDocumentation, releaseException, releaseOf, revokeAuthorization, salesSettingsGet } from "@/lib/vehicle-documentation-server"
 
 export const runtime = "nodejs"
@@ -12,7 +13,11 @@ const fullDetail = async (admin: Parameters<typeof salesOrderDetail>[0], id: str
   // documentação por unidade e liberação calculada; se o script 224 ainda não estiver instalado, o pedido segue funcionando sem essas seções
   try {
     const [release, summary, docs, settings] = await Promise.all([releaseOf(admin, id), documentationSummary(admin, { orderId: id }), listDocumentation(admin, { orderId: id, pageSize: 100 }), salesSettingsGet(admin)])
-    return { ...detail, release, documentation: { summary, items: docs.items }, settings }
+    const rows = (await admin.from("sales_order_items").select("id,configuration_id,material_id").eq("sales_order_id", id)).data || []
+    const configurations: Record<string, unknown> = {}
+    for (const row of rows) if (row.configuration_id) configurations[row.id as string] = await configurationGet(admin, row.configuration_id).catch(() => null)
+    const productIds: Record<string, string> = Object.fromEntries(rows.map((row) => [row.id as string, row.material_id as string]))
+    return { ...detail, release, documentation: { summary, items: docs.items }, settings, configurations, productIds }
   } catch {
     return detail
   }
@@ -53,6 +58,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       case "payment": result = await confirmSalesPayment(context.admin, id, context.responsible, body.note); break
       case "deliver": result = await deliverSalesOrder(context.admin, id, context.responsible, { requestKey: body.requestKey, items: body.items, warehouseId: body.warehouseId, notes: body.notes }); break
       case "cancel": await cancelSalesOrder(context.admin, id, String(body.reason || ""), context.responsible); break
+      case "reconfigure":
+        if (context.role !== "admin" && context.role !== "manager") return NextResponse.json({ error: "Somente administrador ou gerente altera a configuração de um pedido." }, { status: 403 })
+        result = await reconfigureItem(context.admin, String(body.itemId), String(body.configurationId), String(body.reason || ""), context.responsible)
+        break
       case "authorize": result = await authorizeProduction(context.admin, id, context.responsible, body.note); break
       case "revoke_authorization": result = await revokeAuthorization(context.admin, id, String(body.reason || ""), context.responsible); break
       case "generate_documentation": result = { created: await generateDocumentation(context.admin, id, context.responsible) }; break
