@@ -3,7 +3,8 @@
 import type React from "react"
 import { useEffect, useMemo, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
-import { AlertTriangle, Save } from "lucide-react"
+import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Save } from "lucide-react"
+import type { ColumnSortState } from "@/lib/column-sort"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -192,7 +193,9 @@ export function DataTable({
   viewportClassName,
   tableClassName,
   stickyHeader = false,
+  sort,
 }: {
+  sort?: ColumnSortState
   headers: string[]
   children: React.ReactNode
   empty?: boolean
@@ -203,7 +206,19 @@ export function DataTable({
   return (
     <Table containerClassName={viewportClassName} className={tableClassName}>
       <TableHeader className={stickyHeader ? "sticky top-0 z-20" : undefined}>
-        <TableRow>{headers.map((header) => <TableHead key={header}>{header}</TableHead>)}</TableRow>
+        <TableRow>{headers.map((header, index) => {
+          const key = sort?.keys[index]
+          if (!sort || !key) return <TableHead key={header}>{header}</TableHead>
+          const on = sort.active === key
+          return (
+            <TableHead key={header} aria-sort={on ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
+              <button type="button" onClick={() => sort.onSort(key)} className="inline-flex items-center gap-1 whitespace-nowrap hover:text-foreground" title={`Ordenar por ${header}`}>
+                {header}
+                {on ? (sort.dir === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />) : <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />}
+              </button>
+            </TableHead>
+          )
+        })}</TableRow>
       </TableHeader>
       <TableBody>
         {empty ? <TableRow><TableCell colSpan={headers.length} className="py-8 text-center text-muted-foreground">Nenhum registro encontrado.</TableCell></TableRow> : children}
