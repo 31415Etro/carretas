@@ -374,7 +374,7 @@ export function AccountingTab({ emitir }: { emitir?: React.ReactNode }) {
 
         <TabsContent value="notas" className="mt-3">
           <div className="mb-2 flex gap-2"><Button type="button" variant="outline" size="sm" onClick={exportNotes} disabled={!rows.length}><Download className="h-4 w-4" />Planilha das notas</Button><Button type="button" variant="outline" size="sm" onClick={() => void exportItems()} disabled={!rows.length}><Download className="h-4 w-4" />Planilha dos itens com impostos</Button></div>
-          <DataTable headers={["Emissão", "Op.", "NF", "Emitente", "Destinatário", "Produtos", "ICMS", "ICMS ST", "IPI", "PIS", "COFINS", "ISS", "Total"]} empty={!rows.length && !loading}>
+          <DataTable stickyHeader viewportClassName="max-h-[36rem] overflow-auto overscroll-contain rounded-md border [scrollbar-gutter:stable]" headers={["Emissão", "Op.", "NF", "Emitente", "Destinatário", "Produtos", "ICMS", "ICMS ST", "IPI", "PIS", "COFINS", "ISS", "Total"]} empty={!rows.length && !loading}>
             {rows.map((row) => (
               <TableRow key={row.id} className="cursor-pointer" onClick={() => setOpen(row.id)}>
                 <TableCell className="whitespace-nowrap">{day(row.issued_at)}</TableCell><TableCell>{row.operation}</TableCell><TableCell className="whitespace-nowrap">{row.kind} {row.number || "-"}{row.series ? `/${row.series}` : ""}</TableCell>
@@ -391,7 +391,7 @@ export function AccountingTab({ emitir }: { emitir?: React.ReactNode }) {
 
         <TabsContent value="materiais" className="mt-3">
           <p className="mb-2 text-sm text-muted-foreground">Tudo o que aparece nas notas filtradas acima, somado por produto (código e descrição). Use o filtro de Entradas para ver só o que foi comprado.</p>
-          <DataTable headers={["Código", "Descrição", "NCM", "Un.", "Quantidade", "Preço médio", "Total", "ICMS", "IPI", "PIS", "COFINS", "Notas", "Fornecedores"]} empty={!materials.length && !loading}>
+          <DataTable stickyHeader viewportClassName="max-h-[36rem] overflow-auto overscroll-contain rounded-md border [scrollbar-gutter:stable]" headers={["Código", "Descrição", "NCM", "Un.", "Quantidade", "Preço médio", "Total", "ICMS", "IPI", "PIS", "COFINS", "Notas", "Fornecedores"]} empty={!materials.length && !loading}>
             {materials.map((item) => (
               <TableRow key={`${item.code}|${item.description}`}>
                 <TableCell>{item.code}</TableCell><TableCell className="min-w-[220px]">{item.description}</TableCell><TableCell>{item.ncm}</TableCell><TableCell>{item.unit}</TableCell>
