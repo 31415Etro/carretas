@@ -10,6 +10,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { DataTable, MetricCard, PageShell, SearchableSelectField, SectionCard, SelectField, StatusBadge, TextAreaField, TextField, useCrudFeedback } from "@/components/operations/shared"
+import { emitSalesOrderPdf } from "@/lib/sales-pdf-client"
 import { ConfiguratorDialog } from "@/components/configurator/configurator-dialog"
 import { configStatusLabel, configStatusTone } from "@/lib/configurator"
 import { resolveTablePrice } from "@/lib/config"
@@ -21,7 +22,7 @@ type Options = {
   clients: Array<{ id: string; name: string; document: string; status: string; phone: string; email: string }>
   salespeople: Array<{ id: string; name: string }>
   paymentConditions: Array<{ id: string; name: string; installments: number; firstDueDays: number; intervalDays: number }>
-  products: Array<{ id: string; name: string; code: string; unit: string; price: number; cost: number; stock: number; reserved: number; controlsStock: boolean; bomVersion?: number | null; leadTimeDays?: number | null; marginPercent?: number | null; hasEngineering?: boolean }>
+  products: Array<{ id: string; name: string; code: string; unit: string; price: number; cost: number; stock: number; reserved: number; controlsStock: boolean; bomVersion?: number | null; leadTimeDays?: number | null; marginPercent?: number | null; hasEngineering?: boolean; photoUrl?: string | null }>
   services: Array<{ id: string; name: string; code: string; unit: string; price: number; cost: number; warrantyDays: number }>
   warehouses: Array<{ id: string; name: string; isDefault: boolean }>
   opportunities: Array<{ id: string; code: string; title: string; clientId: string; salespersonId: string; interest: string; estimatedValue: number; stage: string }>
@@ -180,7 +181,16 @@ export function QuotesPage() {
     try {
       const data = await api<Detail & { salesOrder: { id: string; number: string; duplicate: boolean } }>(`/api/orcamentos/${detail.quote.id}`, { method: "POST", body: JSON.stringify({ action: "to_order" }) })
       hydrate(data)
-      toast({ title: data.salesOrder.duplicate ? "Este orçamento já tinha pedido" : "Pedido de venda criado", description: `${data.salesOrder.number}: abra em Vendas para confirmar.` })
+      let pdfNote = ""
+      if (!data.salesOrder.duplicate) {
+        try {
+          const pdf = await emitSalesOrderPdf(data.salesOrder.id, { source: "conversao" })
+          pdfNote = ` PDF do pedido (versão ${pdf.version}) emitido e guardado.${pdf.warnings.length ? ` Atenção: ${pdf.warnings.join(" ")}` : ""}`
+        } catch (failure) {
+          pdfNote = ` O PDF não foi emitido (${failure instanceof Error ? failure.message : "erro"}): emita em Vendas > Pedido em PDF.`
+        }
+      }
+      toast({ title: data.salesOrder.duplicate ? "Este orçamento já tinha pedido" : "Pedido de venda criado", description: `${data.salesOrder.number}: abra em Vendas para confirmar.${pdfNote}` })
       await load()
       router.push(`/vendas/${data.salesOrder.id}`)
     } catch (reason) {
@@ -405,7 +415,7 @@ export function QuotesPage() {
                   return (
                     <TableRow key={line.key}>
                       <TableCell className="min-w-[14rem]">
-                        <div className="text-xs text-muted-foreground">{line.lineType}</div>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">{line.lineType === "Produto" && now && "photoUrl" in now && now.photoUrl ? <img src={now.photoUrl} alt="" className="h-9 w-12 rounded border object-cover" loading="lazy" /> : null}{line.lineType}</div>
                         <input className="w-full rounded border bg-background px-2 py-1 text-sm" value={line.description} readOnly={readOnly} onChange={(event) => patchLine(line.key, { description: event.target.value })} />
                         {line.lineType === "Produto" && (line.configurationId || (now && "hasEngineering" in now && now.hasEngineering)) ? (
                           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">

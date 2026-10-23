@@ -80,7 +80,7 @@ export function renderTrailerSvg(input: DrawingInput) {
 
   // --- vista traseira (direita): altura x largura
   const back: Box = { x: 690, y: 96, w: 290, h: 280 }
-  const backScale = Math.min((back.w - 120) / (W + 300), (back.h - 70) / H)
+  const backScale = Math.min((back.w - 150) / (W + 300), (back.h - 70) / H)
   const bx = (v: number) => fmt(back.x + 30 + (v + 150) * backScale)
   const by = (v: number) => fmt(back.y + back.h - 28 - v * backScale)
   parts.push(`<g><text x="${back.x}" y="${back.y - 14}" font-size="12" font-weight="700" fill="#111827">Vista traseira</text>`)
@@ -97,7 +97,19 @@ export function renderTrailerSvg(input: DrawingInput) {
   const banner = validated
     ? `Desenho conforme revisão ${esc(input.revision || "-")} validada pela engenharia`
     : "ILUSTRATIVO — NÃO É DESENHO DE FABRICAÇÃO. Geometria esquemática a partir das medidas escolhidas; aguarda modelagem e validação técnica."
-  const extras = [input.finish && `Acabamento: ${input.finish}`, input.accessories?.length ? `Acessórios: ${input.accessories.join(", ")}` : null].filter(Boolean).map(esc).join("  ·  ")
+  // texto do quadro de medidas: quebra em linhas que cabem na caixa (38 caracteres) e limita a 5 linhas
+  const wrap = (text: string, max = 38) => {
+    const lines: string[] = []
+    let line = ""
+    for (const word of text.split(/\s+/)) {
+      if ((line + " " + word).trim().length > max && line) { lines.push(line); line = word } else line = (line + " " + word).trim()
+    }
+    if (line) lines.push(line)
+    return lines
+  }
+  const extraLines = [...(input.finish ? wrap(`Acabamento: ${input.finish}`) : []), ...(input.accessories?.length ? wrap(`Acessórios: ${input.accessories.join(", ")}`) : [])]
+  const shown = extraLines.slice(0, 5).map((line, index, all) => (index === 4 && extraLines.length > 5 ? `${line.slice(0, 37)}…` : line))
+  const extras = shown.length ? shown.map((line, index) => `<tspan x="712" dy="${index === 0 ? 0 : 15}">${esc(line)}</tspan>`).join("") : "Sem acabamento/acessórios escolhidos"
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 700" width="1000" height="700" font-family="Arial, Helvetica, sans-serif">
 <rect width="1000" height="700" fill="#ffffff"/>
 <text x="40" y="34" font-size="16" font-weight="700" fill="#111827">${esc(input.product)}</text>

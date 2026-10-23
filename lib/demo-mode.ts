@@ -221,10 +221,35 @@ const demoFicha = { sheet: { order: { id: "o1", code: "OP-2026-00001", quantity:
   kits: [{ name: "Kit Chassi FZ 1E (DEMO)", sku: "KIT-000001", version: 2, quantity: 3 }], materials: [{ name: "Perfil de aço U 6 m (DEMO)", sku: "MP-000001", kit: "Kit Chassi FZ 1E (DEMO)", unit: "M", required: 18.9 }],
   release: { eligible: false, blockers: [{ code: "documentacao", message: "Documentação veicular: 0 de 3 unidade(s) liberada(s).", waivable: false }] } } }
 
+/** Fotografias e PDFs do pedido FICTÍCIOS (a imagem é um arquivo local de demonstração; nada vai ao armazenamento). */
+const demoPhotos = () => ({ photos: [
+  { id: "f1111111-1111-4111-8111-111111111111", url: "/demo-foto.jpg", purpose: "comercial", caption: "Vista geral", is_main: true, position: 1, status: "Disponivel", original_name: "carreta.jpg", verify_note: null, legacy: false, created_by: "demo" },
+  { id: "f2222222-2222-4222-8222-222222222222", url: "/demo-foto.jpg", purpose: "detalhe", caption: "Cubo e eixo", is_main: false, position: 2, status: "Disponivel", original_name: "cubo.jpg", verify_note: null, legacy: false, created_by: "demo" },
+  { id: "f3333333-3333-4333-8333-333333333333", url: "/api/produtos/foto/f3333333-3333-4333-8333-333333333333", purpose: "comercial", caption: null, is_main: false, position: 3, status: "Indisponivel", original_name: null, verify_note: "O arquivo não existe no armazenamento.", legacy: true, created_by: "auditoria 226" },
+] })
+const demoSalesDocs = () => ({ documents: [
+  { id: "d2", version: 2, trigger_source: "revisao", reason: "Cliente trocou o acabamento para galvanizado a fogo", file_name: "pedido-PV-2026-00001-v2.pdf", size_bytes: 182000, sha256: "x", emitted_by: "gerente@demo.com", emitted_at: "2026-10-21T15:00:00Z", photo_refs: [{ item: "Item 1", product: "Carreta Náutica FZ 1E (DEMO)", included: true, problem: "" }], configuration_refs: [{ item: "Item 1", summary: "Carreta Náutica FZ 1E (DEMO) 4.000 x 1.800 x 1.200 mm", revision: "R1", drawing_grade: "ilustrativo" }] },
+  { id: "d1", version: 1, trigger_source: "conversao", reason: null, file_name: "pedido-PV-2026-00001-v1.pdf", size_bytes: 176000, sha256: "y", emitted_by: "vendedor@demo.com", emitted_at: "2026-10-18T12:00:00Z", photo_refs: [{ item: "Item 1", product: "Carreta Náutica FZ 1E (DEMO)", included: false, problem: "sem foto" }], configuration_refs: [] },
+] })
+
+/** Orçamento FICTÍCIO com um produto configurável (para ver o fluxo "Personalizar produto" no modo de demonstração). */
+const demoQuoteId = "99999999-9999-4999-8999-999999999999"
+const demoQuote = { id: demoQuoteId, number: "ORC-000099", version: 1, title: "Carreta FZ 1E (DEMO)", clientId: "c1", clientName: "Náutica Exemplo Ltda (DEMO)", clientPhone: "(47) 99999-0000", clientEmail: "cliente@demo.com", salespersonId: "s1", salespersonName: "Vendedor Demo", opportunityId: "", issueDate: "2026-10-20", validUntil: "2026-11-20",
+  quoteType: "Produto", status: "Rascunho", effectiveStatus: "Rascunho", itemsSubtotal: 9800, discountAmount: 0, freightAmount: 0, expensesAmount: 0, taxPercent: 0, taxesAmount: 0, totalAmount: 9800, estimatedCost: 6420.5, paymentConditionId: "pc1", paymentConditionName: "Entrada + 30 dias",
+  deliveryText: "", warrantyDays: 90, notes: "", sentAt: "", sentVia: "", sentTo: "", approvedAt: "", acceptedBy: "", acceptNotes: "", refusalReason: "", convertedAt: "", convertedTo: "", receivablesGenerated: false, createdBy: "demo", createdAt: "2026-10-20T12:00:00Z", updatedAt: "2026-10-20T12:00:00Z" }
+const demoQuoteDetail = () => ({ quote: demoQuote, items: [{ id: "qi1", lineType: "Produto", catalogId: demoProductId, description: "Carreta Náutica FZ 1E (DEMO) 4.000 x 1.800 x 1.200 mm", unit: "UN", quantity: 1, unitPrice: 9800, catalogPrice: 9800, unitCost: 6420.5, discountPercent: 0, total: 9800, notes: "",
+  configurationId: "cfg1", bomVersionId: "pv2", bomVersionNumber: 2, leadTimeDays: 20, productSku: "PRD-000001", config: { status: "Requer analise tecnica", summary: "Carreta Náutica FZ 1E (DEMO) 4.000 x 1.800 x 1.200 mm", price: 9800, cost_total: 6420.5, frozen_at: null, homologated: false } }], events: [], attachments: [], versions: [{ id: demoQuoteId, version: 1, status: "Rascunho", total_amount: 9800, valid_until: "2026-11-20", created_at: "2026-10-20T12:00:00Z" }], orders: [], receivables: [] })
+const demoQuoteOptions = () => ({ clients: [{ id: "c1", name: "Náutica Exemplo Ltda (DEMO)", document: "12.345.678/0001-95", status: "Ativo", phone: "(47) 99999-0000", email: "cliente@demo.com" }], salespeople: [{ id: "s1", name: "Vendedor Demo" }],
+  paymentConditions: [{ id: "pc1", name: "Entrada + 30 dias", installments: 2, firstDueDays: 0, intervalDays: 30 }],
+  products: [{ id: demoProductId, name: "Carreta Náutica FZ 1E (DEMO)", code: "PRD-000001", unit: "UN", price: 9800, cost: 6420.5, bomVersion: 2, hasEngineering: true, photoUrl: "/demo-foto.jpg", leadTimeDays: 20, marginPercent: 34.49, stock: 2, reserved: 1, controlsStock: true }], services: [], warehouses: [], opportunities: [],
+  company: { id: "demo", name: "ND Carretas (demonstração)", legalName: "", cnpj: "", email: "", phone: "", address: "", hasLogo: false }, settings: { defaultValidityDays: 15, discountApprovalPercent: 10 }, emailConfigured: false, canConfigure: true, paymentMethods: ["PIX", "Boleto"] })
+
 /** Resposta genérica das APIs no modo de demonstração. */
 export function demoApiPayload(pathname: string, search = "") {
   if (/^\/api\/engenharia\/[0-9a-f-]{36}$/.test(pathname)) return demoEngOverview()
   if (pathname === "/api/configurador") return demoConfigurator
+  if (/^\/api\/produtos\/[0-9a-f-]{36}\/fotos$/.test(pathname)) return demoPhotos()
+  if (/^\/api\/vendas\/[0-9a-f-]{36}\/pdf$/.test(pathname)) return demoSalesDocs()
   if (/^\/api\/producao\/[0-9a-f-]{36}\/ficha$/.test(pathname)) return demoFicha
   if (pathname === "/api/documentacao") return { items: demoDocs, total: demoDocs.length, page: 1, pageSize: 25, dashboard: demoDocDashboard }
   if (/^\/api\/documentacao\/[0-9a-f-]{36}$/.test(pathname)) return demoDocDetail()
@@ -261,6 +286,9 @@ export function demoApiPayload(pathname: string, search = "") {
   base.settings = {}
   if (pathname.startsWith("/api/configuracoes/parametros")) return { settings: Object.fromEntries(settingSections.map((section) => [section.key, defaultsFor(section.key)])) }
   if (pathname.startsWith("/api/relatorios/meta")) return { user: { id: "demo", name: "Demonstração", isAdmin: true }, modules: ["financeiro", "estoque", "produtos", "os", "frota", "comercial", "orcamentos", "contratos"], users: [], emailConfigured: false }
+  if (pathname === "/api/orcamentos/options") return { ...base, ...demoQuoteOptions() }
+  if (pathname === "/api/orcamentos") return { quotes: [demoQuote] }
+  if (pathname === `/api/orcamentos/${demoQuoteId}`) return demoQuoteDetail()
   if (pathname.startsWith("/api/orcamentos/options")) return { ...base, company: { id: "demo", name: "Carretas", legalName: "", cnpj: "", email: "", phone: "", address: "", hasLogo: false }, settings: { defaultValidityDays: 15, discountApprovalPercent: 10 }, emailConfigured: false, canConfigure: true }
   if (pathname.startsWith("/api/os/options")) return { ...base, settings: { defaultChecklist: defaultsFor("os").defaultChecklist, priorityDays: { Baixa: 15, Media: 7, Alta: 3, Urgente: 1 } } }
   if (pathname.startsWith("/api/cadastros/verificar")) return { client: null, supplier: null }

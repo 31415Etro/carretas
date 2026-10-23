@@ -40,6 +40,8 @@ export const sharedMasterTables = new Set([
   "product_documents", "product_change_log", "product_bom_cost_snapshots",
   // engenharia paramétrica (225): cadastro técnico compartilhado
   "product_engineering_revisions", "product_engineering_documents", "product_parameters", "product_parameter_sources", "product_engineering_issues", "product_options", "product_configuration_rules", "product_formulas", "product_drawing_templates",
+  // fotografias persistentes dos produtos (226): catálogo compartilhado
+  "product_photos",
 ])
 
 export const tenantScopedTables = new Set([
@@ -54,7 +56,7 @@ export const tenantScopedTables = new Set([
   "purchase_receipt_items", "service_order_services", "service_order_time_entries",
   "service_order_status_history", "fuel_entries", "trips", "opportunities", "opportunity_interactions", "quotes", "quote_items", "quote_attachments", "quote_events", "contracts", "contract_billings", "contract_amendments", "contract_documents", "contract_obligations", "contract_os_plans", "contract_os_runs", "contract_events", "contract_alert_log", "saved_reports", "report_runs", "app_settings", "fiscal_operation_natures", "price_tables", "price_table_items", "quote_templates", "documents", "imported_invoices", "travel_advances", "travel_advance_receipts",
   // pedido de venda, produção e MRP (219)
-  "product_configurations", "product_configuration_reviews", "sales_settings", "sales_settings_log", "vehicle_documentation", "vehicle_documentation_attempts", "vehicle_documentation_events", "vehicle_documentation_files", "production_authorizations", "production_release_exceptions", "sales_order_events", "sales_order_deliveries", "production_events", "purchase_request_sources", "sales_orders", "sales_order_items", "production_orders", "production_order_kits", "production_order_materials", "production_consumptions", "production_receipts", "purchase_requests", "purchase_request_items",
+  "product_configurations", "product_configuration_reviews", "sales_order_documents", "sales_settings", "sales_settings_log", "vehicle_documentation", "vehicle_documentation_attempts", "vehicle_documentation_events", "vehicle_documentation_files", "production_authorizations", "production_release_exceptions", "sales_order_events", "sales_order_deliveries", "production_events", "purchase_request_sources", "sales_orders", "sales_order_items", "production_orders", "production_order_kits", "production_order_materials", "production_consumptions", "production_receipts", "purchase_requests", "purchase_request_items",
   "machine_settings", "machine_code_counters", "machine_categories", "machine_sectors", "machines", "machine_status_history", "machine_location_history", "machine_maintenance_plans", "machine_orders", "machine_order_parts", "machine_meter_readings", "machine_qr_tokens", "machine_documents",
 ])
 

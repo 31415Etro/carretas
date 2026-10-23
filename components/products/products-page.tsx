@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { DataTable, MetricCard, PageShell, SectionCard, StatusBadge } from "@/components/operations/shared"
 import { api, brl, qty, SearchBox } from "@/components/catalog/catalog-fields"
+import { PhotoAuditPanel } from "@/components/products/photo-audit-panel"
 import { ProductSheet, type ProductSheetTarget } from "@/components/products/product-sheet"
 
 type Row = {
@@ -56,6 +57,7 @@ export function ProductsPage() {
   return (
     <PageShell title="Produtos finais" description="Carretas e produtos vendidos ao cliente: engenharia (kits e versões), custo, estoque de acabados e integração com orçamento."
       actions={<Button onClick={() => setSheet({ mode: "new" })}><Plus className="h-4 w-4" />Novo produto</Button>}>
+      <PhotoAuditPanel onDone={() => void load()} />
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard title="Produtos" value={total} note={status ? `${status === "Ativo" ? "ativos" : "inativos"} no filtro` : "no filtro"} icon={PackageCheck} />
         <MetricCard title="Sem estrutura" value={withoutStructure} note="sem kits vinculados (nesta página)" icon={Tag} />

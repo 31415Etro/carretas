@@ -35,6 +35,7 @@ No **SQL Editor** do staging, na ordem, copie e rode cada arquivo de `scripts/su
 | 13 | `scripts/223_pedido_producao_integracao.sql` |
 | 14 | `scripts/224_documentacao_veicular.sql` |
 | 15 | `scripts/225_engenharia_parametrica.sql` |
+| 16 | `scripts/226_fotografias_e_pedido_pdf.sql` |
 
 Cada script é **idempotente**: se rodar duas vezes, não duplica nada.
 
@@ -51,7 +52,7 @@ Crie o usuário de teste em Authentication > Users e rode `scripts/supabase/` (a
 ### 4.1 Sem staging, em Postgres local descartável (já funciona hoje)
 ```
 npm install
-npm run test:sql      # 82 testes de SQL em Postgres local (PGlite): carrega o schema inteiro + 217–225
+npm run test:sql      # 89 testes de SQL em Postgres local (PGlite): carrega o schema inteiro + 217–226
 npm run test:rpc      # confere se cada chamada RPC do código usa funções e parâmetros que existem no banco
 npm test              # testes das bibliotecas (inclui o NCM)
 ```
@@ -63,6 +64,6 @@ Rodar os mesmos cenários pela interface depois das etapas de tela (Etapas 3 a 9
 ## 5. Levar para produção (somente com a sua aprovação específica)
 
 1. Backup do banco de produção (Supabase > Database > Backups, ou exportação).
-2. Rodar `217` a `225` no SQL Editor de produção (o `224` muda a regra de liberação da produção: leia `docs/architecture/documentacao-veicular.md` antes; o `223` só depois de aprovado e testado no staging; ele corrige `product_quote_snapshot`, muda funções da 219 e amplia as situações de orçamento e pedido). O `225` (engenharia paramétrica e configurador) depende do `224`; veja `docs/architecture/engenharia-parametrica.md`. Todos são aditivos: não removem nem alteram dados existentes.
+2. Rodar `217` a `226` no SQL Editor de produção (o `224` muda a regra de liberação da produção: leia `docs/architecture/documentacao-veicular.md` antes; o `223` só depois de aprovado e testado no staging; ele corrige `product_quote_snapshot`, muda funções da 219 e amplia as situações de orçamento e pedido). O `225` (engenharia paramétrica e configurador) depende do `224`; veja `docs/architecture/engenharia-parametrica.md`. O `226` (fotografias persistentes e PDF versionado do pedido) não depende do `225`; veja `docs/architecture/fotografias-e-pedido-pdf.md` (inclui a auditoria das fotos antigas, que só roda depois). Todos são aditivos: não removem nem alteram dados existentes.
 3. O `217` **não cria** o índice de SKU enquanto houver SKU repetido (hoje há 3 "FZ 1E" com o mesmo SKU); ele avisa na saída e você roda de novo depois da limpeza aprovada.
 4. Limpeza dos cadastros de teste: `python scripts/limpeza-catalogo-teste.py` (simulação) e depois `--aplicar`, só com os IDs que você aprovar em `docs/architecture/limpeza-ids-aprovados.txt`.

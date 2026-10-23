@@ -95,7 +95,7 @@ export function ProductSheet({ target, onClose, onSaved }: { target: ProductShee
               </div>
               <Field label="Descrição"><Textarea rows={2} value={form.description} onChange={(event) => set({ description: event.target.value })} /></Field>
               <div className="grid gap-3 md:grid-cols-2">
-                <UploadField label="Foto do produto" value={form.photoUrl} onChange={(url) => set({ photoUrl: url })} accept="image/jpeg,image/png,image/webp" />
+                <div className="space-y-2"><p className="text-sm font-medium">Fotografias</p><p className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">As fotografias (principal e galeria) são gerenciadas na aba <strong>Fotografias</strong> do produto, depois de salvar o cadastro. {form.photoUrl ? "O produto já tem foto principal." : ""}</p></div>
                 <UploadField label="Ficha técnica (PDF)" value={form.technicalSheetUrl} onChange={(url) => set({ technicalSheetUrl: url })} accept="application/pdf" />
               </div>
             </FormSection>

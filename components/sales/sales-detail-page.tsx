@@ -11,7 +11,8 @@ import { api, brl, dateBr, qty } from "@/components/catalog/catalog-fields"
 import { DocumentationSheet } from "@/components/documentation/documentation-sheet"
 import { ConfiguratorDialog } from "@/components/configurator/configurator-dialog"
 import { TrailerDrawingView } from "@/components/configurator/trailer-drawing-view"
-import { buildSalesOrderPdf, configurationFacts, type SalesPdfData } from "@/lib/sales-order-pdf"
+import { configurationFacts } from "@/lib/sales-order-pdf"
+import { SalesPdfPanel } from "@/components/sales/sales-pdf-panel"
 import { configStatusLabel, configStatusTone } from "@/lib/configurator"
 import { useAuth } from "@/lib/auth-context"
 import { docStatusLabel, docStatusTone, releaseLabel } from "@/lib/vehicle-documentation"
@@ -43,7 +44,6 @@ export function SalesDetailPage({ id }: { id: string }) {
   const [revokeReason, setRevokeReason] = useState("")
   const [reconfiguring, setReconfiguring] = useState<string | null>(null)
   const [reconfigReason, setReconfigReason] = useState("")
-  const [pdfBusy, setPdfBusy] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true); setError("")
@@ -63,17 +63,6 @@ export function SalesDetailPage({ id }: { id: string }) {
     } catch (failure) { setNotice(failure instanceof Error ? failure.message : "Ação não concluída.") } finally { setBusy("") }
   }
 
-  async function downloadPdf() {
-    setPdfBusy(true); setNotice("")
-    try {
-      const response = await api<{ data: SalesPdfData & { items: Array<{ photo: { problem: string } }> } }>(`/api/vendas/${id}/pdf`)
-      const { doc, fileName } = await buildSalesOrderPdf(response.data)
-      doc.save(fileName)
-      const problems = response.data.items.map((item) => item.photo.problem).filter(Boolean)
-      if (problems.length) setNotice(`PDF gerado, mas: ${problems.join(" ")}`)
-    } catch (failure) { setNotice(failure instanceof Error ? failure.message : "PDF não gerado.") } finally { setPdfBusy(false) }
-  }
-
   if (!detail) {
     return (
       <PageShell title="Pedido de venda" description="Carregando..." actions={<Button variant="outline" asChild><Link href="/vendas"><ArrowLeft className="h-4 w-4" />Voltar</Link></Button>}>
@@ -91,7 +80,7 @@ export function SalesDetailPage({ id }: { id: string }) {
     <PageShell title={`Pedido ${order.order_number}`} description={`${order.client_name}${order.quote_number ? ` · orçamento ${order.quote_number} v${order.quote_version}` : ""} · ${order.payment_condition_name || "sem condição de pagamento"}`}
       actions={<>
         <Button variant="outline" asChild><Link href="/vendas"><ArrowLeft className="h-4 w-4" />Voltar</Link></Button>
-        <Button variant="outline" onClick={() => void downloadPdf()} disabled={pdfBusy}>{pdfBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Pedido em PDF</Button>
+        <Button variant="outline" asChild><a href="#pedido-pdf">Pedido em PDF</a></Button>
         <Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />Atualizar</Button>
         {actions.confirm ? <Button onClick={() => void act("confirm")} disabled={Boolean(busy)}>{busy === "confirm" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Confirmar pedido</Button> : null}
         {actions.deliver ? <Button onClick={() => void act("deliver", { requestKey: deliveryKey.current }, "Entrega registrada: baixa dos acabados feita.")} disabled={Boolean(busy)}>{busy === "deliver" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Truck className="h-4 w-4" />}Entregar {qty(actions.readyUnits)} pronta(s)</Button> : null}
@@ -109,6 +98,7 @@ export function SalesDetailPage({ id }: { id: string }) {
         <MetricCard title="Em fabricação" value={qty(totals.producing)} note={`${detail.production_orders.length} ordem(ns) de produção`} icon={Factory} />
         <MetricCard title="Entregues" value={qty(totals.delivered)} note="baixa efetiva do estoque de acabados" icon={Truck} />
       </div>
+      <SalesPdfPanel orderId={id} items={detail.items as unknown as Array<{ id: string; description: string; line_type: string }>} productIds={detail.productIds} />
 
       {(actions.payment || actions.cancel) ? (
         <SectionCard title="Ações do pedido">

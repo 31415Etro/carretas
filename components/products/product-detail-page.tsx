@@ -10,6 +10,7 @@ import { TableCell, TableRow } from "@/components/ui/table"
 import { DataTable, MetricCard, PageShell, SectionCard, StatusBadge } from "@/components/operations/shared"
 import { api, brl, dateBr, qty } from "@/components/catalog/catalog-fields"
 import { EngineeringTab } from "@/components/products/engineering-tab"
+import { PhotoGallery } from "@/components/products/photo-gallery"
 import { ProductSheet, type ProductSheetTarget } from "@/components/products/product-sheet"
 import { entityHref } from "@/lib/entity-links"
 import { formFromProductDetail, margin } from "@/lib/products"
@@ -120,6 +121,7 @@ export function ProductDetailPage({ id }: { id: string }) {
       <Tabs defaultValue="geral">
         <TabsList className="flex flex-wrap">
           <TabsTrigger value="geral">Visão geral</TabsTrigger>
+          <TabsTrigger value="fotografias">Fotografias</TabsTrigger>
           <TabsTrigger value="kits">Kits ({detail.kits.length})</TabsTrigger>
           <TabsTrigger value="estrutura">Estrutura completa</TabsTrigger>
           <TabsTrigger value="custos">Custos</TabsTrigger>
@@ -129,6 +131,8 @@ export function ProductDetailPage({ id }: { id: string }) {
           <TabsTrigger value="homologacao">Engenharia e Homologação</TabsTrigger>
           <TabsTrigger value="historico">Histórico ({detail.change_log.length})</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="fotografias" className="mt-4"><PhotoGallery productId={id} onChange={() => void load()} /></TabsContent>
 
         <TabsContent value="geral" className="mt-4 grid gap-4 lg:grid-cols-2">
           <SectionCard title="Identificação">
