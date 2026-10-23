@@ -81,11 +81,10 @@ export function ProductionDetailPage({ id }: { id: string }) {
       </div>
       {notice ? <p className="rounded-md border bg-muted/40 p-3 text-sm">{notice}</p> : null}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <MetricCard title="Planejado" value={qty(detail.progress.planned)} note={`início ${dateBr(order.planned_start)} · previsão ${dateBr(order.planned_end)}`} icon={Factory} />
         <MetricCard title="Iniciadas" value={qty(detail.progress.started)} note="com material apontado (ou já concluídas)" icon={Play} />
         <MetricCard title="Concluídas" value={qty(detail.progress.produced)} note={`restam ${qty(detail.progress.remaining)}`} icon={CheckCircle2} />
-        <MetricCard title="Custo estimado" value={brl(costs.estimated_total)} note={`realizado: materiais ${brl(costs.consumed_materials)}`} icon={Banknote} />
       </div>
 
       {blocked ? (
@@ -122,7 +121,7 @@ export function ProductionDetailPage({ id }: { id: string }) {
                 <select aria-label="Tipo" className="h-9 rounded-md border bg-background px-2 text-sm" value={consumeKind} onChange={(event) => setConsumeKind(event.target.value)}><option>Consumo</option><option>Perda</option><option>Retrabalho</option><option>Adicional</option></select>
                 <Button disabled={Boolean(busy) || blocked || !materialId || Number.isNaN(positiveNumber(consumeQty))} onClick={() => void act("consume", { materialId, quantity: positiveNumber(consumeQty), kind: consumeKind, requestKey: consumeKey.current }, "Consumo registrado e baixado do estoque.", () => { consumeKey.current = newKey(); setConsumeQty("") })}>{busy === "consume" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Registrar consumo</Button>
               </div>
-              <p className="mt-2 text-xs text-muted-foreground">A baixa usa o custo do momento e não se repete se o clique for duplicado. A quantidade é na unidade do material.</p>
+              <p className="mt-2 text-xs text-muted-foreground">A baixa não se repete se o clique for duplicado. A quantidade é na unidade do material.</p>
             </div>
             {allowed.complete ? (
               <div className="rounded-md border p-3">
@@ -132,7 +131,7 @@ export function ProductionDetailPage({ id }: { id: string }) {
                   <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={autoConsume} onChange={(event) => setAutoConsume(event.target.checked)} />Apontar automaticamente o material previsto que faltar</label>
                   <Button disabled={Boolean(busy) || blocked || Number.isNaN(lot) || lot > allowed.remaining} onClick={() => void act("complete", { quantity: lot, autoConsume, requestKey: lotKey.current }, "Unidades concluídas: entrada no estoque de acabados e reservadas ao pedido.", () => { lotKey.current = newKey(); setLotQty("") })}>{busy === "complete" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Concluir lote</Button>
                 </div>
-                <p className="mt-2 text-xs text-muted-foreground">O acabado só entra no estoque agora, com o custo do material efetivamente consumido; a conclusão não se repete.</p>
+                <p className="mt-2 text-xs text-muted-foreground">O acabado só entra no estoque agora; a conclusão não se repete.</p>
               </div>
             ) : null}
           </div>
@@ -145,13 +144,12 @@ export function ProductionDetailPage({ id }: { id: string }) {
           <TabsTrigger value="kits">Kits ({detail.kits.length})</TabsTrigger>
           <TabsTrigger value="consumos">Consumos ({detail.consumptions.length})</TabsTrigger>
           <TabsTrigger value="lotes">Lotes concluídos ({detail.receipts.length})</TabsTrigger>
-          <TabsTrigger value="custos">Custos</TabsTrigger>
           <TabsTrigger value="historico">Histórico ({detail.events.length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="materiais" className="mt-4 space-y-4">
           <SectionCard title="Materiais da ordem (composição congelada)" description="Por kit de origem: previsto com perdas e conversões, reservado e consumido.">
-            <DataTable headers={["Material", "Kit de origem", "Previsto", "Reservado", "Consumido", "Falta consumir", "Custo estimado"]} empty={!detail.materials.length}>
+            <DataTable headers={["Material", "Kit de origem", "Previsto", "Reservado", "Consumido", "Falta consumir"]} empty={!detail.materials.length}>
               {detail.materials.map((material) => (
                 <TableRow key={material.id}>
                   <TableCell><Link className="font-medium text-primary underline-offset-2 hover:underline" href={`/materias-primas/${material.material_id}`}>{material.name}</Link> <span className="font-mono text-xs text-muted-foreground">{material.sku}</span></TableCell>
@@ -160,7 +158,6 @@ export function ProductionDetailPage({ id }: { id: string }) {
                   <TableCell className="text-right">{qty(material.reserved, 4)}</TableCell>
                   <TableCell className="text-right">{qty(material.consumed, 4)}</TableCell>
                   <TableCell className="text-right">{qty(material.remaining, 4)}</TableCell>
-                  <TableCell className="text-right">{brl(material.cost_estimated)}</TableCell>
                 </TableRow>
               ))}
             </DataTable>
@@ -188,39 +185,25 @@ export function ProductionDetailPage({ id }: { id: string }) {
         </TabsContent>
 
         <TabsContent value="consumos" className="mt-4">
-          <SectionCard title="Consumos apontados" description="Custo histórico do momento da baixa; não é reescrito depois.">
-            <DataTable headers={["Quando", "Material", "Tipo", "Quantidade", "Custo unit.", "Custo", "Responsável"]} empty={!detail.consumptions.length}>
-              {detail.consumptions.map((entry) => <TableRow key={entry.id}><TableCell className="whitespace-nowrap">{dateBr(entry.occurred_at)}</TableCell><TableCell>{entry.material}</TableCell><TableCell>{entry.kind}</TableCell><TableCell className="text-right">{qty(entry.quantity, 4)} {entry.unit}</TableCell><TableCell className="text-right">{brl(entry.unit_cost)}</TableCell><TableCell className="text-right">{brl(entry.total_cost)}</TableCell><TableCell>{entry.responsible || "-"}</TableCell></TableRow>)}
+          <SectionCard title="Consumos apontados" description="Baixas de material feitas nesta ordem.">
+            <DataTable headers={["Quando", "Material", "Tipo", "Quantidade", "Responsável"]} empty={!detail.consumptions.length}>
+              {detail.consumptions.map((entry) => <TableRow key={entry.id}><TableCell className="whitespace-nowrap">{dateBr(entry.occurred_at)}</TableCell><TableCell>{entry.material}</TableCell><TableCell>{entry.kind}</TableCell><TableCell className="text-right">{qty(entry.quantity, 4)} {entry.unit}</TableCell><TableCell>{entry.responsible || "-"}</TableCell></TableRow>)}
             </DataTable>
           </SectionCard>
         </TabsContent>
 
         <TabsContent value="lotes" className="mt-4">
-          <SectionCard title="Lotes concluídos e entrada de acabados" description="Cada lote guarda como o custo foi apropriado; correções entram só como ajuste auditável.">
-            <DataTable headers={["Quando", "Unidades", "Custo unitário", "Materiais", "Mão de obra/indiretos", "Apropriação", "Depósito", "Responsável"]} empty={!detail.receipts.length}>
+          <SectionCard title="Lotes concluídos e entrada de acabados" description="Unidades concluídas e entradas de acabado no estoque.">
+            <DataTable headers={["Quando", "Unidades", "Depósito", "Responsável"]} empty={!detail.receipts.length}>
               {detail.receipts.map((receipt) => (
                 <TableRow key={receipt.id}>
-                  <TableCell className="whitespace-nowrap">{dateBr(receipt.created_at)}</TableCell><TableCell className="text-right">{qty(receipt.quantity)}</TableCell><TableCell className="text-right">{brl(receipt.unit_cost)}</TableCell>
-                  <TableCell className="text-right">{brl(receipt.materials_cost)}</TableCell><TableCell className="text-right">{brl(receipt.labor_other_cost)}</TableCell>
-                  <TableCell className="text-xs">{(receipt.allocations || []).map((allocation: Record<string, any>) => `${costLabel[allocation.cost_type] || allocation.cost_type}: ${brl(allocation.amount)}`).join(" · ")}{(receipt.adjustments || []).length ? ` · ajustes: ${(receipt.adjustments as Array<Record<string, any>>).map((adjustment) => `${brl(adjustment.amount)} (${adjustment.reason})`).join("; ")}` : ""}</TableCell>
-                  <TableCell>{receipt.warehouse || "-"}</TableCell><TableCell>{receipt.responsible || "-"}</TableCell>
+                  <TableCell className="whitespace-nowrap">{dateBr(receipt.created_at)}</TableCell><TableCell className="text-right">{qty(receipt.quantity)}</TableCell>                  <TableCell>{receipt.warehouse || "-"}</TableCell><TableCell>{receipt.responsible || "-"}</TableCell>
                 </TableRow>
               ))}
             </DataTable>
           </SectionCard>
         </TabsContent>
 
-        <TabsContent value="custos" className="mt-4">
-          <SectionCard title="Custo estimado x realizado x em processo" description="Estimado = estrutura da versão congelada. Realizado = o que foi consumido e apropriado aos lotes. Em processo = consumido e ainda não apropriado a unidades concluídas.">
-            <dl className="grid gap-4 sm:grid-cols-4 text-sm">
-              {[["Estimado: materiais", costs.estimated_materials], ["Estimado: mão de obra", costs.estimated_labor], ["Estimado: indiretos/outros", costs.estimated_other], ["Estimado: total", costs.estimated_total],
-                ["Consumido (materiais)", costs.consumed_materials], ["Apropriado aos lotes (materiais)", costs.allocated_materials], ["Em processo (materiais)", costs.in_process_materials], ["Mão de obra/indiretos aplicados", costs.labor_other_applied],
-                ["Recebido em estoque (custo)", costs.received_cost], ["Ajustes de custo", costs.adjustments]].map(([label, value]) => (
-                <div key={String(label)}><dt className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</dt><dd className="mt-0.5 font-medium">{brl(value)}</dd></div>
-              ))}
-            </dl>
-          </SectionCard>
-        </TabsContent>
 
         <TabsContent value="historico" className="mt-4">
           <SectionCard title="Histórico da ordem">

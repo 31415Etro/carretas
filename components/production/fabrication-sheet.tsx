@@ -54,7 +54,7 @@ export function FabricationSheet({ id }: { id: string }) {
         ) : null}
         <section><h3 className="mb-1 font-semibold">Instruções de fabricação</h3>
           <p className="whitespace-pre-line text-xs">{[sheet.bom.notes, cfg ? `Fabricar exatamente conforme as medidas e opções acima. Qualquer mudança exige revisão controlada do pedido (revisão do projeto ${cfg.revision_label || "-"}).` : ""].filter(Boolean).join("\n") || "Sem instruções adicionais cadastradas na estrutura."}</p>
-          <p className="mt-1 text-xs text-slate-500">Prazo estimado de produção: {sheet.bom.estimated_days || "-"} dias. Custo estimado da configuração: {cfg ? brl(cfg.cost_total) : "-"}.</p></section>
+          <p className="mt-1 text-xs text-slate-500">Prazo estimado de produção: {sheet.bom.estimated_days || "-"} dias.</p></section>
       </div>
     </PageShell>
   )

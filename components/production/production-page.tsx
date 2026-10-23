@@ -67,16 +67,14 @@ export function ProductionPage() {
   const d = dashboard || {}
   const pages = Math.max(1, Math.ceil(total / SIZE))
   const toRequest = mrp.filter((row) => Number(row.to_request) > 0).length
-  const cost = d.cost_completed || { orders: 0, estimated: 0, actual: 0 }
 
   return (
     <PageShell title="Produção" description="Ordens de produção, falta de materiais e solicitações de compra."
       actions={<><Button onClick={() => setNewOrder(true)}>Nova ordem de produção</Button><Button variant="outline" asChild><Link href="/estoque?aba=movimentacoes">Estoque</Link></Button><Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />Atualizar</Button></>}>
       {error ? <p className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{error}</p> : null}
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-2">
         <MetricCard title="Ordens em andamento" value={Number(d.orders_in_progress || 0)} note={`${Number(d.orders_open || 0)} abertas`} icon={Factory} />
         <MetricCard title="Ordens atrasadas" value={Number(d.orders_late || 0)} note="previsão vencida e ainda abertas" icon={TimerOff} />
-        <MetricCard title="Materiais faltantes" value={Number(d.materials_short || 0)} note={`${Number(d.materials_short_now || 0)} sem saldo agora (projetado considera compras)`} icon={AlertTriangle} />
       </div>
 
       <Tabs defaultValue="ordens">

@@ -209,18 +209,16 @@ function Steps({ steps, kits, onAct }: { steps: Row[]; kits: Array<{ id: string;
 
 function External({ board, onAct }: { board: Row; onAct: (body: Record<string, unknown>, success?: string) => Promise<unknown> }) {
   const [ret, setRet] = useState<Row | null>(null)
-  const [cost, setCost] = useState("")
   return (
     <SectionCard title="Etapas terceirizadas (galvanização, eletrostática, pintura)">
       <p className="mb-3 text-sm text-muted-foreground">O envio e o retorno são feitos pela ficha da carreta na aba Esteira. O tempo externo não conta como hora de colaborador.</p>
       {board.external.length === 0 ? <p className="text-sm text-muted-foreground">Nenhum envio registrado.</p> : (
-        <table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-2">Carreta</th><th>Prestador</th><th>Acabamento</th><th>Saída</th><th>Previsão</th><th>Retorno</th><th>Custo</th><th /></tr></thead>
-          <tbody>{board.external.map((x: Row) => <tr key={x.task_id} className="border-b"><td className="p-2">{x.order_code} unid. {x.unit}</td><td>{x.provider}</td><td>{x.finish_type}</td><td>{dateBr(x.sent_at)}</td><td>{dateBr(x.expected_return)}</td><td>{x.returned_at ? dateBr(x.returned_at) : <b className="text-amber-700">com o prestador</b>}</td><td>{x.cost != null ? brl(x.cost) : "-"}</td><td>{!x.returned_at ? <Button size="sm" variant="outline" onClick={() => { setRet(x); setCost("") }}>Registrar retorno</Button> : null}</td></tr>)}</tbody></table>
+        <table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-2">Carreta</th><th>Prestador</th><th>Acabamento</th><th>Saída</th><th>Previsão</th><th>Retorno</th><th /></tr></thead>
+          <tbody>{board.external.map((x: Row) => <tr key={x.task_id} className="border-b"><td className="p-2">{x.order_code} unid. {x.unit}</td><td>{x.provider}</td><td>{x.finish_type}</td><td>{dateBr(x.sent_at)}</td><td>{dateBr(x.expected_return)}</td><td>{x.returned_at ? dateBr(x.returned_at) : <b className="text-amber-700">com o prestador</b>}</td><td>{!x.returned_at ? <Button size="sm" variant="outline" onClick={() => { setRet(x) }}>Registrar retorno</Button> : null}</td></tr>)}</tbody></table>
       )}
       <Dialog open={Boolean(ret)} onOpenChange={(open) => !open && setRet(null)}>
-        <DialogContent><DialogHeader><DialogTitle>Retorno do prestador</DialogTitle></DialogHeader>
-          <Input inputMode="decimal" placeholder="Custo do serviço (R$)" value={cost} onChange={(event) => setCost(event.target.value.replace(",", "."))} />
-          <Button onClick={async () => { const id = ret!.task_id; setRet(null); await onAct({ action: "external_return", taskId: id, cost: cost ? Number(cost) : null }, "Retorno registrado: a próxima etapa foi liberada.") }}>Confirmar retorno</Button></DialogContent>
+        <DialogContent><DialogHeader><DialogTitle>Retorno do prestador</DialogTitle></DialogHeader><p className="text-sm text-muted-foreground">Confirma que a peça voltou do prestador? A próxima etapa será liberada.</p>
+          <Button onClick={async () => { const id = ret!.task_id; setRet(null); await onAct({ action: "external_return", taskId: id }, "Retorno registrado: a próxima etapa foi liberada.") }}>Confirmar retorno</Button></DialogContent>
       </Dialog>
     </SectionCard>
   )
