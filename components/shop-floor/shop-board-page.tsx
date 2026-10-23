@@ -153,26 +153,26 @@ function Workers({ workers, steps, onAct, failure, clearFailure }: { workers: Ro
   const nextCode = () => `F${String(workers.reduce((max, w) => Math.max(max, Number(/^F(\d+)$/.exec(String(w.code))?.[1] || 0)), 0) + 1).padStart(4, "0")}`
   const sectors = useMemo(() => Array.from(new Set(steps.map((s) => s.sector).filter(Boolean) as string[])), [steps])
   const [edit, setEdit] = useState<Row | null>(null)
-  const blank = { code: "", name: "", sectors: [] as string[], shift: "", hourly_rate: "", pin: "", is_inspector: false, is_supervisor: false, active: true }
+  const blank = { code: "", name: "", sectors: [] as string[], shift: "", pin: "", is_inspector: false, is_supervisor: false, active: true }
   return (
     <SectionCard title="Colaboradores da fábrica">
       <div className="mb-3 flex justify-between gap-2"><p className="text-sm text-muted-foreground">Cada colaborador usa matrícula e PIN próprios no tablet. O PIN é guardado só como hash.</p><Button onClick={() => { clearFailure(); setEdit({ ...blank }) }}><Plus className="h-4 w-4" />Novo colaborador</Button></div>
-      <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-2">Matrícula</th><th>Nome</th><th>Setores</th><th>Turno</th><th>R$/hora</th><th>Perfil</th><th>PIN</th><th /></tr></thead>
-        <tbody>{workers.map((w) => <tr key={w.id} className={`border-b ${w.active ? "" : "opacity-50"}`}><td className="p-2 font-mono">{w.code}</td><td>{w.name}</td><td>{(w.sectors || []).join(", ")}</td><td>{w.shift || "-"}</td><td>{brl(w.hourly_rate)}</td><td>{[w.is_supervisor && "Supervisor", w.is_inspector && "Inspetor"].filter(Boolean).join(", ") || "-"}</td><td>{w.locked ? "bloqueado" : w.has_pin ? "definido" : "sem PIN"}</td><td><Button size="sm" variant="outline" onClick={() => { clearFailure(); setEdit({ worker_id: w.id, code: w.code, name: w.name, sectors: w.sectors || [], shift: w.shift || "", hourly_rate: String(w.hourly_rate), pin: "", is_inspector: w.is_inspector, is_supervisor: w.is_supervisor, active: w.active }) }}>Editar</Button></td></tr>)}</tbody></table></div>
+      <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-2">Matrícula</th><th>Nome</th><th>Setores</th><th>Turno</th><th>Perfil</th><th>PIN</th><th /></tr></thead>
+        <tbody>{workers.map((w) => <tr key={w.id} className={`border-b ${w.active ? "" : "opacity-50"}`}><td className="p-2 font-mono">{w.code}</td><td>{w.name}</td><td>{(w.sectors || []).join(", ")}</td><td>{w.shift || "-"}</td><td>{[w.is_supervisor && "Supervisor", w.is_inspector && "Inspetor"].filter(Boolean).join(", ") || "-"}</td><td>{w.locked ? "bloqueado" : w.has_pin ? "definido" : "sem PIN"}</td><td><Button size="sm" variant="outline" onClick={() => { clearFailure(); setEdit({ worker_id: w.id, code: w.code, name: w.name, sectors: w.sectors || [], shift: w.shift || "", pin: "", is_inspector: w.is_inspector, is_supervisor: w.is_supervisor, active: w.active }) }}>Editar</Button></td></tr>)}</tbody></table></div>
       <Dialog open={Boolean(edit)} onOpenChange={(open) => !open && setEdit(null)}>
         <DialogContent>
           <DialogHeader><DialogTitle>{edit?.worker_id ? "Editar colaborador" : "Novo colaborador"}</DialogTitle></DialogHeader>
           {edit ? (
             <div className="space-y-3 text-sm">
               <div className="grid grid-cols-2 gap-3"><label>Matrícula<Input value={edit.worker_id ? edit.code : "gerada ao salvar"} disabled readOnly /></label><label>Nome<Input value={edit.name} onChange={(event) => setEdit({ ...edit, name: event.target.value })} /></label>
-                <label>Turno<Input value={edit.shift} onChange={(event) => setEdit({ ...edit, shift: event.target.value })} /></label><label>Valor da hora (R$)<Input inputMode="decimal" value={edit.hourly_rate} onChange={(event) => setEdit({ ...edit, hourly_rate: event.target.value.replace(",", ".") })} /></label></div>
+                <label>Turno<Input value={edit.shift} onChange={(event) => setEdit({ ...edit, shift: event.target.value })} /></label></div>
               <div><p className="mb-1">Setores em que pode apontar</p><div className="flex flex-wrap gap-2">{sectors.map((sector) => <label key={sector} className="flex items-center gap-1 rounded border px-2 py-1"><input type="checkbox" checked={edit.sectors.includes(sector)} onChange={(event) => setEdit({ ...edit, sectors: event.target.checked ? [...edit.sectors, sector] : edit.sectors.filter((s: string) => s !== sector) })} />{sector}</label>)}</div></div>
               <div className="flex gap-4"><label className="flex items-center gap-1"><input type="checkbox" checked={edit.is_inspector} onChange={(event) => setEdit({ ...edit, is_inspector: event.target.checked })} />Inspetor</label><label className="flex items-center gap-1"><input type="checkbox" checked={edit.is_supervisor} onChange={(event) => setEdit({ ...edit, is_supervisor: event.target.checked })} />Supervisor (vê e aponta todas as etapas)</label>{edit.worker_id ? <label className="flex items-center gap-1"><input type="checkbox" checked={edit.active} onChange={(event) => setEdit({ ...edit, active: event.target.checked })} />Ativo</label> : null}</div>
               <label className="block">{edit.worker_id ? "Novo PIN (deixe vazio para manter)" : "PIN (4 a 8 números)"}<Input inputMode="numeric" value={edit.pin} onChange={(event) => setEdit({ ...edit, pin: event.target.value.replace(/\D/g, "").slice(0, 8) })} /></label>
               {failure ? <p className="rounded-md border border-destructive/40 bg-destructive/5 p-2 text-sm text-destructive" role="alert">{failure}</p> : null}
               <Button disabled={saving || !edit.name.trim() || (!edit.worker_id && edit.pin.length < 4)} onClick={async () => {
                 setSaving(true)
-                const body = { ...edit, code: edit.worker_id ? edit.code : nextCode(), hourly_rate: edit.hourly_rate || 0, pin: edit.pin || undefined }
+                const body = { ...edit, code: edit.worker_id ? edit.code : nextCode(), pin: edit.pin || undefined }
                 const saved = await onAct({ action: "worker_save", worker: body }, edit.worker_id ? "Colaborador salvo." : "Colaborador cadastrado: a matrícula foi gerada pelo sistema (veja na lista).")
                 setSaving(false)
                 if (saved) setEdit(null)
@@ -240,9 +240,9 @@ function Productivity({ data }: { data: Row }) {
         <table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-2">Etapa</th><th>Tarefas</th><th>Concluídas</th><th>Horas de mão de obra</th><th>Tempo médio decorrido</th><th>Previsto</th><th>Retrabalho</th></tr></thead>
           <tbody>{data.by_step.map((s: Row) => <tr key={s.step} className="border-b"><td className="p-2">{s.step}</td><td>{s.tasks}</td><td>{s.done}</td><td>{fmtH(s.labor_hours)}</td><td>{s.avg_elapsed_minutes != null ? `${Math.round(s.avg_elapsed_minutes)} min` : "-"}</td><td>{s.planned_minutes != null ? `${s.planned_minutes} min` : "-"}</td><td>{s.rework}</td></tr>)}</tbody></table>
       </SectionCard>
-      <SectionCard title="Por colaborador (sem dupla contagem; custo = horas × valor da hora cadastrado)">
-        <table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-2">Colaborador</th><th>Tarefas</th><th>Horas</th><th>Custo de mão de obra</th></tr></thead>
-          <tbody>{data.by_worker.map((w: Row) => <tr key={w.worker_id} className="border-b"><td className="p-2">{w.name}</td><td>{w.tasks}</td><td>{fmtH(w.hours)}</td><td>{brl(w.cost)}</td></tr>)}</tbody></table>
+      <SectionCard title="Por colaborador (horas sem dupla contagem)">
+        <table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-2">Colaborador</th><th>Tarefas</th><th>Horas</th></tr></thead>
+          <tbody>{data.by_worker.map((w: Row) => <tr key={w.worker_id} className="border-b"><td className="p-2">{w.name}</td><td>{w.tasks}</td><td>{fmtH(w.hours)}</td></tr>)}</tbody></table>
         <p className="mt-2 text-xs text-muted-foreground">Etapas terceirizadas e administrativas ficam fora da mão de obra de fabricação. Estes valores são gerenciais e não lançam nada no financeiro.</p>
       </SectionCard>
     </div>
