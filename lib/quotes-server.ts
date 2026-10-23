@@ -416,6 +416,7 @@ export async function convertQuoteToSalesOrder(admin: Admin, id: string, respons
   const { data, error } = await admin.rpc("sales_order_from_quote", { p_quote_id: id, p_user: responsible })
   if (error) fail(error.message)
   if (!data.duplicate) await winOpportunity(admin, quote, responsible)
+  if (quote!.client_id) await admin.from("clients").update({ status: "Ativo" }).eq("id", quote!.client_id).eq("status", "Prospect") // venda feita: o lead vira cliente
   return { ...(await getQuote(admin, id)), salesOrder: { id: data.sales_order_id as string, number: data.order_number as string, duplicate: Boolean(data.duplicate) } }
 }
 

@@ -205,14 +205,10 @@ async function logInteraction(admin: Admin, opportunityId: string, kind: string,
   await admin.from("opportunity_interactions").insert({ opportunity_id: opportunityId, kind, description, automatic, author, ...(at ? { interaction_at: at } : {}) })
 }
 
-/** Ganhar exige cadastro completo: um lead sem CPF/CNPJ é convertido em cliente ativo. */
+/** Venda feita: o lead vira cliente sozinho, sem exigir cadastro completo (o que faltar fica para completar depois). */
 async function convertLead(admin: Admin, clientId: string) {
-  const { data: row } = await admin.from("clients").select("*").eq("id", clientId).maybeSingle()
-  if (!row || row.status !== "Prospect") return
-  const party: Party = { ...fromClient(row), kind: "cliente", status: "Ativo" }
-  const invalid = validateParty(party)
-  if (invalid) fail(`Para ganhar a negociação, complete o cadastro do lead: ${invalid}`)
-  await admin.from("clients").update({ status: "Ativo" }).eq("id", clientId)
+  if (!clientId) return
+  await admin.from("clients").update({ status: "Ativo" }).eq("id", clientId).eq("status", "Prospect")
 }
 
 export async function saveOpportunity(admin: Admin, input: Record<string, any>, responsible: string, role?: string) {

@@ -1,6 +1,8 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { IdDocumentCapture } from "@/components/registry/id-capture"
+import { idDocumentNotes, type ParsedIdDocument } from "@/lib/id-document"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { AlertTriangle, BadgeDollarSign, Handshake, Plus, RefreshCw, Target, Users } from "lucide-react"
@@ -121,6 +123,26 @@ export function CommercialPage() {
     } finally {
       setSaving(false)
     }
+  }
+
+  const lastLookedUp = useRef("")
+  // consulta sozinha quando o CNPJ fica completo e válido (mesmo comportamento do cadastro de clientes)
+  useEffect(() => {
+    if (!partySheet || partySheet.personType !== "PJ") return
+    const document = cleanDocument(partySheet.document)
+    if (document.length !== 14 || document === lastLookedUp.current || !isValidDocument("PJ", partySheet.document)) return
+    lastLookedUp.current = document
+    void lookupCnpj()
+  }, [partySheet?.document, partySheet?.personType]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function fillFromId(parsed: ParsedIdDocument) {
+    const title = (value: string) => value.toLowerCase().replace(/(^|\s)([a-zà-ÿ])/g, (_, space, letter) => space + letter.toUpperCase()).replace(/(?<![a-zà-ÿ])(Da|De|Do|Das|Dos|E)(?![a-zà-ÿ])/g, (word) => word.toLowerCase())
+    setPartySheet((current) => current && {
+      ...current, personType: "PF", icmsIndicator: "9",
+      name: parsed.name ? title(parsed.name) : current.name,
+      document: parsed.cpf || current.document,
+      commercialNotes: String(current.commercialNotes || "").includes("Dados lidos do") ? current.commercialNotes : [String(current.commercialNotes || "").trim(), idDocumentNotes(parsed)].filter(Boolean).join("\n"),
+    })
   }
 
   /** Preenche razão social, endereço e contato a partir do CNPJ (consulta pública). */
@@ -358,6 +380,7 @@ export function CommercialPage() {
             <div className="grid gap-3 md:grid-cols-2">
               <Opts label="Tipo *" value={partySheet.kind} onChange={(value) => setPartySheet({ ...partySheet, kind: value || "cliente", status: value && value !== "cliente" && partySheet.status === "Prospect" ? "Ativo" : partySheet.status })} items={partyKinds.map((item) => ({ value: item.value, label: item.label }))} />
               <Opts label="Pessoa *" value={partySheet.personType} onChange={(value) => setPartySheet({ ...partySheet, personType: value || "PJ", icmsIndicator: value === "PF" ? "9" : partySheet.icmsIndicator })} items={[{ value: "PJ", label: "Jurídica" }, { value: "PF", label: "Física" }]} />
+              {partySheet.personType === "PF" ? <div className="md:col-span-2"><IdDocumentCapture onRead={fillFromId} /></div> : null}
               <TextField label={partySheet.personType === "PF" ? "Nome completo *" : "Razão social *"} value={partySheet.name} onChange={(value) => setPartySheet({ ...partySheet, name: value })} />
               <TextField label="Nome fantasia" value={partySheet.tradeName} onChange={(value) => setPartySheet({ ...partySheet, tradeName: value })} />
               <div>

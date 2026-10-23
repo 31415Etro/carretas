@@ -11,6 +11,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { DataTable, FormSheet, PageShell, SaveButton, SectionCard, SelectField, StatusBadge, useCrudFeedback } from "@/components/operations/shared"
 import { brStates, icmsIndicators } from "@/lib/commercial"
+import { IdDocumentCapture } from "@/components/registry/id-capture"
+import { idDocumentNotes, type ParsedIdDocument } from "@/lib/id-document"
 import { applyCompany, cleanDocument, companyToForm, fieldsFor, formatDocument, formatPhone, formatZip, isLookupReady, sectionTitles, supplyCategories, type Entity, type Field, type Section } from "@/lib/registry"
 
 type Item = Record<string, any>
@@ -21,6 +23,7 @@ type Lookup = { state: "idle" | "loading" | "ok" | "error"; message: string }
 
 const none = "nenhum"
 const sectionOrder: Section[] = ["ident", "cnpj", "contato", "endereco", "comercial", "bancario", "obs"]
+const titleCase = (value: string) => value.toLowerCase().replace(/(^|\s)([a-zà-ÿ])/g, (_, space, letter) => space + letter.toUpperCase()).replace(/\b(Da|De|Do|Das|Dos|E)\b/g, (word) => word.toLowerCase())
 const labels: Record<Entity, { singular: string; plural: string; other: string }> = {
   client: { singular: "cliente", plural: "Clientes", other: "fornecedor" },
   supplier: { singular: "fornecedor", plural: "Fornecedores", other: "cliente" },
@@ -94,9 +97,10 @@ function FieldInput({ entity, field, form, options, onChange }: { entity: Entity
   )
 }
 
-function RegistryTab({ entity, items, otherItems, options, loading, onReload }: { entity: Entity; items: Item[]; otherItems: Item[]; options: Options; loading: boolean; onReload: () => Promise<void> }) {
+function RegistryTab({ entity, items, otherItems, options, loading, onReload, mode }: { entity: Entity; items: Item[]; otherItems: Item[]; options: Options; loading: boolean; onReload: () => Promise<void>; mode?: "lead" }) {
   const { toast } = useCrudFeedback()
-  const text = labels[entity]
+  const lead = mode === "lead"
+  const text = lead ? { singular: "lead", plural: "Leads", other: "fornecedor" } : labels[entity]
   const endpoint = entity === "client" ? "/api/cadastros/clientes" : "/api/cadastros/fornecedores"
   const [query, setQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("todos")
@@ -111,7 +115,7 @@ function RegistryTab({ entity, items, otherItems, options, loading, onReload }: 
   const lastDocument = useRef("")
   const formRef = useRef<Item | null>(null)
   formRef.current = form
-  const fields = useMemo(() => fieldsFor(entity), [entity])
+  const fields = useMemo(() => fieldsFor(entity).filter((field) => !(lead && field.key === "status")), [entity, lead])
 
   const shown = items.filter((row) => {
     const haystack = [row.name, row.tradeName, row.document, row.phone, row.city, row.code, row.contactName].join(" ").toLowerCase()
@@ -127,7 +131,7 @@ function RegistryTab({ entity, items, otherItems, options, loading, onReload }: 
     setExisting({ client: null, supplier: null })
     setLinkFromId("")
     setPending(null)
-    setForm(row ? { ...emptyForm(entity), ...row } : emptyForm(entity))
+    setForm(row ? { ...emptyForm(entity), ...row } : { ...emptyForm(entity), ...(lead ? { status: "Prospect", icmsIndicator: "9" } : {}) })
   }
 
   function change(key: string, value: string) {
@@ -169,6 +173,20 @@ function RegistryTab({ entity, items, otherItems, options, loading, onReload }: 
     void api<{ client: Found; supplier: Found }>(`/api/cadastros/verificar?document=${cleanDocument(form.document)}`).then(setExisting).catch(() => undefined)
   }, [form?.document, form?.personType]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  function fillFromId(parsed: ParsedIdDocument) {
+    setForm((current) => {
+      if (!current) return current
+      const note = idDocumentNotes(parsed)
+      for (const key of ["name", "document", "notes"]) touched.current.add(key)
+      return {
+        ...current, personType: "PF",
+        name: parsed.name ? titleCase(parsed.name) : current.name,
+        document: parsed.cpf || current.document,
+        notes: String(current.notes || "").includes("Dados lidos do") ? current.notes : [String(current.notes || "").trim(), note].filter(Boolean).join("\n"),
+      }
+    })
+  }
+
   const own = entity === "client" ? existing.client : existing.supplier
   const other = entity === "client" ? existing.supplier : existing.client
   const duplicate = Boolean(form && own && own.id !== form.id)
@@ -202,6 +220,16 @@ function RegistryTab({ entity, items, otherItems, options, loading, onReload }: 
     }
   }
 
+  async function promote(row: Item) {
+    try {
+      await api(endpoint, { method: "POST", body: JSON.stringify({ statusOnly: { id: row.id, status: "Ativo" } }) })
+      toast({ title: "Lead virou cliente" })
+      await onReload()
+    } catch (reason) {
+      toast({ title: "Não foi possível converter", description: reason instanceof Error ? reason.message : "", variant: "destructive" })
+    }
+  }
+
   async function toggle(row: Item) {
     try {
       await api(endpoint, { method: "POST", body: JSON.stringify({ statusOnly: { id: row.id, status: row.status === "Inativo" ? "Ativo" : "Inativo" } }) })
@@ -215,11 +243,11 @@ function RegistryTab({ entity, items, otherItems, options, loading, onReload }: 
   const lastQuery = form?.cnpjConsultedAt ? `${stamp(form.cnpjConsultedAt)} · ${form.cnpjSource || "consulta"}` : ""
 
   return (
-    <SectionCard title={`Cadastro de ${text.plural.toLowerCase()}`} description="Busque, cadastre e acompanhe registros.">
+    <SectionCard title={`Cadastro de ${text.plural.toLowerCase()}`} description={lead ? "Contatos que ainda não compraram. Quando uma venda é feita, o lead vira cliente sozinho." : "Busque, cadastre e acompanhe registros."}>
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <div className="relative max-w-sm flex-1"><Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Nome, CPF/CNPJ, telefone, cidade ou código" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
-        <div className="min-w-[180px]"><SelectField label="Status" value={statusFilter} onChange={setStatusFilter} options={[{ value: "todos", label: "Todos" }, { value: "Ativo", label: "Ativos" }, { value: "Inativo", label: "Inativos" }, ...(entity === "client" ? [{ value: "Prospect", label: "Leads" }] : [])]} /></div>
-        <Button onClick={() => openForm()}><Plus className="h-4 w-4" />Novo</Button>
+        {lead ? null : <div className="min-w-[180px]"><SelectField label="Status" value={statusFilter} onChange={setStatusFilter} options={[{ value: "todos", label: "Todos" }, { value: "Ativo", label: "Ativos" }, { value: "Inativo", label: "Inativos" }, ...(entity === "client" ? [{ value: "Prospect", label: "Leads" }] : [])]} /></div>}
+        <Button onClick={() => openForm()}><Plus className="h-4 w-4" />{lead ? "Novo lead" : "Novo"}</Button>
         <Button variant="outline" onClick={() => void onReload()} disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />Atualizar</Button>
       </div>
       <DataTable headers={["Código", "Nome / Razão social", "CPF/CNPJ", "Telefone", "Cidade/UF", "Status", "Ações"]} empty={!shown.length}>
@@ -234,6 +262,7 @@ function RegistryTab({ entity, items, otherItems, options, loading, onReload }: 
             <TableCell><div className="flex flex-wrap gap-2">
               <Button size="sm" variant="outline" onClick={() => setViewing(row)}><Eye className="h-4 w-4" />Ver</Button>
               <Button size="sm" variant="outline" onClick={() => openForm(row)}>Editar</Button>
+              {lead ? <Button size="sm" variant="outline" onClick={() => void promote(row)}>Virar cliente</Button> : null}
               <Button size="sm" variant="outline" onClick={() => void toggle(row)}>{row.status === "Inativo" ? "Reativar" : "Inativar"}</Button>
             </div></TableCell>
           </TableRow>
@@ -257,6 +286,7 @@ function RegistryTab({ entity, items, otherItems, options, loading, onReload }: 
             return (
               <div key={section} className="space-y-3">
                 <h3 className="text-sm font-semibold">{sectionTitles[section]}</h3>
+                {section === "ident" && form.personType === "PF" ? <IdDocumentCapture onRead={fillFromId} /> : null}
                 {section === "ident" ? <div className="flex flex-wrap items-center gap-2">
                   <Button size="sm" variant="outline" disabled={!isLookupReady(form.personType, form.document) || lookup.state === "loading"} onClick={() => { lastDocument.current = cleanDocument(form.document); void runLookup(form.document) }}><RefreshCw className="h-4 w-4" />Consultar CNPJ novamente</Button>
                   {lastQuery ? <span className="text-xs text-muted-foreground">Última consulta: {lastQuery}</span> : null}
@@ -320,13 +350,17 @@ export function RegistryPage() {
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { void load() }, [load])
+  // lead (Prospect) ainda não comprou: não é cliente. Vira cliente sozinho na primeira venda.
+  const leads = useMemo(() => clients.filter((row) => row.status === "Prospect"), [clients])
+  const realClients = useMemo(() => clients.filter((row) => row.status !== "Prospect"), [clients])
 
   return (
-    <PageShell title="Clientes & Fornecedores" description="Cadastro único de empresas e pessoas, com preenchimento automático pelo CNPJ. O mesmo CNPJ pode ser cliente e fornecedor sem duplicar o cadastro.">
+    <PageShell title="Clientes & Fornecedores" description="Leads (quem ainda não comprou), clientes e fornecedores, com preenchimento automático pelo CNPJ e, para pessoa física, pela foto do RG ou da CNH. O mesmo CNPJ pode ser cliente e fornecedor sem duplicar o cadastro.">
       {error ? <p className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{error}</p> : null}
       <Tabs defaultValue="clientes">
-        <TabsList><TabsTrigger value="clientes">Clientes ({clients.length})</TabsTrigger><TabsTrigger value="fornecedores">Fornecedores ({suppliers.length})</TabsTrigger></TabsList>
-        <TabsContent value="clientes"><RegistryTab entity="client" items={clients} otherItems={suppliers} options={options} loading={loading} onReload={load} /></TabsContent>
+        <TabsList><TabsTrigger value="leads">Leads ({leads.length})</TabsTrigger><TabsTrigger value="clientes">Clientes ({realClients.length})</TabsTrigger><TabsTrigger value="fornecedores">Fornecedores ({suppliers.length})</TabsTrigger></TabsList>
+        <TabsContent value="leads"><RegistryTab entity="client" mode="lead" items={leads} otherItems={suppliers} options={options} loading={loading} onReload={load} /></TabsContent>
+        <TabsContent value="clientes"><RegistryTab entity="client" items={realClients} otherItems={suppliers} options={options} loading={loading} onReload={load} /></TabsContent>
         <TabsContent value="fornecedores"><RegistryTab entity="supplier" items={suppliers} otherItems={clients} options={options} loading={loading} onReload={load} /></TabsContent>
       </Tabs>
     </PageShell>
