@@ -31,6 +31,8 @@ const groups: NavGroup[] = [
     { label: "Produtos finais", href: "/produtos", permission: "produtos_servicos", icon: PackageCheck },
     { label: "Serviços", href: "/servicos", permission: "produtos_servicos", icon: Wrench },
     { label: "Produção e MRP", href: "/producao", permission: "estoque", icon: Cog },
+    { label: "Esteira da fábrica", href: "/producao/esteira", permission: "estoque", icon: Activity },
+    { label: "Tablet da fábrica", href: "/producao/tablet", permission: "chao_fabrica", icon: ClipboardList },
     { label: "Ordens de Serviço", href: "/ordens-servico", permission: "ordens_servico", icon: ClipboardList },
     { label: "Frota", href: "/frota", permission: "frota", icon: Car },
     { label: "Máquinas e Equipamentos", href: "/maquinas", permission: "maquinas", icon: Factory },

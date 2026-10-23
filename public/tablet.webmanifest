@@ -1,0 +1,16 @@
+{
+  "name": "ND Carretas · Chão de fábrica",
+  "short_name": "Chão de fábrica",
+  "description": "Tarefas, materiais e desenhos para os colaboradores da fábrica",
+  "start_url": "/producao/tablet",
+  "scope": "/producao/tablet",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#020617",
+  "theme_color": "#020617",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "/apple-icon.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

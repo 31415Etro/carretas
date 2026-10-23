@@ -12,6 +12,7 @@ export type PagePermission =
   | "maquinas"
   | "maquinas_manutencao"
   | "maquinas_patrimonio"
+  | "chao_fabrica"
   | "clientes"
   | "comercial"
   | "orcamento"
@@ -30,6 +31,7 @@ export const systemPagePermissions: PagePermission[] = [
   "maquinas",
   "maquinas_manutencao",
   "maquinas_patrimonio",
+  "chao_fabrica",
   "clientes",
   "comercial",
   "orcamento",
@@ -49,6 +51,7 @@ export const pagePermissionLabels: Record<PagePermission, string> = {
   maquinas: "Máquinas e Equipamentos",
   maquinas_manutencao: "Máquinas: manutentor (status, manutenção, horímetro)",
   maquinas_patrimonio: "Máquinas: dados patrimoniais e financeiros",
+  chao_fabrica: "Chão de fábrica (tablet dos colaboradores)",
   clientes: "Clientes e Fornecedores",
   comercial: "Comercial",
   orcamento: "Orçamentos",

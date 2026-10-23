@@ -4,6 +4,7 @@ import { demoApiPayload, demoSession, isDemoMode } from "@/lib/demo-mode"
 import { clientIp, logAuditEdge, originFor, sessionIdFromToken, withAuditHeaders } from "@/lib/audit-edge"
 
 const publicPaths = [
+  "/tablet.webmanifest",
   "/login",
   "/api/auth/login",
   "/api/auth/logout",
@@ -40,6 +41,7 @@ const pagePermissions = [
   { prefix: "/orcamento", permission: "orcamento" },
   { prefix: "/vendas", permission: "orcamento" },
   { prefix: "/documentacao", permission: "orcamento" },
+  { prefix: "/producao/tablet", permission: "chao_fabrica" },
   { prefix: "/producao", permission: "estoque" },
   { prefix: "/contratos", permission: "contratos" },
   { prefix: "/relatorios", permission: "relatorios" },
