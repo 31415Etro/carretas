@@ -24,6 +24,14 @@ export async function GET() {
       context.admin.from("opportunities").select("id,code,title,client_id,salesperson_id,interest,estimated_value,stage").not("stage", "in", "(Ganho,Perdido)").order("created_at", { ascending: false }).limit(300),
       companyBranding(context.admin, company.id),
     ])
+    // produtos escolhidos na oportunidade (sem a tabela do script 233, segue sem itens)
+    const opportunityItems = new Map<string, Array<{ productId: string; description: string; unit: string; quantity: number; unitPrice: number }>>()
+    const oppIds = (opportunities.data || []).map((row) => row.id as string)
+    for (let at = 0; at < oppIds.length; at += 100) {
+      const found = await context.admin.from("opportunity_items").select("opportunity_id,product_id,description,unit,quantity,unit_price,position").in("opportunity_id", oppIds.slice(at, at + 100)).order("position")
+      if (found.error) break
+      for (const row of found.data || []) opportunityItems.set(row.opportunity_id, [...(opportunityItems.get(row.opportunity_id) || []), { productId: row.product_id || "", description: row.description, unit: row.unit || "UN", quantity: Number(row.quantity), unitPrice: Number(row.unit_price) }])
+    }
     // catálogo de venda: produtos finais e itens liberados para venda; kits e matéria-prima de consumo não entram no orçamento
     const sellable = materials.filter((row) => row.available_for_quote !== false && (row.item_type === "Produto" || (row.item_type !== "Kit" && row.item_type !== "Materia-prima") || (row.item_type === "Materia-prima" && row.allows_sale === true)))
     const snapshots = new Map<string, any>()
@@ -43,7 +51,7 @@ export async function GET() {
       products: sellable.map((row) => { const snap = snapshots.get(row.id); return ({ id: row.id, name: row.name, code: row.internal_code || "", unit: row.unit || "UN", price: Number(row.sale_price || 0), cost: snap?.bom_version_id ? Number(snap.est_cost || 0) : Number(row.average_cost || row.cost_price || 0), bomVersion: snap?.bom_version ?? null, hasEngineering: withEngineering.has(row.id), photoUrl: row.photo_url || null, leadTimeDays: snap?.lead_time_days ?? (row.lead_time_days ? Number(row.lead_time_days) : null), marginPercent: snap?.bom_version_id ? snap.margin_percent : null, stock: Number(row.current_stock || 0), reserved: Number(row.reserved_stock || 0), controlsStock: row.controls_stock !== false }) }),
       services: (services.data || []).map((row) => ({ id: row.id, name: row.name, code: row.code || "", unit: row.billing_unit || "Servico", price: Number(row.default_price || 0), cost: Number(row.estimated_cost || 0), warrantyDays: Number(row.warranty_days || 0) })),
       warehouses: (warehouses.data || []).map((row) => ({ id: row.id, name: row.name, isDefault: Boolean(row.is_default) })),
-      opportunities: (opportunities.data || []).map((row) => ({ id: row.id, code: row.code, title: row.title, clientId: row.client_id, salespersonId: row.salesperson_id, interest: row.interest, estimatedValue: Number(row.estimated_value || 0), stage: row.stage })),
+      opportunities: (opportunities.data || []).map((row) => ({ id: row.id, code: row.code, title: row.title, clientId: row.client_id, salespersonId: row.salesperson_id, interest: row.interest, estimatedValue: Number(row.estimated_value || 0), stage: row.stage, items: opportunityItems.get(row.id as string) || [] })),
       company: { id: branding.id, name: branding.name, legalName: branding.legalName, cnpj: branding.cnpj, email: branding.email, phone: branding.phone, address: branding.address, hasLogo: branding.hasLogo },
       templates: templates.filter((item) => item.active),
       priceTables: priceTables.filter((item) => item.active),

@@ -167,13 +167,28 @@ export async function saveSalesperson(admin: Admin, input: Record<string, any>) 
 
 // ---------------- Oportunidades
 
-const toOpportunity = (row: any, clients: Map<string, any>, salespeople: Map<string, string>) => ({
+export type OpportunityItem = { id: string; productId: string; description: string; unit: string; quantity: number; unitPrice: number; total: number }
+const toItem = (row: any): OpportunityItem => ({ id: row.id, productId: row.product_id || "", description: row.description, unit: row.unit || "UN", quantity: Number(row.quantity || 0), unitPrice: Number(row.unit_price || 0), total: Math.round(Number(row.quantity || 0) * Number(row.unit_price || 0) * 100) / 100 })
+
+const toOpportunity = (row: any, clients: Map<string, any>, salespeople: Map<string, string>, items: OpportunityItem[] = []) => ({
   id: row.id, code: row.code, title: row.title, clientId: row.client_id, clientName: clients.get(row.client_id)?.name || "-", clientStatus: clients.get(row.client_id)?.status || "",
   salespersonId: row.salesperson_id, salespersonName: salespeople.get(row.salesperson_id) || "-", origin: row.origin || "", interest: row.interest, materialId: row.material_id || "",
   estimatedValue: Number(row.estimated_value || 0), stage: row.stage as FunnelStage, probability: Number(row.probability || 0), expectedCloseDate: row.expected_close_date || "",
   nextContactDate: row.next_contact_date || "", lossReason: row.loss_reason || "", quoteId: row.quote_id || "", quoteNumber: row.quote_number || "", closedAt: row.closed_at || "",
-  createdAt: row.created_at, updatedAt: row.updated_at,
+  createdAt: row.created_at, updatedAt: row.updated_at, items,
 })
+
+/** Produtos de cada oportunidade. Sem a tabela (script 233 ainda não rodado) segue sem itens. */
+async function loadItems(admin: Admin, ids: string[]) {
+  const map = new Map<string, OpportunityItem[]>()
+  if (!ids.length) return map
+  for (let at = 0; at < ids.length; at += 100) {
+    const { data, error } = await admin.from("opportunity_items").select("*").in("opportunity_id", ids.slice(at, at + 100)).order("position").order("created_at")
+    if (error) return map
+    for (const row of data || []) map.set(row.opportunity_id, [...(map.get(row.opportunity_id) || []), toItem(row)])
+  }
+  return map
+}
 
 async function lookups(admin: Admin) {
   const [clients, people] = await Promise.all([
@@ -188,7 +203,8 @@ export async function listOpportunities(admin: Admin) {
     readAllPages<any>((from, to) => admin.from("opportunities").select("*").order("created_at", { ascending: false }).order("id").range(from, to)),
     lookups(admin),
   ])
-  return rows.map((row) => toOpportunity(row, lookup.clients, lookup.salespeople))
+  const items = await loadItems(admin, rows.map((row) => row.id as string))
+  return rows.map((row) => toOpportunity(row, lookup.clients, lookup.salespeople, items.get(row.id as string) || []))
 }
 
 export async function listInteractions(admin: Admin, opportunityId: string) {
@@ -218,6 +234,17 @@ export async function saveOpportunity(admin: Admin, input: Record<string, any>, 
     nextContactDate: text(input.nextContactDate), lossReason: text(input.lossReason),
   }
   if (Number.isNaN(data.probability)) data.probability = stageProbability[data.stage as FunnelStage] ?? 10
+  // produtos escolhidos do catálogo: o valor estimado é a soma (quantidade x preço) e o interesse vem dos nomes
+  const items = (Array.isArray(input.items) ? input.items : []).map((item: any, index: number) => ({
+    productId: text(item.productId), description: text(item.description), unit: text(item.unit) || "UN", quantity: Number(item.quantity), unitPrice: Number(item.unitPrice), position: index,
+  }))
+  if (items.some((item) => !item.description)) fail("Todos os produtos precisam de descrição.")
+  if (items.some((item) => !(item.quantity > 0))) fail("A quantidade de cada produto deve ser maior que zero.")
+  if (items.some((item) => !(item.unitPrice >= 0))) fail("O preço de cada produto não pode ser negativo.")
+  if (items.length) {
+    data.estimatedValue = Math.round(items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0) * 100) / 100
+    data.interest = items.map((item) => (item.quantity !== 1 ? `${item.quantity}x ${item.description}` : item.description)).join("; ").slice(0, 300)
+  }
   const invalid = validateOpportunity(data)
   if (invalid) fail(invalid)
   let previous: any = null
@@ -251,18 +278,28 @@ export async function saveOpportunity(admin: Admin, input: Record<string, any>, 
   const closing = data.stage === "Ganho" || data.stage === "Perdido"
   const row = {
     ...(input.id ? { id: input.id } : { created_by: responsible }),
-    title: data.title, client_id: data.clientId, salesperson_id: data.salespersonId, origin: text(input.origin) || null, interest: data.interest, material_id: input.materialId || null,
+    title: data.title, client_id: data.clientId, salesperson_id: data.salespersonId, origin: text(input.origin) || null, interest: data.interest, material_id: items[0]?.productId || input.materialId || null,
     estimated_value: data.estimatedValue, stage: data.stage, probability: closing ? stageProbability[data.stage as FunnelStage] : Math.round(data.probability),
     expected_close_date: data.expectedCloseDate || null, next_contact_date: closing ? null : data.nextContactDate || null, loss_reason: data.stage === "Perdido" ? data.lossReason : null,
     quote_id: input.quoteId || null, quote_number: text(input.quoteNumber) || null, closed_at: closing ? previous?.closed_at || new Date().toISOString() : null,
   }
   const { data: saved, error } = await admin.from("opportunities").upsert(row, { onConflict: "id" }).select("*").single()
   if (error) throw error
+  if (Array.isArray(input.items)) {
+    // troca a lista de produtos da oportunidade pela enviada
+    const removed = await admin.from("opportunity_items").delete().eq("opportunity_id", saved.id)
+    if (removed.error) fail(isMissing(removed.error.message) ? "Os produtos da oportunidade ainda não estão liberados no banco: rode scripts/233_oportunidade_produtos.sql no Supabase." : removed.error.message)
+    if (items.length) {
+      const inserted = await admin.from("opportunity_items").insert(items.map((item) => ({ opportunity_id: saved.id, product_id: item.productId || null, description: item.description, unit: item.unit, quantity: item.quantity, unit_price: item.unitPrice, position: item.position })))
+      if (inserted.error) throw inserted.error
+    }
+  }
   if (!previous) await logInteraction(admin, saved.id, "Etapa", `Oportunidade criada na etapa ${saved.stage}.`, responsible)
   else if (previous.stage !== saved.stage) await logInteraction(admin, saved.id, "Etapa", `Etapa alterada de ${previous.stage} para ${saved.stage}.${saved.stage === "Perdido" ? ` Motivo: ${data.lossReason}.` : ""}${previous.stage === "Perdido" ? ` Reaberta: ${text(input.reopenReason)}.` : ""}`, responsible)
   if (previous && !previous.quote_number && saved.quote_number) await logInteraction(admin, saved.id, "Orçamento", `Orçamento ${saved.quote_number} associado.`, responsible)
   const lookup = await lookups(admin)
-  return { ...toOpportunity(saved, lookup.clients, lookup.salespeople), salesOrder }
+  const savedItems = (await loadItems(admin, [saved.id as string])).get(saved.id as string) || []
+  return { ...toOpportunity(saved, lookup.clients, lookup.salespeople, savedItems), salesOrder }
 }
 
 export async function addInteraction(admin: Admin, opportunityId: string, input: Record<string, any>, responsible: string) {

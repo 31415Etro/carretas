@@ -16,8 +16,10 @@ import { brStates, cleanDocument, contactOverdue, conversionRate, formatDocument
 type Row = Record<string, any>
 type PartyRow = Party & { id: string; partyId: string; clientId: string; supplierId: string; pendencies: string[] }
 type Opportunity = Row & { id: string; stage: string; estimatedValue: number; probability: number }
-type Options = { paymentConditions: Array<{ id: string; name: string }>; products: Array<{ id: string; name: string; code: string }> }
+type Options = { paymentConditions: Array<{ id: string; name: string }>; products: Array<{ id: string; name: string; code: string; unit?: string; price?: number }> }
 
+const numeric = (value: unknown) => { const n = Number(String(value ?? "").replace(",", ".")); return Number.isFinite(n) ? n : 0 }
+const oppItemsTotal = (items: Row[]) => Math.round(items.reduce((sum, line) => sum + numeric(line.quantity) * numeric(line.unitPrice), 0) * 100) / 100
 const brl = (value: number) => Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
 const day = (value?: string) => (value ? String(value).slice(0, 10).split("-").reverse().join("/") : "-")
 const stamp = (value?: string) => (value ? new Date(value).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "-")
@@ -36,7 +38,7 @@ const emptyParty = (): Row => ({
   phone: "", email: "", zipCode: "", street: "", number: "", complement: "", district: "", city: "", state: "", contactName: "", contactRole: "", salespersonId: "", creditLimit: "",
   paymentConditionId: "", commercialNotes: "", status: "Ativo",
 })
-const emptyOpportunity = (): Row => ({ id: "", title: "", clientId: "", salespersonId: "", origin: "", interest: "", materialId: "", estimatedValue: "", stage: "Novo lead", probability: "10", expectedCloseDate: "", nextContactDate: "", lossReason: "", quoteNumber: "", reopenReason: "" })
+const emptyOpportunity = (): Row => ({ id: "", title: "", clientId: "", salespersonId: "", origin: "", interest: "", materialId: "", items: [], estimatedValue: "", stage: "Novo lead", probability: "10", expectedCloseDate: "", nextContactDate: "", lossReason: "", quoteNumber: "", reopenReason: "" })
 const emptySalesperson = (): Row => ({ id: "", name: "", email: "", phone: "", status: "Ativo", notes: "" })
 
 function Opts({ label, value, onChange, items, placeholder = "Selecione" }: { label: string; value: string; onChange: (value: string) => void; items: Array<{ value: string; label: string }>; placeholder?: string }) {
@@ -174,7 +176,7 @@ export function CommercialPage() {
 
   // ---------- oportunidades
   async function openOpportunity(item: Row) {
-    setOppSheet(item)
+    setOppSheet({ ...item, items: (Array.isArray(item.items) ? item.items : []).map((line: Row) => ({ ...line, quantity: String(line.quantity ?? "1"), unitPrice: String(line.unitPrice ?? "0") })) })
     setOppOriginalStage(item.id ? item.stage : "")
     setOppDetail({ interactions: [], orders: [] })
     setInteraction({ kind: "Ligação", description: "", nextContactDate: "" })
@@ -187,7 +189,7 @@ export function CommercialPage() {
     const item = { ...oppSheet, ...patch }
     setSaving(true)
     try {
-      const { opportunity } = await api<{ opportunity: Opportunity & { salesOrder?: { id: string; number: string } | null } }>("/api/comercial/opportunities", { method: "POST", body: JSON.stringify({ opportunity: { ...item, estimatedValue: Number(item.estimatedValue) || 0 } }) })
+      const { opportunity } = await api<{ opportunity: Opportunity & { salesOrder?: { id: string; number: string } | null } }>("/api/comercial/opportunities", { method: "POST", body: JSON.stringify({ opportunity: { ...item, estimatedValue: Array.isArray(item.items) && item.items.length ? oppItemsTotal(item.items) : Number(item.estimatedValue) || 0, items: (Array.isArray(item.items) ? item.items : []).map((line: Row) => ({ productId: line.productId, description: line.description, unit: line.unit, quantity: Number(String(line.quantity).replace(",", ".")), unitPrice: Number(String(line.unitPrice).replace(",", ".")) })) } }) })
       toast(opportunity.salesOrder ? { title: "Negociação ganha: pedido de venda gerado", description: `Pedido ${opportunity.salesOrder.number}. Abra em Pedidos de venda para confirmar e liberar a produção.` } : { title: "Oportunidade salva" })
       await load()
       if (closeAfter) setOppSheet(null)
@@ -443,9 +445,42 @@ export function CommercialPage() {
               </div>
               <Opts label="Vendedor responsável *" value={oppSheet.salespersonId} onChange={(value) => setOppSheet({ ...oppSheet, salespersonId: value })} items={salesItems} />
               <Opts label="Origem" value={oppSheet.origin} onChange={(value) => setOppSheet({ ...oppSheet, origin: value })} items={leadOrigins.map((value) => ({ value, label: value }))} />
-              <SearchableSelectField label="Produto do catálogo (opcional)" value={oppSheet.materialId || none} onChange={(value) => setOppSheet({ ...oppSheet, materialId: value === none ? "" : value, interest: value !== none && !oppSheet.interest ? options.products.find((item) => item.id === value)?.name || "" : oppSheet.interest })} options={[{ value: none, label: "Nenhum" }, ...options.products.map((item) => ({ value: item.id, label: `${item.code ? `${item.code} · ` : ""}${item.name}` }))]} />
-              <TextField label="Produto / serviço de interesse *" value={oppSheet.interest} onChange={(value) => setOppSheet({ ...oppSheet, interest: value })} />
-              <TextField label="Valor estimado" type="number" value={oppSheet.estimatedValue} onChange={(value) => setOppSheet({ ...oppSheet, estimatedValue: value })} />
+              <div className="space-y-2 md:col-span-2">
+                <SearchableSelectField label="Produtos da negociação (do cadastro de produtos)" value={none} onChange={(value) => {
+                  if (value === none) return
+                  const product = options.products.find((item) => item.id === value)
+                  if (!product) return
+                  const current: Row[] = Array.isArray(oppSheet.items) ? oppSheet.items : []
+                  const existing = current.find((line) => line.productId === product.id)
+                  const items = existing
+                    ? current.map((line) => (line === existing ? { ...line, quantity: String(numeric(line.quantity) + 1) } : line))
+                    : [...current, { productId: product.id, description: product.name, unit: product.unit || "UN", quantity: "1", unitPrice: String(product.price ?? 0) }]
+                  setOppSheet({ ...oppSheet, items, estimatedValue: String(oppItemsTotal(items)) })
+                }} options={[{ value: none, label: "Pesquise e escolha um produto para adicionar" }, ...options.products.map((item) => ({ value: item.id, label: `${item.code ? `${item.code} · ` : ""}${item.name}${item.price ? ` — ${brl(item.price)}` : ""}` }))]} />
+                {Array.isArray(oppSheet.items) && oppSheet.items.length ? (
+                  <div className="overflow-x-auto rounded-md border">
+                    <table className="w-full min-w-[480px] text-sm">
+                      <thead className="bg-muted/50 text-left text-[11px] uppercase tracking-wide text-muted-foreground"><tr><th className="px-3 py-2">Produto</th><th className="w-24 px-2 py-2">Qtd.</th><th className="w-32 px-2 py-2">Preço unit.</th><th className="px-2 py-2 text-right">Subtotal</th><th className="w-9" /></tr></thead>
+                      <tbody>
+                        {oppSheet.items.map((line: Row, index: number) => (
+                          <tr key={`${line.productId}-${index}`} className="border-t align-top">
+                            <td className="px-3 py-2">{line.description}<div className="text-xs text-muted-foreground">{line.unit || "UN"}</div></td>
+                            <td className="px-2 py-2"><input inputMode="decimal" className="h-9 w-full rounded-md border bg-background px-2" value={line.quantity} aria-label={`Quantidade de ${line.description}`} onChange={(event) => { const items = oppSheet.items.map((row: Row, at: number) => (at === index ? { ...row, quantity: event.target.value } : row)); setOppSheet({ ...oppSheet, items, estimatedValue: String(oppItemsTotal(items)) }) }} /></td>
+                            <td className="px-2 py-2"><input inputMode="decimal" className="h-9 w-full rounded-md border bg-background px-2" value={line.unitPrice} aria-label={`Preço de ${line.description}`} onChange={(event) => { const items = oppSheet.items.map((row: Row, at: number) => (at === index ? { ...row, unitPrice: event.target.value } : row)); setOppSheet({ ...oppSheet, items, estimatedValue: String(oppItemsTotal(items)) }) }} /></td>
+                            <td className="whitespace-nowrap px-2 py-2 text-right">{brl(numeric(line.quantity) * numeric(line.unitPrice))}</td>
+                            <td className="px-1 py-2"><button type="button" title="Remover" aria-label={`Remover ${line.description}`} className="rounded px-1.5 py-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" onClick={() => { const items = oppSheet.items.filter((_: Row, at: number) => at !== index); setOppSheet({ ...oppSheet, items, estimatedValue: items.length ? String(oppItemsTotal(items)) : "" }) }}>✕</button></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot><tr className="border-t bg-muted/30"><td className="px-3 py-2 font-medium" colSpan={3}>Valor estimado (soma dos produtos)</td><td className="px-2 py-2 text-right text-base font-semibold">{brl(oppItemsTotal(oppSheet.items))}</td><td /></tr></tfoot>
+                    </table>
+                  </div>
+                ) : <p className="rounded-md border border-dashed p-3 text-center text-sm text-muted-foreground">Escolha acima os produtos desta negociação. O preço vem do cadastro do produto e o valor estimado é a soma de tudo.</p>}
+              </div>
+              {Array.isArray(oppSheet.items) && oppSheet.items.length ? null : <>
+                <TextField label="Produto / serviço de interesse *" value={oppSheet.interest} onChange={(value) => setOppSheet({ ...oppSheet, interest: value })} />
+                <TextField label="Valor estimado" type="number" value={oppSheet.estimatedValue} onChange={(value) => setOppSheet({ ...oppSheet, estimatedValue: value })} />
+              </>}
               <Opts label="Etapa do funil *" value={oppSheet.stage} onChange={(value) => setOppSheet({ ...oppSheet, stage: value || "Novo lead", probability: String(stageProbability[(value || "Novo lead") as keyof typeof stageProbability]) })} items={funnelStages.map((value) => ({ value, label: value }))} />
               <TextField label="Probabilidade de fechamento (%)" type="number" value={oppSheet.probability} onChange={(value) => setOppSheet({ ...oppSheet, probability: value })} />
               <TextField label="Previsão de fechamento" type="date" value={oppSheet.expectedCloseDate} onChange={(value) => setOppSheet({ ...oppSheet, expectedCloseDate: value })} />

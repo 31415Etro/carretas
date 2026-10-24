@@ -25,7 +25,7 @@ type Options = {
   products: Array<{ id: string; name: string; code: string; unit: string; price: number; cost: number; stock: number; reserved: number; controlsStock: boolean; bomVersion?: number | null; leadTimeDays?: number | null; marginPercent?: number | null; hasEngineering?: boolean; photoUrl?: string | null }>
   services: Array<{ id: string; name: string; code: string; unit: string; price: number; cost: number; warrantyDays: number }>
   warehouses: Array<{ id: string; name: string; isDefault: boolean }>
-  opportunities: Array<{ id: string; code: string; title: string; clientId: string; salespersonId: string; interest: string; estimatedValue: number; stage: string }>
+  opportunities: Array<{ id: string; code: string; title: string; clientId: string; salespersonId: string; interest: string; estimatedValue: number; stage: string; items?: Array<{ productId: string; description: string; unit: string; quantity: number; unitPrice: number }> }>
   company: { id: string; name: string; legalName: string; cnpj: string; email: string; phone: string; address: string; hasLogo: boolean }
   templates: Array<{ id: string; name: string; quoteType: string; validityDays: number; paymentConditionId: string; deliveryText: string; warrantyDays: number; notes: string }>
   priceTables: Array<{ id: string; name: string; clientId: string; validFrom: string; validUntil: string; active: boolean; items: Array<{ materialId: string; serviceTypeId: string; price: number }> }>
@@ -112,6 +112,16 @@ export function QuotesPage() {
     const opportunity = options.opportunities.find((item) => item.id === opportunityId)
     window.history.replaceState(null, "", "/orcamento")
     startNew({ opportunityId, clientId: opportunity?.clientId || params.get("clientId") || "", salespersonId: opportunity?.salespersonId || "", title: opportunity ? `${opportunity.code} · ${opportunity.title}` : "", notes: opportunity ? `Interesse: ${opportunity.interest}` : "" })
+    // os produtos escolhidos na oportunidade já entram na proposta, com a quantidade e o preço combinados
+    const clientId = opportunity?.clientId || params.get("clientId") || ""
+    const fromOpportunity: Line[] = (opportunity?.items || []).flatMap((item) => {
+      const product = options.products.find((row) => row.id === item.productId)
+      if (!product) return []
+      const table = resolveTablePrice(options.priceTables, clientId, "Produto", product.id)
+      const edited = Math.abs(item.unitPrice - product.price) > 0.001
+      return [{ key: key(), lineType: "Produto" as const, catalogId: product.id, description: item.description || product.name, unit: product.unit, quantity: String(item.quantity), unitPrice: String(edited || !table ? item.unitPrice : table.price), discountPercent: "0", notes: "", catalogPrice: product.price, unitCost: product.cost }]
+    })
+    if (fromOpportunity.length) setLines(fromOpportunity)
   }, [options])
 
   async function openQuote(id: string) {

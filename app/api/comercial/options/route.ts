@@ -9,11 +9,11 @@ export async function GET() {
   try {
     const [conditions, materials] = await Promise.all([
       context.admin.from("payment_conditions").select("id,name").eq("status", "Ativo").order("name"),
-      context.admin.from("materials").select("id,name,internal_code").eq("status", "Ativo").order("name").limit(2000),
+      context.admin.from("materials").select("id,name,internal_code,unit,sale_price,item_type,available_for_quote").eq("status", "Ativo").eq("item_type", "Produto").order("name").limit(2000),
     ])
     return NextResponse.json({
       paymentConditions: (conditions.data || []).map((row) => ({ id: row.id, name: row.name })),
-      products: (materials.data || []).map((row) => ({ id: row.id, name: row.name, code: row.internal_code || "" })),
+      products: (materials.data || []).filter((row) => row.available_for_quote !== false).map((row) => ({ id: row.id, name: row.name, code: row.internal_code || "", unit: row.unit || "UN", price: Number(row.sale_price || 0) })),
     })
   } catch (error) {
     const { message, status } = commercialError(error, "Erro ao carregar opções.")
