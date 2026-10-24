@@ -1,5 +1,6 @@
-import { ProductsPage } from "@/components/products/products-page"
+import { redirect } from "next/navigation"
 
+// o estoque agora é uma página só com abas
 export default function Page() {
-  return <ProductsPage />
+  redirect("/estoque-interno?aba=produtos")
 }

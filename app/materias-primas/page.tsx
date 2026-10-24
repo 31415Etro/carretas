@@ -1,5 +1,6 @@
-import { RawMaterialsPage } from "@/components/raw-materials/raw-materials-page"
+import { redirect } from "next/navigation"
 
+// o estoque agora é uma página só com abas
 export default function Page() {
-  return <RawMaterialsPage />
+  redirect("/estoque-interno?aba=materias-primas")
 }

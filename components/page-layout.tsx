@@ -27,6 +27,7 @@ export function PageLayout({ children }: { children: React.ReactNode }) {
       { href: "/", permission: "dashboard" },
       { href: "/dashboard", permission: "dashboard" },
       { href: "/financeiro", permission: "financeiro" },
+      { href: "/estoque-interno", permission: "produtos_servicos" },
       { href: "/estoque", permission: "estoque" },
       { href: "/compras", permission: "compras" },
       { href: "/servicos", permission: "produtos_servicos" },

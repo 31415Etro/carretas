@@ -1,8 +1,8 @@
 // Estrutura do menu lateral (dados puros, testáveis). Os ícones são ligados no componente do menu pela chave `icon`.
-// A fábrica produz carretas SOB ENCOMENDA, só por Ordens de Produção: Estoque (página), Serviços e Ordens de Serviço não aparecem no menu,
+// A fábrica produz carretas SOB ENCOMENDA, só por Ordens de Produção. "Estoque" é uma página só com abas (matérias-primas, kits e produtos finais); a página antiga de estoque, Serviços e Ordens de Serviço não aparecem no menu,
 // mas as rotas, as tabelas e os históricos continuam existindo (links antigos funcionam e o acesso administrativo é preservado).
 
-export type NavLeaf = { label: string; href: string; permission: string; icon: string; adminOnly?: boolean; /** rotas filhas que NÃO acendem este item (ficam com outro item) */ excludePrefixes?: string[] }
+export type NavLeaf = { label: string; href: string; permission: string; icon: string; adminOnly?: boolean; /** rotas filhas que NÃO acendem este item (ficam com outro item) */ excludePrefixes?: string[]; /** outras rotas que também acendem este item (ex.: páginas de detalhe) */ alsoPrefixes?: string[] }
 export type NavParent = { label: string; icon: string; children: NavLeaf[] }
 export type NavEntry = NavLeaf | NavParent
 export type NavGroup = { title: string; items: NavEntry[] }
@@ -24,11 +24,7 @@ export const navGroups: NavGroup[] = [
   { title: "Operação", items: [
     { label: "Financeiro", href: "/financeiro", permission: "financeiro", icon: "finance" },
     { label: "Compras", href: "/compras", permission: "compras", icon: "purchases" },
-    { label: "Estoque interno", icon: "inventory", children: [
-      { label: "Matérias-primas", href: "/materias-primas", permission: "produtos_servicos", icon: "materials" },
-      { label: "Kits e composições", href: "/kits", permission: "produtos_servicos", icon: "kits" },
-      { label: "Produtos finais", href: "/produtos", permission: "produtos_servicos", icon: "products" },
-    ] },
+    { label: "Estoque", href: "/estoque-interno", permission: "produtos_servicos", icon: "inventory", alsoPrefixes: ["/materias-primas", "/kits", "/produtos"] },
     { label: "Produção", icon: "production", children: [
       { label: "Produção e MRP", href: "/producao", permission: "estoque", icon: "mrp", excludePrefixes: ["/producao/esteira", "/producao/tablet"] },
       { label: "Esteira da fábrica", href: "/producao/esteira", permission: "estoque", icon: "line" },
@@ -74,7 +70,7 @@ export function visibleNav(user: NavUser, groups: NavGroup[] = navGroups): NavGr
 }
 
 export function isActive(leaf: NavLeaf, pathname: string) {
-  const inside = pathname === leaf.href || pathname.startsWith(`${leaf.href}/`)
+  const inside = [leaf.href, ...(leaf.alsoPrefixes || [])].some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
   if (!inside) return false
   return !(leaf.excludePrefixes || []).some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
 }

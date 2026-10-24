@@ -1,10 +1,11 @@
 "use client"
 
 import type React from "react"
-import { useEffect, useMemo, useState } from "react"
+import { useContext, useEffect, useMemo, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Save } from "lucide-react"
 import type { ColumnSortState } from "@/lib/column-sort"
+import { EmbeddedPageContext } from "@/lib/embedded-page"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -97,14 +98,28 @@ export function useOperationalStore(options?: { skipInitialLoad?: boolean }) {
 
 /** Nome do módulo mostrado em letras pequenas no cabeçalho (pelo caminho da página). */
 const moduleNames: Array<[string, string]> = [
-  ["/dashboard", "Dashboard"], ["/financeiro", "Financeiro"], ["/estoque", "Estoque"], ["/compras", "Compras"], ["/servicos", "Serviços"], ["/materias-primas", "Matérias-primas"], ["/kits", "Kits e composições"], ["/produtos", "Produtos finais"], ["/vendas", "Pedidos de venda"], ["/documentacao", "Documentação veicular"], ["/documentacao", "Documentação veicular"], ["/producao", "Produção e MRP"],
+  ["/dashboard", "Dashboard"], ["/financeiro", "Financeiro"], ["/estoque", "Estoque"], ["/estoque-interno", "Estoque"], ["/compras", "Compras"], ["/servicos", "Serviços"], ["/materias-primas", "Matérias-primas"], ["/kits", "Kits e composições"], ["/produtos", "Produtos finais"], ["/vendas", "Pedidos de venda"], ["/documentacao", "Documentação veicular"], ["/documentacao", "Documentação veicular"], ["/producao", "Produção e MRP"],
   ["/ordens-servico", "Ordens de Serviço"], ["/frota", "Frota"], ["/maquinas", "Máquinas e Equipamentos"], ["/clientes", "Clientes & Fornecedores"], ["/comercial", "Comercial"],
   ["/orcamento", "Orçamentos"], ["/contratos", "Contratos"], ["/relatorios", "Relatórios"], ["/logs-sistema", "Log do Sistema"], ["/configuracoes", "Configurações"],
 ]
 
 /** Estrutura padrão de toda página do ERP: cabeçalho azul (módulo, título, subtítulo e ações) e o conteúdo abaixo. */
 export function PageShell({ title, description, actions, children }: { title: string; description: string; actions?: React.ReactNode; children: React.ReactNode }) {
+  const embedded = useContext(EmbeddedPageContext)
   const pathname = usePathname() || ""
+  if (embedded) {
+    return (
+      <div className="space-y-4">
+        {description || actions ? (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            {description ? <p className="max-w-3xl text-sm text-muted-foreground">{description}</p> : <span />}
+            {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+          </div>
+        ) : null}
+        {children}
+      </div>
+    )
+  }
   const moduleName = moduleNames.find(([prefix]) => pathname === prefix || pathname.startsWith(`${prefix}/`))?.[1] || ""
   return (
     <PageLayout>

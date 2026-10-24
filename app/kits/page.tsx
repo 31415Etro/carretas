@@ -1,5 +1,6 @@
-import { KitsPage } from "@/components/kits/kits-page"
+import { redirect } from "next/navigation"
 
+// o estoque agora é uma página só com abas
 export default function Page() {
-  return <KitsPage />
+  redirect("/estoque-interno?aba=kits")
 }
