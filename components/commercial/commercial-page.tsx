@@ -39,7 +39,6 @@ const emptyParty = (): Row => ({
   paymentConditionId: "", commercialNotes: "", status: "Ativo",
 })
 const emptyOpportunity = (): Row => ({ id: "", title: "", clientId: "", salespersonId: "", origin: "", interest: "", materialId: "", items: [], estimatedValue: "", stage: "Novo lead", probability: "10", expectedCloseDate: "", nextContactDate: "", lossReason: "", quoteNumber: "", reopenReason: "" })
-const emptySalesperson = (): Row => ({ id: "", name: "", email: "", phone: "", status: "Ativo", notes: "" })
 
 function Opts({ label, value, onChange, items, placeholder = "Selecione" }: { label: string; value: string; onChange: (value: string) => void; items: Array<{ value: string; label: string }>; placeholder?: string }) {
   return <SelectField label={label} value={value || none} onChange={(next) => onChange(next === none ? "" : next)} options={[{ value: none, label: placeholder }, ...items]} />
@@ -65,7 +64,6 @@ export function CommercialPage() {
   const [oppOriginalStage, setOppOriginalStage] = useState("")
   const [oppDetail, setOppDetail] = useState<{ interactions: Row[]; orders: Row[] }>({ interactions: [], orders: [] })
   const [interaction, setInteraction] = useState({ kind: "Ligação", description: "", nextContactDate: "" })
-  const [peopleSheet, setPeopleSheet] = useState<Row | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -237,20 +235,6 @@ export function CommercialPage() {
     router.push(`/orcamento?opportunityId=${oppSheet.id}&clientId=${oppSheet.clientId}`)
   }
 
-  async function saveSalesperson() {
-    if (!peopleSheet) return
-    setSaving(true)
-    try {
-      await api("/api/comercial/salespeople", { method: "POST", body: JSON.stringify({ salesperson: peopleSheet }) })
-      setPeopleSheet(null)
-      await load()
-    } catch (reason) {
-      toast({ title: "Não foi possível salvar", description: reason instanceof Error ? reason.message : "", variant: "destructive" })
-    } finally {
-      setSaving(false)
-    }
-  }
-
   const filteredOpps = opportunities.filter((row) => !salesFilter || row.salespersonId === salesFilter)
   const open = filteredOpps.filter((row) => (openStages as string[]).includes(row.stage))
   const summary = funnelSummary(filteredOpps)
@@ -266,8 +250,8 @@ export function CommercialPage() {
   return (
     <PageShell
       title="Comercial"
-      description="Cadastro único de clientes e fornecedores, vendedores e funil de oportunidades."
-      actions={<><Button onClick={() => void openOpportunity(emptyOpportunity())}><Plus className="h-4 w-4" />Nova oportunidade</Button><Button variant="outline" onClick={() => void openParty(emptyParty())}><Plus className="h-4 w-4" />Novo cadastro</Button><Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className="h-4 w-4" />Atualizar</Button></>}
+      description="Cadastro único de clientes e fornecedores e funil de oportunidades. Vendedores são cadastrados em Configurações > Usuários."
+      actions={<><Button onClick={() => router.push("/comercial/jornada/novo")}><Plus className="h-4 w-4" />Nova oportunidade</Button><Button variant="outline" onClick={() => void openParty(emptyParty())}><Plus className="h-4 w-4" />Novo cadastro</Button><Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className="h-4 w-4" />Atualizar</Button></>}
     >
       {error && <div className="mb-4 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{error}</div>}
       <div className="mb-4 grid gap-3 md:grid-cols-4">
@@ -282,7 +266,7 @@ export function CommercialPage() {
           <TabsTrigger value="funil">Funil</TabsTrigger>
           <TabsTrigger value="oportunidades">Oportunidades</TabsTrigger>
           <TabsTrigger value="cadastros">Clientes e fornecedores</TabsTrigger>
-          <TabsTrigger value="vendedores">Vendedores</TabsTrigger>
+
         </TabsList>
 
         <TabsContent value="funil">
@@ -296,7 +280,7 @@ export function CommercialPage() {
                   <div className="space-y-2">
                     {filteredOpps.filter((row) => row.stage === stage).map((row) => (
                       <div key={row.id} className="rounded-md border bg-card p-2 text-sm">
-                        <button className="text-left font-medium hover:underline" onClick={() => void openOpportunity({ ...emptyOpportunity(), ...row, estimatedValue: String(row.estimatedValue), probability: String(row.probability) })}>{row.title}</button>
+                        <button className="text-left font-medium hover:underline" onClick={() => router.push(`/comercial/jornada/${row.id}`)}>{row.title}</button>
                         <div className="text-xs text-muted-foreground">{row.clientName}</div>
                         <div className="text-xs">{brl(row.estimatedValue)} · {row.probability}%</div>
                         <div className={`text-xs ${contactOverdue(row, today()) ? "font-medium text-destructive" : "text-muted-foreground"}`}>{row.nextContactDate ? `Contato: ${day(row.nextContactDate)}` : row.salespersonName}</div>
@@ -324,7 +308,7 @@ export function CommercialPage() {
                   <TableCell className="max-w-[14rem] truncate" title={row.interest}>{row.interest}</TableCell><TableCell>{brl(row.estimatedValue)}</TableCell>
                   <TableCell><StatusBadge status={row.stage} /></TableCell><TableCell>{row.probability}%</TableCell><TableCell>{day(row.expectedCloseDate)}</TableCell>
                   <TableCell className={contactOverdue(row, today()) ? "font-medium text-destructive" : ""}>{day(row.nextContactDate)}</TableCell><TableCell>{row.quoteNumber || "-"}</TableCell>
-                  <TableCell><Button size="sm" variant="outline" onClick={() => void openOpportunity({ ...emptyOpportunity(), ...row, estimatedValue: String(row.estimatedValue), probability: String(row.probability) })}>Abrir</Button></TableCell>
+                  <TableCell><Button size="sm" variant="outline" onClick={() => router.push(`/comercial/jornada/${row.id}`)}>Abrir</Button></TableCell>
                 </TableRow>
               ))}
             </DataTable>
@@ -356,24 +340,6 @@ export function CommercialPage() {
           </SectionCard>
         </TabsContent>
 
-        <TabsContent value="vendedores">
-          <SectionCard title="Vendedores" description="Responsáveis por clientes e oportunidades.">
-            <Button className="mb-3" onClick={() => setPeopleSheet(emptySalesperson())}><Plus className="h-4 w-4" />Novo vendedor</Button>
-            <DataTable headers={["Nome", "E-mail", "Telefone", "Negociações abertas", "Ganhas", "Status", "Ações"]} empty={!salespeople.length}>
-              {salespeople.map((row) => {
-                const mine = opportunities.filter((item) => item.salespersonId === row.id)
-                return (
-                  <TableRow key={row.id}>
-                    <TableCell>{row.name}</TableCell><TableCell>{row.email || "-"}</TableCell><TableCell>{row.phone || "-"}</TableCell>
-                    <TableCell>{mine.filter((item) => (openStages as string[]).includes(item.stage)).length}</TableCell><TableCell>{brl(mine.filter((item) => item.stage === "Ganho").reduce((sum, item) => sum + item.estimatedValue, 0))}</TableCell>
-                    <TableCell><StatusBadge status={row.status} /></TableCell>
-                    <TableCell><Button size="sm" variant="outline" onClick={() => setPeopleSheet({ ...row })}>Editar</Button></TableCell>
-                  </TableRow>
-                )
-              })}
-            </DataTable>
-          </SectionCard>
-        </TabsContent>
       </Tabs>
 
       <FormSheet open={Boolean(partySheet)} onOpenChange={(value) => !value && setPartySheet(null)} title={partySheet?.id ? "Editar cadastro" : "Novo cadastro"} description="Telefone, tipo e nome são obrigatórios. CPF/CNPJ pode ficar em branco apenas para lead." footer={<SaveButton onClick={() => void saveParty()} disabled={saving}>Salvar</SaveButton>}>
@@ -524,19 +490,6 @@ export function CommercialPage() {
         )}
       </FormSheet>
 
-      <FormSheet open={Boolean(peopleSheet)} onOpenChange={(value) => !value && setPeopleSheet(null)} title={peopleSheet?.id ? "Editar vendedor" : "Novo vendedor"} footer={<SaveButton onClick={() => void saveSalesperson()} disabled={saving}>Salvar</SaveButton>}>
-        {peopleSheet && (
-          <>
-            <div className="grid gap-3 md:grid-cols-2">
-              <TextField label="Nome *" value={peopleSheet.name} onChange={(value) => setPeopleSheet({ ...peopleSheet, name: value })} />
-              <Opts label="Status" value={peopleSheet.status} onChange={(value) => setPeopleSheet({ ...peopleSheet, status: value || "Ativo" })} items={["Ativo", "Inativo"].map((value) => ({ value, label: value }))} />
-              <TextField label="E-mail" value={peopleSheet.email} onChange={(value) => setPeopleSheet({ ...peopleSheet, email: value })} />
-              <TextField label="Telefone" value={peopleSheet.phone} onChange={(value) => setPeopleSheet({ ...peopleSheet, phone: value })} />
-            </div>
-            <TextAreaField label="Observações" value={peopleSheet.notes} onChange={(value) => setPeopleSheet({ ...peopleSheet, notes: value })} />
-          </>
-        )}
-      </FormSheet>
     </PageShell>
   )
 }

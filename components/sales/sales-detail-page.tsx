@@ -27,7 +27,11 @@ type Detail = {
 }
 const newKey = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `k${Date.now()}${Math.random().toString(36).slice(2)}`)
 
-export function SalesDetailPage({ id }: { id: string }) {
+/**
+ * Pedido de venda. Na Jornada comercial (`embedded`) a tela é só comercial: sem sinal/pagamento nem exceção financeira
+ * (as regras e integrações do Financeiro continuam no servidor), sem link de volta e avisando a Jornada a cada mudança.
+ */
+export function SalesDetailPage({ id, embedded = false, onChanged }: { id: string; embedded?: boolean; onChanged?: () => void }) {
   const [detail, setDetail] = useState<Detail | null>(null)
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(true)
@@ -56,8 +60,9 @@ export function SalesDetailPage({ id }: { id: string }) {
     try {
       const data = await api<{ detail: Detail; result: Record<string, any> }>(`/api/vendas/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, ...body }) })
       setDetail(data.detail)
+      onChanged?.()
       const created = data.result?.production_orders_created?.length
-      setNotice(data.result?.blocked ? "Pedido confirmado. A produção aguarda a confirmação do sinal/pagamento." : success || (created ? `${created} ordem(ns) de produção gerada(s).` : "Ação concluída."))
+      setNotice(data.result?.blocked ? (embedded ? "Pedido confirmado." : "Pedido confirmado. A produção aguarda a confirmação do sinal/pagamento.") : success || (created ? `${created} ordem(ns) de produção gerada(s).` : "Ação concluída."))
       if (action === "deliver") deliveryKey.current = newKey()
       setCancelling(false); setReason("")
     } catch (failure) { setNotice(failure instanceof Error ? failure.message : "Ação não concluída.") } finally { setBusy("") }
@@ -71,7 +76,11 @@ export function SalesDetailPage({ id }: { id: string }) {
     )
   }
   const order = detail.order
-  const actions = salesActions(order as { status: string; payment_confirmed_at?: string | null }, detail.require_payment, detail.items)
+  const baseActions = salesActions(order as { status: string; payment_confirmed_at?: string | null }, detail.require_payment, detail.items)
+  const actions = embedded ? { ...baseActions, payment: false } : baseActions
+  // na Jornada a liberação mostra só o que é comercial/documental: o requisito de pagamento fica com o Financeiro
+  const blockers = detail.release ? (embedded ? detail.release.blockers.filter((blocker) => blocker.code !== "pagamento") : detail.release.blockers) : []
+  const release = detail.release ? (embedded ? { ...detail.release, blockers, eligible: blockers.length === 0 } : detail.release) : null
   const productItems = detail.items.filter((item) => item.line_type === "Produto")
   const totals = productItems.reduce((sum, item) => { const f = fulfilment(item); return { ordered: sum.ordered + f.quantity, ready: sum.ready + f.ready, delivered: sum.delivered + f.delivered, producing: sum.producing + f.inProduction } }, { ordered: 0, ready: 0, delivered: 0, producing: 0 })
   const changed = productItems.some((item) => item.structure_changed)
@@ -79,7 +88,7 @@ export function SalesDetailPage({ id }: { id: string }) {
   return (
     <PageShell title={`Pedido ${order.order_number}`} description={`${order.client_name}${order.quote_number ? ` · orçamento ${order.quote_number} v${order.quote_version}` : ""} · ${order.payment_condition_name || "sem condição de pagamento"}`}
       actions={<>
-        <Button variant="outline" asChild><Link href="/vendas"><ArrowLeft className="h-4 w-4" />Voltar</Link></Button>
+        {embedded ? null : <Button variant="outline" asChild><Link href="/vendas"><ArrowLeft className="h-4 w-4" />Voltar</Link></Button>}
         <Button variant="outline" asChild><a href="#pedido-pdf">Pedido em PDF</a></Button>
         <Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />Atualizar</Button>
         {actions.confirm ? <Button onClick={() => void act("confirm")} disabled={Boolean(busy)}>{busy === "confirm" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Confirmar pedido</Button> : null}
@@ -87,7 +96,7 @@ export function SalesDetailPage({ id }: { id: string }) {
       </>}>
       <div className="flex flex-wrap items-center gap-2">
         <span className={`rounded px-2 py-0.5 text-xs font-medium ${salesTone(order.status)}`}>{salesStatusLabel(order.status)}</span>
-        {detail.require_payment ? <span className={`rounded px-2 py-0.5 text-xs ${order.payment_confirmed_at ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>{order.payment_confirmed_at ? `Pagamento confirmado por ${order.payment_confirmed_by || "-"}` : "Exige sinal/pagamento para fabricar"}</span> : null}
+        {detail.require_payment && !embedded ? <span className={`rounded px-2 py-0.5 text-xs ${order.payment_confirmed_at ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>{order.payment_confirmed_at ? `Pagamento confirmado por ${order.payment_confirmed_by || "-"}` : "Exige sinal/pagamento para fabricar"}</span> : null}
       </div>
       {notice ? <p className="rounded-md border bg-muted/40 p-3 text-sm">{notice}</p> : null}
       {changed ? <p className="flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm"><TriangleAlert className="h-4 w-4 shrink-0" />A estrutura de fabricação de algum produto mudou desde o orçamento: a produção usa a estrutura vigente na confirmação (veja as versões na tabela).</p> : null}
@@ -120,9 +129,9 @@ export function SalesDetailPage({ id }: { id: string }) {
         </SectionCard>
       ) : null}
 
-      {detail.release ? (
+      {release ? (
         <SectionCard title="Documentação veicular e liberação da produção" description="A fabricação física só começa quando todas as condições abaixo estão atendidas. A liberação é calculada pelo sistema, não é um campo editável.">
-          <p className={`mb-3 flex items-start gap-2 rounded-md border p-3 text-sm ${detail.release.eligible ? "border-emerald-300 bg-emerald-50" : "border-amber-300 bg-amber-50"}`}>{releaseLabel(detail.release)}</p>
+          <p className={`mb-3 flex items-start gap-2 rounded-md border p-3 text-sm ${release.eligible ? "border-emerald-300 bg-emerald-50" : "border-amber-300 bg-amber-50"}`}>{releaseLabel(release)}</p>
           {detail.documentation && detail.documentation.items.length ? (
             <div className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {detail.documentation.items.map((doc) => (
@@ -132,13 +141,13 @@ export function SalesDetailPage({ id }: { id: string }) {
                 </button>
               ))}
             </div>
-          ) : <p className="mb-3 text-sm text-muted-foreground">{detail.release.blockers.some((blocker) => blocker.code === "documentacao") ? "A documentação das unidades ainda não foi iniciada." : "Nenhum item deste pedido exige documentação veicular."}</p>}
+          ) : <p className="mb-3 text-sm text-muted-foreground">{blockers.some((blocker) => blocker.code === "documentacao") ? "A documentação das unidades ainda não foi iniciada." : "Nenhum item deste pedido exige documentação veicular."}</p>}
           <div className="flex flex-wrap items-end gap-3">
-            {detail.release.blockers.some((blocker) => blocker.code === "autorizacao") ? <Button disabled={Boolean(busy)} onClick={() => void act("authorize", {}, "Produção autorizada.")}>{busy === "authorize" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Autorizar a produção</Button> : null}
-            {detail.settings?.require_operational_authorization && !detail.release.blockers.some((blocker) => blocker.code === "autorizacao") && !["Entregue", "Cancelado"].includes(order.status) ? (
+            {blockers.some((blocker) => blocker.code === "autorizacao") ? <Button disabled={Boolean(busy)} onClick={() => void act("authorize", {}, "Produção autorizada.")}>{busy === "authorize" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Autorizar a produção</Button> : null}
+            {detail.settings?.require_operational_authorization && !blockers.some((blocker) => blocker.code === "autorizacao") && !["Entregue", "Cancelado"].includes(order.status) ? (
               <div className="flex items-end gap-2"><Input className="w-56" placeholder="Motivo para revogar" value={revokeReason} onChange={(event) => setRevokeReason(event.target.value)} /><Button variant="outline" disabled={Boolean(busy) || !revokeReason.trim()} onClick={() => void act("revoke_authorization", { reason: revokeReason }, "Autorização revogada: produção bloqueada.")}>Revogar autorização</Button></div>
             ) : null}
-            {manager && detail.release.blockers.some((blocker) => blocker.code === "pagamento" && blocker.waivable) ? (
+            {manager && !embedded && blockers.some((blocker) => blocker.code === "pagamento" && blocker.waivable) ? (
               <div className="flex items-end gap-2"><Input className="w-72" placeholder="Justificativa da exceção comercial (mín. 10)" value={exceptionReason} onChange={(event) => setExceptionReason(event.target.value)} /><Button variant="outline" disabled={Boolean(busy) || exceptionReason.trim().length < 10} onClick={() => void act("release_exception", { reason: exceptionReason }, "Exceção comercial registrada e auditada.")}>Dispensar sinal (exceção)</Button></div>
             ) : null}
             {(!detail.documentation || detail.documentation.items.length === 0) && ["Confirmado", "Aguardando producao", "Em producao", "Parcialmente disponivel", "Pronto para entrega"].includes(order.status) ? <Button variant="outline" disabled={Boolean(busy)} onClick={() => void act("generate_documentation", {}, "Documentação iniciada.")}>Iniciar documentação das unidades</Button> : null}

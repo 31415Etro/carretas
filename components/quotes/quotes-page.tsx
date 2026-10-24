@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { AlertTriangle, CheckCircle2, FileText, Plus, RefreshCw, Trash2, Wallet } from "lucide-react"
@@ -59,8 +59,13 @@ function Opts({ label, value, onChange, items, placeholder = "Selecione", disabl
   return <div className={disabled ? "pointer-events-none opacity-70" : ""}><SelectField label={label} value={value || none} onChange={(next) => onChange(next === none ? "" : next)} options={[{ value: none, label: placeholder }, ...items]} /></div>
 }
 
-export function QuotesPage() {
+/**
+ * Orçamentos (propostas). Na Jornada comercial recebe `opportunityId`: mostra só as propostas daquela negociação,
+ * abre o editor já com os produtos da oportunidade e avisa (onChanged / onOrderCreated) em vez de navegar para outras páginas.
+ */
+export function QuotesPage({ opportunityId, onChanged, onOrderCreated }: { opportunityId?: string; onChanged?: () => void; onOrderCreated?: (order: { id: string; number: string }) => void } = {}) {
   const router = useRouter()
+  const embedded = Boolean(opportunityId)
   const [configuring, setConfiguring] = useState<Line | null>(null)
   const { toast } = useCrudFeedback()
   const [quotes, setQuotes] = useState<Row[]>([])
@@ -91,6 +96,7 @@ export function QuotesPage() {
     }
   }, [])
   useEffect(() => { void load() }, [load])
+  const notify = () => { if (embedded) onChanged?.() }
 
   const status = detail?.quote ? (detail.quote.effectiveStatus as string) : "Rascunho"
   const readOnly = Boolean(detail) && status !== "Rascunho"
@@ -103,17 +109,14 @@ export function QuotesPage() {
     setOpen(true)
   }
 
-  // chegada pelo funil: /orcamento?opportunityId=...&clientId=...
-  useEffect(() => {
+  // chegada pelo funil: /orcamento?opportunityId=...&clientId=... (página antiga) ou, na Jornada, pela propriedade `opportunityId`
+  const autoStarted = useRef(false)
+  function startFromOpportunity(opportunityId: string, clientIdFallback = "") {
     if (!options) return
-    const params = new URLSearchParams(window.location.search)
-    const opportunityId = params.get("opportunityId")
-    if (!opportunityId) return
     const opportunity = options.opportunities.find((item) => item.id === opportunityId)
-    window.history.replaceState(null, "", "/orcamento")
-    startNew({ opportunityId, clientId: opportunity?.clientId || params.get("clientId") || "", salespersonId: opportunity?.salespersonId || "", title: opportunity ? `${opportunity.code} · ${opportunity.title}` : "", notes: opportunity ? `Interesse: ${opportunity.interest}` : "" })
+    const clientId = opportunity?.clientId || clientIdFallback
+    startNew({ opportunityId, clientId, salespersonId: opportunity?.salespersonId || "", title: opportunity ? `${opportunity.code} · ${opportunity.title}` : "", notes: opportunity ? `Interesse: ${opportunity.interest}` : "" })
     // os produtos escolhidos na oportunidade já entram na proposta, com a quantidade e o preço combinados
-    const clientId = opportunity?.clientId || params.get("clientId") || ""
     const fromOpportunity: Line[] = (opportunity?.items || []).flatMap((item) => {
       const product = options.products.find((row) => row.id === item.productId)
       if (!product) return []
@@ -122,7 +125,21 @@ export function QuotesPage() {
       return [{ key: key(), lineType: "Produto" as const, catalogId: product.id, description: item.description || product.name, unit: product.unit, quantity: String(item.quantity), unitPrice: String(edited || !table ? item.unitPrice : table.price), discountPercent: "0", notes: "", catalogPrice: product.price, unitCost: product.cost }]
     })
     if (fromOpportunity.length) setLines(fromOpportunity)
-  }, [options])
+  }
+  useEffect(() => {
+    if (!options || embedded) return
+    const params = new URLSearchParams(window.location.search)
+    const fromUrl = params.get("opportunityId")
+    if (!fromUrl) return
+    window.history.replaceState(null, "", "/orcamento")
+    startFromOpportunity(fromUrl, params.get("clientId") || "")
+  }, [options]) // eslint-disable-line react-hooks/exhaustive-deps
+  // na Jornada: se a negociação ainda não tem proposta, abre o editor já preenchido
+  useEffect(() => {
+    if (!options || !embedded || loading || autoStarted.current || !opportunityId) return
+    autoStarted.current = true
+    if (!quotes.some((row) => row.opportunityId === opportunityId && !["Cancelado", "Recusado"].includes(row.effectiveStatus))) startFromOpportunity(opportunityId)
+  }, [options, embedded, loading, quotes, opportunityId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function openQuote(id: string) {
     try {
@@ -203,7 +220,7 @@ export function QuotesPage() {
       }
       toast({ title: data.salesOrder.duplicate ? "Este orçamento já tinha pedido" : "Pedido de venda criado", description: `${data.salesOrder.number}: abra em Vendas para confirmar.${pdfNote}` })
       await load()
-      router.push(`/vendas/${data.salesOrder.id}`)
+      if (embedded) { notify(); onOrderCreated?.({ id: data.salesOrder.id, number: data.salesOrder.number }) } else router.push(`/vendas/${data.salesOrder.id}`)
     } catch (reason) {
       toast({ title: "Conversão não concluída", description: reason instanceof Error ? reason.message : "", variant: "destructive" })
     } finally {
@@ -220,6 +237,7 @@ export function QuotesPage() {
       setAction(null)
       toast({ title: successTitle, description: data.warnings?.length ? data.warnings.join(" ") : undefined })
       await load()
+      notify()
       return data
     } catch (reason) {
       toast({ title: "Ação não concluída", description: reason instanceof Error ? reason.message : "", variant: "destructive" })
@@ -312,6 +330,7 @@ export function QuotesPage() {
   const text = query.trim().toLowerCase()
   const shown = quotes.filter((row) => {
     const current = row.effectiveStatus as string
+    if (embedded) return row.opportunityId === opportunityId
     if (statusFilter === "abertos") { if (!["Rascunho", "Enviado", "Em negociação", "Aprovado"].includes(current)) return false }
     else if (statusFilter !== "todos" && current !== statusFilter) return false
     return !text || [row.number, row.clientName, row.salespersonName, row.title].some((value) => String(value || "").toLowerCase().includes(text))
@@ -332,20 +351,20 @@ export function QuotesPage() {
 
   return (
     <PageShell
-      title="Orçamentos"
-      description="Monte, envie, aprove e transforme orçamentos em venda ou ordem de serviço, com preços negociados preservados."
-      actions={<><Button onClick={() => startNew()} disabled={!options}><Plus className="h-4 w-4" />Novo orçamento</Button><Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className="h-4 w-4" />Atualizar</Button></>}
+      title={embedded ? "Propostas desta negociação" : "Orçamentos"}
+      description={embedded ? "Monte a proposta com produtos, medidas, acabamento e condições; salve, revise e gere a prévia em PDF." : "Monte, envie, aprove e transforme orçamentos em venda ou ordem de serviço, com preços negociados preservados."}
+      actions={<><Button onClick={() => (embedded && opportunityId ? startFromOpportunity(opportunityId) : startNew())} disabled={!options}><Plus className="h-4 w-4" />{embedded ? "Nova proposta" : "Novo orçamento"}</Button><Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className="h-4 w-4" />Atualizar</Button></>}
     >
       {error && <div className="mb-4 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{error}</div>}
-      <div className="mb-4 grid gap-3 md:grid-cols-4">
+      {embedded ? null : <div className="mb-4 grid gap-3 md:grid-cols-4">
         <MetricCard title="Em negociação" value={brl(openQuotes.reduce((sum, row) => sum + row.totalAmount, 0))} note={`${openQuotes.length} rascunho(s)/enviado(s)`} icon={FileText} />
         <MetricCard title="Aprovados a formalizar" value={approved.length} note={brl(approved.reduce((sum, row) => sum + row.totalAmount, 0))} icon={CheckCircle2} />
         <MetricCard title="Vencendo em 7 dias" value={expiring.length} note="Rascunhos e enviados" icon={AlertTriangle} />
         <MetricCard title="Formalizados no mês" value={brl(monthWon)} note="Viraram venda ou OS" icon={Wallet} />
-      </div>
+      </div>}
 
       <Tabs defaultValue="lista">
-        <TabsList><TabsTrigger value="lista">Orçamentos</TabsTrigger>{options?.canConfigure && <TabsTrigger value="config">Empresa e logotipo</TabsTrigger>}</TabsList>
+        <TabsList><TabsTrigger value="lista">Orçamentos</TabsTrigger>{options?.canConfigure && !embedded && <TabsTrigger value="config">Empresa e logotipo</TabsTrigger>}</TabsList>
         <TabsContent value="lista">
           <SectionCard title="Orçamentos">
             <div className="mb-3 grid gap-3 md:grid-cols-3">
@@ -368,7 +387,7 @@ export function QuotesPage() {
             </DataTable>
           </SectionCard>
         </TabsContent>
-        {options?.canConfigure && (
+        {options?.canConfigure && !embedded && (
           <TabsContent value="config">
             <SectionCard title="Empresa e logotipo do PDF" description="Os dados abaixo vêm do cadastro da empresa (Configurações > Empresas / CNPJs). O logotipo aparece no cabeçalho do PDF.">
               <div className="space-y-2 text-sm">

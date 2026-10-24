@@ -207,6 +207,15 @@ export async function listOpportunities(admin: Admin) {
   return rows.map((row) => toOpportunity(row, lookup.clients, lookup.salespeople, items.get(row.id as string) || []))
 }
 
+/** Uma oportunidade com os produtos escolhidos; null se não existir. */
+export async function getOpportunity(admin: Admin, id: string) {
+  const { data: row, error } = await admin.from("opportunities").select("*").eq("id", id).maybeSingle()
+  if (error) throw error
+  if (!row) return null
+  const [lookup, items] = await Promise.all([lookups(admin), loadItems(admin, [id])])
+  return toOpportunity(row, lookup.clients, lookup.salespeople, items.get(id) || [])
+}
+
 export async function listInteractions(admin: Admin, opportunityId: string) {
   const { data, error } = await admin.from("opportunity_interactions").select("*").eq("opportunity_id", opportunityId).order("interaction_at", { ascending: false })
   if (error) throw error
