@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { DataTable } from "@/components/operations/shared"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useAuth } from "@/lib/auth-context"
 import { useToast } from "@/hooks/use-toast"
@@ -88,9 +89,7 @@ export function SystemErrorsPanel() {
         </div>
         <div className="flex items-center gap-3"><Activity className="h-5 w-5 text-muted-foreground" /><Input className="max-w-xl" placeholder="Filtrar por erro, origem, rota ou usuario" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
         <div className="overflow-hidden rounded-md border bg-background">
-          <div className="max-h-[35rem] overflow-auto overscroll-contain [scrollbar-gutter:stable]"><Table><TableHeader className="sticky top-0 z-20 bg-background"><TableRow><TableHead>Data/hora</TableHead><TableHead>Origem</TableHead><TableHead>Falha</TableHead><TableHead>Rota</TableHead><TableHead>Usuario</TableHead><TableHead>E-mail</TableHead></TableRow></TableHeader><TableBody>
-            {!loading && !filtered.length ? <TableRow><TableCell colSpan={6} className="h-28 text-center text-muted-foreground">Nenhuma falha encontrada.</TableCell></TableRow> : filtered.map((log) => <TableRow key={log.id}><TableCell className="whitespace-nowrap">{new Date(log.occurredAt).toLocaleString("pt-BR")}</TableCell><TableCell><div className="flex items-center gap-2"><Badge variant={log.severity === "critical" ? "destructive" : "secondary"}>{log.severity}</Badge><span className="whitespace-nowrap">{log.source}</span></div></TableCell><TableCell className="max-w-md"><p className="line-clamp-2" title={log.message}>{log.message}</p><p className="mt-1 font-mono text-xs text-muted-foreground">{log.fingerprint}</p></TableCell><TableCell className="font-mono text-xs">{log.statusCode ? `${log.statusCode} ` : ""}{log.method} {log.path || "-"}</TableCell><TableCell>{log.actorEmail || "-"}</TableCell><TableCell><Badge variant={log.emailStatus === "failed" ? "destructive" : "outline"} title={log.emailError}>{deliveryLabel[log.emailStatus]}</Badge></TableCell></TableRow>)}
-          </TableBody></Table></div>
+          <DataTable headers={["Data/hora", "Origem", "Falha", "Rota", "Usuario", "E-mail"]} empty={!loading && !filtered.length}>{filtered.map((log) => <TableRow key={log.id}><TableCell className="whitespace-nowrap">{new Date(log.occurredAt).toLocaleString("pt-BR")}</TableCell><TableCell><div className="flex items-center gap-2"><Badge variant={log.severity === "critical" ? "destructive" : "secondary"}>{log.severity}</Badge><span className="whitespace-nowrap">{log.source}</span></div></TableCell><TableCell className="max-w-md"><p className="line-clamp-2" title={log.message}>{log.message}</p><p className="mt-1 font-mono text-xs text-muted-foreground">{log.fingerprint}</p></TableCell><TableCell className="font-mono text-xs">{log.statusCode ? `${log.statusCode} ` : ""}{log.method} {log.path || "-"}</TableCell><TableCell>{log.actorEmail || "-"}</TableCell><TableCell><Badge variant={log.emailStatus === "failed" ? "destructive" : "outline"} title={log.emailError}>{deliveryLabel[log.emailStatus]}</Badge></TableCell></TableRow>)}</DataTable>
         </div>
       </div>
     </>

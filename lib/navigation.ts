@@ -1,8 +1,8 @@
 // Estrutura do menu lateral (dados puros, testáveis). Os ícones são ligados no componente do menu pela chave `icon`.
-// A fábrica produz carretas SOB ENCOMENDA, só por Ordens de Produção. "Estoque" é uma página só com abas (matérias-primas, kits e produtos finais); a página antiga de estoque, Serviços e Ordens de Serviço não aparecem no menu,
+// A fábrica produz carretas SOB ENCOMENDA, só por Ordens de Produção. "Estoque" (matérias-primas, kits e produtos finais) e "Produção" (Produção e MRP, esteira e tablet) são páginas únicas com abas; a página antiga de estoque, Serviços e Ordens de Serviço não aparecem no menu,
 // mas as rotas, as tabelas e os históricos continuam existindo (links antigos funcionam e o acesso administrativo é preservado).
 
-export type NavLeaf = { label: string; href: string; permission: string; icon: string; adminOnly?: boolean; /** rotas filhas que NÃO acendem este item (ficam com outro item) */ excludePrefixes?: string[]; /** outras rotas que também acendem este item (ex.: páginas de detalhe) */ alsoPrefixes?: string[] }
+export type NavLeaf = { label: string; href: string; permission: string; icon: string; adminOnly?: boolean; /** rotas filhas que NÃO acendem este item (ficam com outro item) */ excludePrefixes?: string[]; /** outras rotas que também acendem este item (ex.: páginas de detalhe) */ alsoPrefixes?: string[]; /** quem não tem `permission` mas tem esta, vê o mesmo item apontando para outra página (ex.: só o tablet da fábrica) */ alternate?: { permission: string; href: string } }
 export type NavParent = { label: string; icon: string; children: NavLeaf[] }
 export type NavEntry = NavLeaf | NavParent
 export type NavGroup = { title: string; items: NavEntry[] }
@@ -25,11 +25,7 @@ export const navGroups: NavGroup[] = [
     { label: "Financeiro", href: "/financeiro", permission: "financeiro", icon: "finance" },
     { label: "Compras", href: "/compras", permission: "compras", icon: "purchases" },
     { label: "Estoque", href: "/estoque-interno", permission: "produtos_servicos", icon: "inventory", alsoPrefixes: ["/materias-primas", "/kits", "/produtos"] },
-    { label: "Produção", icon: "production", children: [
-      { label: "Produção e MRP", href: "/producao", permission: "estoque", icon: "mrp", excludePrefixes: ["/producao/esteira", "/producao/tablet"] },
-      { label: "Esteira da fábrica", href: "/producao/esteira", permission: "estoque", icon: "line" },
-      { label: "Tablet da fábrica", href: "/producao/tablet", permission: "chao_fabrica", icon: "tablet" },
-    ] },
+    { label: "Produção", href: "/producao", permission: "estoque", icon: "production", alternate: { permission: "chao_fabrica", href: "/producao/tablet" } },
     { label: "Frota", href: "/frota", permission: "frota", icon: "fleet" },
     { label: "Máquinas e Equipamentos", href: "/maquinas", permission: "maquinas", icon: "machines" },
   ] },
@@ -48,7 +44,13 @@ export type NavUser = { role?: string; permissions?: readonly string[] } | null 
 const allowed = (leaf: NavLeaf, user: NavUser) => {
   if (user?.role === "admin") return true
   if (leaf.adminOnly) return false
-  return Boolean(user?.permissions?.includes(leaf.permission))
+  return Boolean(user?.permissions?.includes(leaf.permission) || (leaf.alternate && user?.permissions?.includes(leaf.alternate.permission)))
+}
+
+/** O item aponta para a página principal; quem só tem a permissão alternativa vai direto para a página dela. */
+const resolve = (leaf: NavLeaf, user: NavUser): NavLeaf => {
+  if (leaf.alternate && user?.role !== "admin" && !user?.permissions?.includes(leaf.permission) && user?.permissions?.includes(leaf.alternate.permission)) return { ...leaf, href: leaf.alternate.href, alsoPrefixes: [...(leaf.alsoPrefixes || []), leaf.href] }
+  return leaf
 }
 
 /** Itens que o usuário pode ver; grupos e menus expansíveis sem nenhum item visível somem. */
@@ -62,7 +64,7 @@ export function visibleNav(user: NavUser, groups: NavGroup[] = navGroups): NavGr
             const children = entry.children.filter((child) => allowed(child, user))
             return children.length ? { ...entry, children } : null
           }
-          return allowed(entry, user) ? entry : null
+          return allowed(entry, user) ? resolve(entry, user) : null
         })
         .filter((entry): entry is NavEntry => entry !== null),
     }))

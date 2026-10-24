@@ -1,11 +1,12 @@
 "use client"
 
-import type React from "react"
+import React from "react"
 import { useContext, useEffect, useMemo, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Save } from "lucide-react"
 import type { ColumnSortState } from "@/lib/column-sort"
 import { EmbeddedPageContext } from "@/lib/embedded-page"
+import { isActionHeader, sortRows, type SortDir } from "@/lib/table-auto-sort"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -201,13 +202,43 @@ export function StatusBadge({ status }: { status: string }) {
   return <Badge variant="outline" className={classes[tone]}>{label}</Badge>
 }
 
+/** Texto de um nó React (o que a célula vai mostrar), para ordenar por coluna sem precisar conhecer cada tela. */
+function nodeText(node: React.ReactNode): string {
+  if (node === null || node === undefined || typeof node === "boolean") return ""
+  if (typeof node === "string" || typeof node === "number") return String(node)
+  if (Array.isArray(node)) return node.map(nodeText).join(" ")
+  if (React.isValidElement(node)) {
+    const props = node.props as Record<string, unknown>
+    if (props.children !== undefined) { const inner = nodeText(props.children as React.ReactNode); if (inner.trim()) return inner }
+    for (const key of ["status", "label", "value", "title", "text"]) if (typeof props[key] === "string" || typeof props[key] === "number") return String(props[key])
+  }
+  return ""
+}
+
+const flattenNodes = (children: React.ReactNode): React.ReactElement[] =>
+  React.Children.toArray(children).flatMap((child) => (React.isValidElement(child) ? (child.type === React.Fragment ? flattenNodes((child.props as { children?: React.ReactNode }).children) : [child]) : []))
+
+/** Linhas da tabela com o texto de cada célula; null quando as linhas não seguem o padrão (então a tabela só não ordena sozinha). */
+function readRows(children: React.ReactNode, columns: number) {
+  const elements = flattenNodes(children)
+  if (!elements.length) return null
+  const rows: Array<{ element: React.ReactElement; cells: string[] }> = []
+  for (const element of elements) {
+    if (element.type !== TableRow && element.type !== "tr") return null
+    const cells = flattenNodes((element.props as { children?: React.ReactNode }).children)
+    if (cells.length !== columns || cells.some((cell) => cell.type !== TableCell && cell.type !== "td")) return null
+    rows.push({ element, cells: cells.map((cell) => nodeText((cell.props as { children?: React.ReactNode }).children)) })
+  }
+  return rows
+}
+
 export function DataTable({
   headers,
   children,
   empty,
   viewportClassName,
   tableClassName,
-  stickyHeader = false,
+  stickyHeader,
   sort,
 }: {
   sort?: ColumnSortState
@@ -218,25 +249,42 @@ export function DataTable({
   tableClassName?: string
   stickyHeader?: boolean
 }) {
+  // Padrão de todas as tabelas: rolagem vertical (cerca de 10 linhas visíveis) e horizontal, cabeçalho fixo e ordenação clicando no título.
+  const viewport = viewportClassName ?? "max-h-[36rem] overflow-auto overscroll-contain [scrollbar-gutter:stable]"
+  const sticky = stickyHeader ?? !viewportClassName
+  const [auto, setAuto] = useState<{ column: number; dir: SortDir } | null>(null)
+  const parsed = !sort && !empty ? readRows(children, headers.length) : null
+  const rows = parsed && auto ? sortRows(parsed, (row) => row.cells, auto.column, auto.dir).map((row) => row.element) : children
+  function clickHeader(column: number) {
+    setAuto((current) => (!current || current.column !== column ? { column, dir: "asc" } : current.dir === "asc" ? { column, dir: "desc" } : null))
+  }
+  const arrow = (on: boolean, dir?: SortDir) => (on ? (dir === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />) : <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />)
   return (
-    <Table containerClassName={viewportClassName} className={tableClassName}>
-      <TableHeader className={stickyHeader ? "sticky top-0 z-20" : undefined}>
+    <Table containerClassName={viewport} className={tableClassName}>
+      <TableHeader className={sticky ? "sticky top-0 z-20" : undefined}>
         <TableRow>{headers.map((header, index) => {
           const key = sort?.keys[index]
-          if (!sort || !key) return <TableHead key={header}>{header}</TableHead>
-          const on = sort.active === key
-          return (
-            <TableHead key={header} aria-sort={on ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
-              <button type="button" onClick={() => sort.onSort(key)} className="inline-flex items-center gap-1 whitespace-nowrap hover:text-foreground" title={`Ordenar por ${header}`}>
-                {header}
-                {on ? (sort.dir === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />) : <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />}
-              </button>
-            </TableHead>
-          )
+          if (sort && key) {
+            const on = sort.active === key
+            return (
+              <TableHead key={`${header}-${index}`} aria-sort={on ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
+                <button type="button" onClick={() => sort.onSort(key)} className="inline-flex items-center gap-1 whitespace-nowrap hover:text-foreground" title={`Ordenar por ${header}`}>{header}{arrow(on, sort.dir)}</button>
+              </TableHead>
+            )
+          }
+          if (parsed && !isActionHeader(header)) {
+            const on = auto?.column === index
+            return (
+              <TableHead key={`${header}-${index}`} aria-sort={on ? (auto?.dir === "asc" ? "ascending" : "descending") : "none"}>
+                <button type="button" onClick={() => clickHeader(index)} className="inline-flex items-center gap-1 whitespace-nowrap hover:text-foreground" title={`Ordenar por ${header}`}>{header}{arrow(on, auto?.dir)}</button>
+              </TableHead>
+            )
+          }
+          return <TableHead key={`${header}-${index}`}>{header}</TableHead>
         })}</TableRow>
       </TableHeader>
       <TableBody>
-        {empty ? <TableRow><TableCell colSpan={headers.length} className="py-8 text-center text-muted-foreground">Nenhum registro encontrado.</TableCell></TableRow> : children}
+        {empty ? <TableRow><TableCell colSpan={headers.length} className="py-8 text-center text-muted-foreground">Nenhum registro encontrado.</TableCell></TableRow> : rows}
       </TableBody>
     </Table>
   )

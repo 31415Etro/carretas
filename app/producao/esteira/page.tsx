@@ -1,5 +1,6 @@
-import { ShopBoardPage } from "@/components/shop-floor/shop-board-page"
+import { redirect } from "next/navigation"
 
+// a esteira agora é uma aba da página Produção
 export default function Page() {
-  return <ShopBoardPage />
+  redirect("/producao?aba=esteira")
 }

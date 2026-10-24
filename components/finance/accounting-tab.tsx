@@ -294,7 +294,7 @@ export function AccountingTab({ emitir }: { emitir?: React.ReactNode }) {
       if (de) params.set("de", de)
       if (ate) params.set("ate", ate)
       const [result, summary] = await Promise.all([send<{ invoices: Row[] }>(`/api/contabilidade/notas?${params}`), send<{ analysis: AccountingAnalysis }>(`/api/contabilidade/notas?${params}&analise=1`)])
-      setRows(result.invoices); setAnalysis(summary.analysis); setError("")
+      setRows(result.invoices || []); setAnalysis(summary.analysis || null); setError("")
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível carregar.") } finally { setLoading(false) }
   }, [filter, q, de, ate])
   useEffect(() => { const timer = setTimeout(() => void load(), 250); return () => clearTimeout(timer) }, [load])

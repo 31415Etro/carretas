@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { MetricCard, PageShell, SectionCard } from "@/components/operations/shared"
+import { DataTable, MetricCard, PageShell, SectionCard } from "@/components/operations/shared"
+import { TableCell, TableRow } from "@/components/ui/table"
 import { api, brl, dateBr } from "@/components/catalog/catalog-fields"
 
 type Row = Record<string, any>
@@ -64,7 +65,7 @@ export function ShopBoardPage() {
           <Tabs defaultValue="esteira">
             <TabsList className="flex flex-wrap">
               <TabsTrigger value="esteira">Esteira</TabsTrigger>
-              <TabsTrigger value="colaboradores">Colaboradores</TabsTrigger><TabsTrigger value="etapas">Etapas e checklists</TabsTrigger>
+              <TabsTrigger value="etapas">Etapas e checklists</TabsTrigger>
               
             </TabsList>
             <TabsContent value="esteira" className="mt-4">
@@ -99,7 +100,6 @@ export function ShopBoardPage() {
               </SectionCard>
             </TabsContent>
             
-            <TabsContent value="colaboradores" className="mt-4"><Workers workers={data.workers} steps={data.steps} onAct={act} failure={failure} clearFailure={() => setFailure("")} /></TabsContent>
             <TabsContent value="etapas" className="mt-4"><Steps steps={data.steps} kits={data.kits} onAct={act} /></TabsContent>
           </Tabs>
         </>
@@ -145,43 +145,6 @@ function Alerts({ board, onAct }: { board: Row; onAct: (body: Record<string, unk
   )
 }
 
-function Workers({ workers, steps, onAct, failure, clearFailure }: { workers: Row[]; steps: Row[]; onAct: (body: Record<string, unknown>, success?: string) => Promise<unknown>; failure: string; clearFailure: () => void }) {
-  const [saving, setSaving] = useState(false)
-  // sugestão de matrícula (o banco novo gera a sua própria; o antigo usa esta): próximo F#### livre
-  const nextCode = () => `F${String(workers.reduce((max, w) => Math.max(max, Number(/^F(\d+)$/.exec(String(w.code))?.[1] || 0)), 0) + 1).padStart(4, "0")}`
-  const sectors = useMemo(() => Array.from(new Set(steps.map((s) => s.sector).filter(Boolean) as string[])), [steps])
-  const [edit, setEdit] = useState<Row | null>(null)
-  const blank = { code: "", name: "", sectors: [] as string[], shift: "", pin: "", is_inspector: false, is_supervisor: false, active: true }
-  return (
-    <SectionCard title="Colaboradores da fábrica">
-      <div className="mb-3 flex justify-between gap-2"><p className="text-sm text-muted-foreground">Cada colaborador usa matrícula e PIN próprios no tablet. O PIN é guardado só como hash.</p><Button onClick={() => { clearFailure(); setEdit({ ...blank }) }}><Plus className="h-4 w-4" />Novo colaborador</Button></div>
-      <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-2">Matrícula</th><th>Nome</th><th>Setores</th><th>PIN</th><th /></tr></thead>
-        <tbody>{workers.map((w) => <tr key={w.id} className={`border-b ${w.active ? "" : "opacity-50"}`}><td className="p-2 font-mono">{w.code}</td><td>{w.name}</td><td>{(w.sectors || []).join(", ")}</td><td>{w.locked ? "bloqueado" : w.has_pin ? "definido" : "sem PIN"}</td><td><Button size="sm" variant="outline" onClick={() => { clearFailure(); setEdit({ worker_id: w.id, code: w.code, name: w.name, sectors: w.sectors || [], shift: w.shift || "", pin: "", is_inspector: w.is_inspector, is_supervisor: w.is_supervisor, active: w.active }) }}>Editar</Button></td></tr>)}</tbody></table></div>
-      <Dialog open={Boolean(edit)} onOpenChange={(open) => !open && setEdit(null)}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>{edit?.worker_id ? "Editar colaborador" : "Novo colaborador"}</DialogTitle></DialogHeader>
-          {edit ? (
-            <div className="space-y-3 text-sm">
-              <label className="block">Nome<Input value={edit.name} onChange={(event) => setEdit({ ...edit, name: event.target.value })} /></label>
-              <div><p className="mb-1">Setores em que pode apontar</p><div className="flex flex-wrap gap-2">{sectors.map((sector) => <label key={sector} className="flex items-center gap-1 rounded border px-2 py-1"><input type="checkbox" checked={edit.sectors.includes(sector)} onChange={(event) => setEdit({ ...edit, sectors: event.target.checked ? [...edit.sectors, sector] : edit.sectors.filter((s: string) => s !== sector) })} />{sector}</label>)}</div></div>
-              {edit.worker_id ? <label className="flex items-center gap-1"><input type="checkbox" checked={edit.active} onChange={(event) => setEdit({ ...edit, active: event.target.checked })} />Ativo</label> : <p className="text-xs text-muted-foreground">A matrícula é gerada pelo sistema ao salvar.</p>}
-              <label className="block">{edit.worker_id ? "Novo PIN (deixe vazio para manter)" : "PIN (4 a 8 números)"}<Input inputMode="numeric" value={edit.pin} onChange={(event) => setEdit({ ...edit, pin: event.target.value.replace(/\D/g, "").slice(0, 8) })} /></label>
-              {failure ? <p className="rounded-md border border-destructive/40 bg-destructive/5 p-2 text-sm text-destructive" role="alert">{failure}</p> : null}
-              <Button disabled={saving || !edit.name.trim() || (!edit.worker_id && edit.pin.length < 4)} onClick={async () => {
-                setSaving(true)
-                const body = { ...edit, code: edit.worker_id ? edit.code : nextCode(), pin: edit.pin || undefined }
-                const saved = await onAct({ action: "worker_save", worker: body }, edit.worker_id ? "Colaborador salvo." : "Colaborador cadastrado: a matrícula foi gerada pelo sistema (veja na lista).")
-                setSaving(false)
-                if (saved) setEdit(null)
-              }}>{saving ? "Salvando..." : "Salvar"}</Button>
-            </div>
-          ) : null}
-        </DialogContent>
-      </Dialog>
-    </SectionCard>
-  )
-}
-
 function Steps({ steps, kits, onAct }: { steps: Row[]; kits: Array<{ id: string; name: string; category: string | null }>; onAct: (body: Record<string, unknown>, success?: string) => Promise<unknown> }) {
   const [item, setItem] = useState<Record<string, string>>({})
   if (steps.length === 0) return <SetupNotice onSeed={() => void onAct({ action: "steps_seed" }, "Etapas oficiais criadas.")} />
@@ -213,8 +176,7 @@ function External({ board, onAct }: { board: Row; onAct: (body: Record<string, u
     <SectionCard title="Etapas terceirizadas (galvanização, eletrostática, pintura)">
       <p className="mb-3 text-sm text-muted-foreground">O envio e o retorno são feitos pela ficha da carreta na aba Esteira. O tempo externo não conta como hora de colaborador.</p>
       {board.external.length === 0 ? <p className="text-sm text-muted-foreground">Nenhum envio registrado.</p> : (
-        <table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-2">Carreta</th><th>Prestador</th><th>Acabamento</th><th>Saída</th><th>Previsão</th><th>Retorno</th><th /></tr></thead>
-          <tbody>{board.external.map((x: Row) => <tr key={x.task_id} className="border-b"><td className="p-2">{x.order_code} unid. {x.unit}</td><td>{x.provider}</td><td>{x.finish_type}</td><td>{dateBr(x.sent_at)}</td><td>{dateBr(x.expected_return)}</td><td>{x.returned_at ? dateBr(x.returned_at) : <b className="text-amber-700">com o prestador</b>}</td><td>{!x.returned_at ? <Button size="sm" variant="outline" onClick={() => { setRet(x) }}>Registrar retorno</Button> : null}</td></tr>)}</tbody></table>
+        <DataTable headers={["Carreta", "Prestador", "Acabamento", "Saída", "Previsão", "Retorno", ""]}>{board.external.map((x: Row) => <TableRow key={x.task_id}><TableCell>{x.order_code} unid. {x.unit}</TableCell><TableCell>{x.provider}</TableCell><TableCell>{x.finish_type}</TableCell><TableCell>{dateBr(x.sent_at)}</TableCell><TableCell>{dateBr(x.expected_return)}</TableCell><TableCell>{x.returned_at ? dateBr(x.returned_at) : <b className="text-amber-700">com o prestador</b>}</TableCell><TableCell>{!x.returned_at ? <Button size="sm" variant="outline" onClick={() => { setRet(x) }}>Registrar retorno</Button> : null}</TableCell></TableRow>)}</DataTable>
       )}
       <Dialog open={Boolean(ret)} onOpenChange={(open) => !open && setRet(null)}>
         <DialogContent><DialogHeader><DialogTitle>Retorno do prestador</DialogTitle></DialogHeader><p className="text-sm text-muted-foreground">Confirma que a peça voltou do prestador? A próxima etapa será liberada.</p>
@@ -228,12 +190,10 @@ function Productivity({ data }: { data: Row }) {
   return (
     <div className="space-y-4">
       <SectionCard title="Por etapa (últimos 30 dias)">
-        <table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-2">Etapa</th><th>Tarefas</th><th>Concluídas</th><th>Horas de mão de obra</th><th>Tempo médio decorrido</th><th>Previsto</th><th>Retrabalho</th></tr></thead>
-          <tbody>{data.by_step.map((s: Row) => <tr key={s.step} className="border-b"><td className="p-2">{s.step}</td><td>{s.tasks}</td><td>{s.done}</td><td>{fmtH(s.labor_hours)}</td><td>{s.avg_elapsed_minutes != null ? `${Math.round(s.avg_elapsed_minutes)} min` : "-"}</td><td>{s.planned_minutes != null ? `${s.planned_minutes} min` : "-"}</td><td>{s.rework}</td></tr>)}</tbody></table>
+        <DataTable headers={["Etapa", "Tarefas", "Concluídas", "Horas de mão de obra", "Tempo médio decorrido", "Previsto", "Retrabalho"]}>{data.by_step.map((s: Row) => <TableRow key={s.step}><TableCell>{s.step}</TableCell><TableCell>{s.tasks}</TableCell><TableCell>{s.done}</TableCell><TableCell>{fmtH(s.labor_hours)}</TableCell><TableCell>{s.avg_elapsed_minutes != null ? `${Math.round(s.avg_elapsed_minutes)} min` : "-"}</TableCell><TableCell>{s.planned_minutes != null ? `${s.planned_minutes} min` : "-"}</TableCell><TableCell>{s.rework}</TableCell></TableRow>)}</DataTable>
       </SectionCard>
       <SectionCard title="Por colaborador (horas sem dupla contagem)">
-        <table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-2">Colaborador</th><th>Tarefas</th><th>Horas</th></tr></thead>
-          <tbody>{data.by_worker.map((w: Row) => <tr key={w.worker_id} className="border-b"><td className="p-2">{w.name}</td><td>{w.tasks}</td><td>{fmtH(w.hours)}</td></tr>)}</tbody></table>
+        <DataTable headers={["Colaborador", "Tarefas", "Horas"]}>{data.by_worker.map((w: Row) => <TableRow key={w.worker_id}><TableCell>{w.name}</TableCell><TableCell>{w.tasks}</TableCell><TableCell>{fmtH(w.hours)}</TableCell></TableRow>)}</DataTable>
         <p className="mt-2 text-xs text-muted-foreground">Etapas terceirizadas e administrativas ficam fora da mão de obra de fabricação. Estes valores são gerenciais e não lançam nada no financeiro.</p>
       </SectionCard>
     </div>

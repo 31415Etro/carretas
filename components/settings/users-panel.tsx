@@ -5,6 +5,9 @@ import { Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { FactoryWorkersPanel } from "@/components/settings/factory-workers-panel"
+import { SalespeoplePanel } from "@/components/settings/salespeople-panel"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { DataTable, SectionCard, StatusBadge, TextField, useCrudFeedback } from "@/components/operations/shared"
@@ -61,6 +64,13 @@ export function UsersPanel() {
   const companyBranches = branches.filter((branch) => form?.companyIds?.includes(branch.companyId))
 
   return (
+    <Tabs defaultValue="usuarios">
+      <TabsList>
+        <TabsTrigger value="usuarios">Usuários do sistema</TabsTrigger>
+        <TabsTrigger value="colaboradores">Colaboradores da fábrica</TabsTrigger>
+        <TabsTrigger value="vendedores">Vendedores</TabsTrigger>
+      </TabsList>
+      <TabsContent value="usuarios" className="mt-4">
     <SectionCard title="Usuários e permissões" description="Cada usuário só enxerga as empresas autorizadas e as páginas marcadas. Usuários antigos sem empresa vinculada continuam com acesso a todas até serem editados.">
       <Button className="mb-3" onClick={() => setForm(emptyUser())}><Plus className="h-4 w-4" />Novo usuário</Button>
       <DataTable headers={["Nome", "E-mail", "Perfil", "Empresas", "Filial", "Departamento / cargo", "MFA", "Último acesso", "Status", "Ações"]} empty={!users.length}>
@@ -132,5 +142,9 @@ export function UsersPanel() {
         </SheetContent>
       </Sheet>
     </SectionCard>
+      </TabsContent>
+      <TabsContent value="colaboradores" className="mt-4"><SectionCard title="Colaboradores da fábrica" description="Quem trabalha na fábrica e usa matrícula e PIN no tablet."><FactoryWorkersPanel /></SectionCard></TabsContent>
+      <TabsContent value="vendedores" className="mt-4"><SectionCard title="Vendedores" description="Responsáveis por clientes, oportunidades e orçamentos."><SalespeoplePanel /></SectionCard></TabsContent>
+    </Tabs>
   )
 }

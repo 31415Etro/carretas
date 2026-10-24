@@ -2679,7 +2679,7 @@ function DreTab({
     {dreView === "receitas" ? <SpreadsheetTable title="Receitas" firstColumn="Conta Gerencial" groups={revenueGroups.length ? revenueGroups : [createGroup("sem-receita", "Sem receitas realizadas")]} /> : null}
     {dreView === "despesas" ? <SpreadsheetTable title="Despesas / Saidas" firstColumn="Conta Gerencial" groups={accountGroups.length ? accountGroups : [createGroup("sem-saida", "Sem saidas realizadas")]} /> : null}
     {dreView === "resumo" ? <SectionCard title="Variacao Despesas x Receita" description="Comparativo mensal entre receitas realizadas e despesas realizadas na base filtrada.">
-      <div className="overflow-auto rounded-xl border bg-background">
+      <div className="max-h-[35rem] overflow-auto overscroll-contain rounded-xl border bg-background [scrollbar-gutter:stable]">
         <table className="min-w-[1500px] border-collapse text-sm">
           <thead>
             <tr>
@@ -2713,7 +2713,7 @@ function DreTab({
       </div>
     </SectionCard> : null}
     {dreView === "resumo" ? <SectionCard title="Variacao Despesas x Receita Prevista" description="Comparativo mensal entre receitas previstas e despesas previstas na base filtrada.">
-      <div className="overflow-auto rounded-xl border bg-background">
+      <div className="max-h-[35rem] overflow-auto overscroll-contain rounded-xl border bg-background [scrollbar-gutter:stable]">
         <table className="min-w-[1500px] border-collapse text-sm">
           <thead>
             <tr>
@@ -2747,7 +2747,7 @@ function DreTab({
       </div>
     </SectionCard> : null}
     {dreView === "resumo" ? <SectionCard title="Variacao Total Despesas x Receita Realizada" description="Comparativo mensal entre receitas realizadas e despesas realizadas na base filtrada.">
-      <div className="overflow-auto rounded-xl border bg-background">
+      <div className="max-h-[35rem] overflow-auto overscroll-contain rounded-xl border bg-background [scrollbar-gutter:stable]">
         <table className="min-w-[1500px] border-collapse text-sm">
           <thead>
             <tr>
