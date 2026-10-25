@@ -1,6 +1,6 @@
 import { Suspense } from "react"
-import { ProductionHubPage } from "@/components/production/production-hub-page"
+import { CentralProductionPage } from "@/components/production/central-page"
 
 export default function Page() {
-  return <Suspense fallback={null}><ProductionHubPage /></Suspense>
+  return <Suspense fallback={null}><CentralProductionPage /></Suspense>
 }

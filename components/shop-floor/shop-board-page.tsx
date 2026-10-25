@@ -13,8 +13,8 @@ import { api, brl, dateBr } from "@/components/catalog/catalog-fields"
 type Row = Record<string, any>
 type Overview = { board: Row; workers: Row[]; steps: Row[]; productivity: Row; kits: Array<{ id: string; name: string; category: string | null }> }
 
-const statusTone: Record<string, string> = { Pronta: "bg-sky-100 text-sky-800", "Em execucao": "bg-emerald-100 text-emerald-800", Pausada: "bg-amber-100 text-amber-800", Bloqueada: "bg-red-100 text-red-800", "Com pendencia": "bg-orange-100 text-orange-800", Concluida: "bg-slate-100 text-slate-700", Aguardando: "bg-slate-100 text-slate-600" }
-const statusLabel: Record<string, string> = { Pronta: "Pronta", "Em execucao": "Em execução", Pausada: "Pausada", Bloqueada: "Bloqueada", "Com pendencia": "Com pendência", Concluida: "Concluída", Aguardando: "Aguardando", Cancelada: "Cancelada" }
+export const statusTone: Record<string, string> = { Pronta: "bg-sky-100 text-sky-800", "Em execucao": "bg-emerald-100 text-emerald-800", Pausada: "bg-amber-100 text-amber-800", Bloqueada: "bg-red-100 text-red-800", "Com pendencia": "bg-orange-100 text-orange-800", Concluida: "bg-slate-100 text-slate-700", Aguardando: "bg-slate-100 text-slate-600" }
+export const statusLabel: Record<string, string> = { Pronta: "Pronta", "Em execucao": "Em execução", Pausada: "Pausada", Bloqueada: "Bloqueada", "Com pendencia": "Com pendência", Concluida: "Concluída", Aguardando: "Aguardando", Cancelada: "Cancelada" }
 const kindLabel: Record<string, string> = { nao_conformidade: "Não conformidade", divergencia_medida: "Divergência de medida", ocorrencia: "Ocorrência", retrabalho: "Retrabalho" }
 const fmtH = (hours: number) => `${Number(hours || 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} h`
 
@@ -205,7 +205,7 @@ function Productivity({ data }: { data: Row }) {
 }
 
 /** Ficha da carreta: ações por tarefa (reatribuir, bloquear, cancelar, enviar ao prestador), entrada do acabado e QR Code. */
-function UnitDialog({ unit, workers, onClose, onAct }: { unit: Row; workers: Row[]; onClose: () => void; onAct: (body: Record<string, unknown>, success?: string) => Promise<unknown> }) {
+export function UnitDialog({ unit, workers, onClose, onAct }: { unit: Row; workers: Row[]; onClose: () => void; onAct: (body: Record<string, unknown>, success?: string) => Promise<unknown> }) {
   const [tasks, setTasks] = useState<Row[]>([])
   const [qr, setQr] = useState("")
   const [form, setForm] = useState<{ kind: string; task: Row } | null>(null)
