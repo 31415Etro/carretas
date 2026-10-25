@@ -51,3 +51,4 @@ __pycache__/
 NotasFiscais_*.zip
 CamScanner*.pdf
 scripts/nfemail/logs/
+notas-baixadas/
