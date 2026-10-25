@@ -38,7 +38,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       },
     })
     if (error) throw new Error(error.message)
-    return NextResponse.json({ result: data, order: await loadPurchaseOrder(context.admin, id) })
+    // material que chegou cobre o que faltava nas ordens de produção: baixa o restante dos kits (se o script 237 ainda não estiver no banco, segue sem isso)
+    const pending = await context.admin.rpc("production_consume_pending_all", { p_user: context.responsible })
+    return NextResponse.json({ result: data, productionPending: pending.error ? null : pending.data, order: await loadPurchaseOrder(context.admin, id) })
   } catch (error) {
     return purchaseError(error, "Erro ao receber pedido.")
   }

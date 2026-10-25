@@ -86,8 +86,18 @@ export const listPurchaseRequests = (admin: Admin, status?: string) => rpc<Array
 export const setPurchaseRequestStatus = (admin: Admin, id: string, status: string, user: string) => rpc(admin, "purchase_request_set_status", { p_request: id, p_status: status, p_user: user })
 
 /** Ordem de produção aberta direto na produção (sem pedido de venda): estrutura ativa congelada, materiais reservados e tarefas da esteira. */
-export const createManualProductionOrder = (admin: Admin, input: { productId: string; quantity: number; plannedEnd?: string; priority?: number; clientId?: string; responsible?: string; notes?: string; createDocumentation?: boolean }, user: string) =>
+const createManualProductionOrderBase = (admin: Admin, input: { productId: string; quantity: number; plannedEnd?: string; priority?: number; clientId?: string; responsible?: string; notes?: string; createDocumentation?: boolean }, user: string) =>
   rpc<Record<string, any>>(admin, "production_order_create_manual", {
     p: { product_id: input.productId, quantity: input.quantity, planned_end: input.plannedEnd || null, priority: input.priority || 3, client_id: input.clientId || null, responsible: input.responsible || null, notes: input.notes || null, create_documentation: Boolean(input.createDocumentation) },
     p_user: user,
   })
+
+/** Ordem aberta direto na produção: já baixa do estoque as matérias-primas dos kits (script 237; sem ele a ordem nasce igual, sem a baixa). */
+export async function createManualProductionOrder(admin: Admin, input: Parameters<typeof createManualProductionOrderBase>[1], user: string) {
+  const created = await createManualProductionOrderBase(admin, input, user)
+  if (created?.production_order_id) {
+    const consumed = await admin.rpc("production_order_consume_kits", { p_order: created.production_order_id, p_user: user })
+    return { ...created, materials_consumed: consumed.error ? null : consumed.data }
+  }
+  return created
+}
