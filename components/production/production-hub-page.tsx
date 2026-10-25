@@ -10,7 +10,7 @@ import { ShopBoardPage } from "@/components/shop-floor/shop-board-page"
 import { useAuth } from "@/lib/auth-context"
 import { EmbeddedPageContext } from "@/lib/embedded-page"
 
-const tabs = ["mrp", "esteira", "tablet"] as const
+const tabs = ["esteira", "ordens", "tablet"] as const
 type Tab = (typeof tabs)[number]
 
 /** Produção: uma página só, com as abas Produção e MRP, Esteira da fábrica e Tablet da fábrica. */
@@ -20,18 +20,19 @@ export function ProductionHubPage() {
   const { user } = useAuth()
   const canTablet = !user || user.role === "admin" || (user.permissions as readonly string[] | undefined)?.includes("chao_fabrica")
   const requested = params.get("aba") as Tab | null
-  const tab: Tab = requested && tabs.includes(requested) && (requested !== "tablet" || canTablet) ? requested : "mrp"
+  const legacy = (params.get("aba") === "mrp" ? "ordens" : requested) as Tab | null
+  const tab: Tab = legacy && tabs.includes(legacy) && (legacy !== "tablet" || canTablet) ? legacy : "esteira"
   return (
-    <PageShell title="Produção" description="Ordens de produção e MRP, esteira da fábrica e o tablet dos colaboradores: escolha a aba.">
+    <PageShell title="Produção" description="A esteira da fábrica é o centro: cada carreta na sua etapa, com um clique para avançar.">
       <Tabs value={tab} onValueChange={(value) => router.replace(`/producao?aba=${value}`, { scroll: false })}>
         <TabsList>
-          <TabsTrigger value="mrp">Produção e MRP</TabsTrigger>
           <TabsTrigger value="esteira">Esteira da fábrica</TabsTrigger>
+          <TabsTrigger value="ordens">Ordens e materiais</TabsTrigger>
           {canTablet ? <TabsTrigger value="tablet">Tablet da fábrica</TabsTrigger> : null}
         </TabsList>
         <EmbeddedPageContext.Provider value>
-          <TabsContent value="mrp" className="mt-4"><ProductionPage /></TabsContent>
           <TabsContent value="esteira" className="mt-4"><ShopBoardPage /></TabsContent>
+          <TabsContent value="ordens" className="mt-4"><ProductionPage /></TabsContent>
         </EmbeddedPageContext.Provider>
         {canTablet ? (
           <TabsContent value="tablet" className="mt-4 space-y-3">

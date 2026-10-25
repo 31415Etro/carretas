@@ -416,8 +416,16 @@ export async function convertQuoteToSalesOrder(admin: Admin, id: string, respons
   const { data, error } = await admin.rpc("sales_order_from_quote", { p_quote_id: id, p_user: responsible })
   if (error) fail(error.message)
   if (!data.duplicate) await winOpportunity(admin, quote, responsible)
+  // pedido gerado = pedido confirmado: já cria as ordens de produção (esteira) e a documentação veicular (chassi), sem passo manual
+  let confirmed = false
+  let confirmNote = ""
+  if (!data.duplicate) {
+    const confirm = await admin.rpc("confirm_sales_order", { p_sales_order_id: data.sales_order_id, p_user: responsible })
+    if (confirm.error) confirmNote = confirm.error.message
+    else confirmed = true
+  }
   if (quote!.client_id) await admin.from("clients").update({ status: "Ativo" }).eq("id", quote!.client_id).eq("status", "Prospect") // venda feita: o lead vira cliente
-  return { ...(await getQuote(admin, id)), salesOrder: { id: data.sales_order_id as string, number: data.order_number as string, duplicate: Boolean(data.duplicate) } }
+  return { ...(await getQuote(admin, id)), salesOrder: { id: data.sales_order_id as string, number: data.order_number as string, duplicate: Boolean(data.duplicate), confirmed, confirmNote } }
 }
 
 /** Orçamento aprovado que virou contrato: os títulos saem da recorrência do contrato, não do orçamento. */

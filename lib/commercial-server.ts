@@ -270,7 +270,7 @@ export async function saveOpportunity(admin: Admin, input: Record<string, any>, 
   }
   if (data.stage === "Ganho") await convertLead(admin, data.clientId)
   // GANHAR gera o pedido de venda: usa o orçamento da oportunidade (aprova e converte, se preciso). Sem orçamento não há o que vender.
-  let salesOrder: { id: string; number: string; duplicate: boolean } | null = null
+  let salesOrder: { id: string; number: string; duplicate: boolean; confirmed?: boolean; confirmNote?: string } | null = null
   if (data.stage === "Ganho" && previous?.stage !== "Ganho") {
     let quoteRow: any = null
     if (input.quoteId || previous?.quote_id) quoteRow = (await admin.from("quotes").select("id,status,quote_number").eq("id", input.quoteId || previous.quote_id).maybeSingle()).data

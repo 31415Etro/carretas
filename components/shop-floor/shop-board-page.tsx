@@ -5,7 +5,6 @@ import Link from "next/link"
 import { Activity, AlertTriangle, Clock, Hammer, Loader2, Plus, QrCode, RefreshCw, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DataTable, MetricCard, PageShell, SectionCard } from "@/components/operations/shared"
 import { TableCell, TableRow } from "@/components/ui/table"
@@ -51,7 +50,7 @@ export function ShopBoardPage() {
   }, [board])
 
   return (
-    <PageShell title="Esteira da fábrica" description="Cada carreta na sua etapa."
+    <PageShell title="Esteira da fábrica" description="Cada carreta na sua etapa. Defina o responsável e conclua a etapa para a carreta avançar."
       actions={<><Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />Atualizar</Button></>}>
       {error ? <p className="rounded-md border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">{error}</p> : null}
       {notice ? <p className="rounded-md border bg-muted/40 p-3 text-sm" role="status">{notice}</p> : null}
@@ -62,13 +61,7 @@ export function ShopBoardPage() {
             <MetricCard title="Paradas" value={board.stopped.length} note="pausadas ou com pendência" icon={Hammer} />
             <MetricCard title="Atrasadas" value={board.late_count} note="acima do prazo" icon={Clock} />
           </div>
-          <Tabs defaultValue="esteira">
-            <TabsList className="flex flex-wrap">
-              <TabsTrigger value="esteira">Esteira</TabsTrigger>
-              <TabsTrigger value="etapas">Etapas e checklists</TabsTrigger>
-              
-            </TabsList>
-            <TabsContent value="esteira" className="mt-4">
+          <div className="space-y-4">
               {board.steps.length === 0 ? <SetupNotice onSeed={() => void act({ action: "steps_seed" }, "Etapas oficiais criadas. Cadastre os itens de checklist e os colaboradores.")} /> : (
                 <div className="flex gap-3 overflow-x-auto pb-3" data-testid="kanban">
                   {columns.map((column) => (
@@ -76,15 +69,25 @@ export function ShopBoardPage() {
                       <p className="mb-2 flex items-center justify-between text-sm font-semibold">{column.name}<span className="rounded bg-background px-1.5 text-xs">{column.units.length}</span></p>
                       <div className="space-y-2">
                         {column.units.map((u: Row) => (
-                          <button key={`${u.order_id}-${u.unit_number}`} type="button" onClick={() => setUnit(u)} className={`w-full rounded-md border bg-background p-2 text-left text-xs hover:border-primary ${u.late ? "border-red-400" : ""}`}>
+                          <div key={`${u.order_id}-${u.unit_number}`} className={`rounded-md border bg-background p-2 text-xs hover:border-primary ${u.late ? "border-red-400" : ""}`}>
+                          <button type="button" onClick={() => setUnit(u)} className="w-full text-left" title="Abrir a ficha da carreta">
                             <p className="font-semibold">{u.order_code} · unid. {u.unit_number}</p>
                             <p className="text-muted-foreground">{u.product}{u.model ? ` · ${u.model}` : ""}</p>
                             <p className="font-mono text-[11px]">{u.vin || "chassi a informar"}</p>
                             {!u.finished ? <span className={`mt-1 inline-block rounded px-1.5 py-0.5 ${statusTone[u.current_status] || "bg-slate-100"}`}>{statusLabel[u.current_status] || u.current_status}</span> : null}
                             {u.late ? <span className="ml-1 rounded bg-red-100 px-1.5 py-0.5 text-red-800">atrasada</span> : null}
-                            {u.working.length ? <p className="mt-1 text-emerald-700">{u.working.join(", ")}</p> : u.assigned ? <p className="mt-1 text-muted-foreground">Resp.: {u.assigned}</p> : null}
                             {u.blocked_reason ? <p className="mt-1 text-red-700">{u.blocked_reason}</p> : null}
                           </button>
+                            {!u.finished ? (
+                              <div className="mt-2 space-y-1">
+                                <select aria-label="Responsável pela carreta" className="h-7 w-full rounded-md border bg-background px-1 text-[11px]" value="" onChange={(event) => event.target.value && void act({ action: "assign_unit", orderId: u.order_id, unit: u.unit_number, workerId: event.target.value }, "Responsável definido.")}>
+                                  <option value="">{u.working.length ? u.working.join(", ") : u.assigned ? `Resp.: ${u.assigned}` : "Definir responsável"}</option>
+                                  {(data?.workers || []).filter((w: Row) => w.active).map((w: Row) => <option key={w.id} value={w.id}>{w.name}</option>)}
+                                </select>
+                                <Button size="sm" className="h-8 w-full text-xs" onClick={() => void act({ action: "advance", orderId: u.order_id, unit: u.unit_number }, `Etapa "${u.current_name || column.name}" concluída.`)}>Concluir etapa e avançar</Button>
+                              </div>
+                            ) : <p className="mt-1 text-[11px] font-medium text-emerald-700">Pronta: entrou no estoque de acabados</p>}
+                          </div>
                         ))}
                       </div>
                     </div>
@@ -98,10 +101,11 @@ export function ShopBoardPage() {
                   <ul className="divide-y text-sm">{board.active_workers.map((w: Row, index: number) => <li key={index} className="flex flex-wrap justify-between gap-2 py-2"><span><b>{w.worker}</b> · {w.task}</span><span className="text-muted-foreground">{w.order_code} unid. {w.unit} · desde {new Date(w.since).toLocaleTimeString("pt-BR")}</span></li>)}</ul>
                 )}
               </SectionCard>
-            </TabsContent>
-            
-            <TabsContent value="etapas" className="mt-4"><Steps steps={data.steps} kits={data.kits} onAct={act} /></TabsContent>
-          </Tabs>
+            <details className="rounded-lg border bg-card p-3 text-sm">
+              <summary className="cursor-pointer font-medium">Configurar etapas da esteira (avançado)</summary>
+              <div className="mt-3"><Steps steps={data.steps} kits={data.kits} onAct={act} /></div>
+            </details>
+          </div>
         </>
       ) : loading ? <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando...</p> : null}
       {unit ? <UnitDialog unit={unit} workers={data?.workers || []} onClose={() => setUnit(null)} onAct={act} /> : null}

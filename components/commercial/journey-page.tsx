@@ -323,7 +323,7 @@ function ClosingStep({ journey, onClosed, toast }: { journey: Journey; onClosed:
     setBusy(true); setFailure("")
     try {
       const { opportunity } = await api<{ opportunity: Row }>("/api/comercial/opportunities", { method: "POST", body: JSON.stringify({ opportunity: { ...journey.opportunity, stage: "Ganho", quoteId: quote.id, quoteNumber: quote.number, items: (journey.opportunity.items || []).map((line: Row) => ({ productId: line.productId, description: line.description, unit: line.unit, quantity: line.quantity, unitPrice: line.unitPrice })) } }) })
-      toast({ title: "Venda fechada", description: opportunity.salesOrder ? `Pedido ${opportunity.salesOrder.number} gerado a partir da proposta aceita.` : "Oportunidade marcada como ganha." })
+      toast({ title: "Venda fechada", description: opportunity.salesOrder ? `Pedido ${opportunity.salesOrder.number} gerado${opportunity.salesOrder.confirmed ? " e já enviado para a produção (esteira e chassi)" : ""}.` : "Oportunidade marcada como ganha." })
       onClosed()
     } catch (reason) {
       setFailure(reason instanceof Error ? reason.message : "Não foi possível fechar a venda.")

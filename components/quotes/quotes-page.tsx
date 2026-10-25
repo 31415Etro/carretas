@@ -207,7 +207,7 @@ export function QuotesPage({ opportunityId, onChanged, onOrderCreated }: { oppor
     if (approveFirst && !window.confirm("Este orçamento ainda não foi aprovado. Aprovar agora e gerar o pedido de venda?")) return
     setSaving(true)
     try {
-      const data = await api<Detail & { salesOrder: { id: string; number: string; duplicate: boolean } }>(`/api/orcamentos/${detail.quote.id}`, { method: "POST", body: JSON.stringify({ action: "to_order", approveFirst }) })
+      const data = await api<Detail & { salesOrder: { id: string; number: string; duplicate: boolean; confirmed?: boolean; confirmNote?: string } }>(`/api/orcamentos/${detail.quote.id}`, { method: "POST", body: JSON.stringify({ action: "to_order", approveFirst }) })
       hydrate(data)
       let pdfNote = ""
       if (!data.salesOrder.duplicate) {
@@ -218,7 +218,7 @@ export function QuotesPage({ opportunityId, onChanged, onOrderCreated }: { oppor
           pdfNote = ` O PDF não foi emitido (${failure instanceof Error ? failure.message : "erro"}): emita em Vendas > Pedido em PDF.`
         }
       }
-      toast({ title: data.salesOrder.duplicate ? "Este orçamento já tinha pedido" : "Pedido de venda criado", description: `${data.salesOrder.number}: abra em Vendas para confirmar.${pdfNote}` })
+      toast({ title: data.salesOrder.duplicate ? "Este orçamento já tinha pedido" : "Pedido de venda criado", description: `${data.salesOrder.number}${data.salesOrder.confirmed ? ": já confirmado e enviado para a produção." : data.salesOrder.confirmNote ? `: a confirmação automática não concluiu (${data.salesOrder.confirmNote}). Confirme em Vendas.` : "."}${pdfNote}` })
       await load()
       if (embedded) { notify(); onOrderCreated?.({ id: data.salesOrder.id, number: data.salesOrder.number }) } else router.push(`/vendas/${data.salesOrder.id}`)
     } catch (reason) {

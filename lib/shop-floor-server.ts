@@ -15,6 +15,7 @@ export class ShopError extends Error {
 export function shopError(error: unknown, fallback = "Erro ao processar a solicitação.") {
   if (error instanceof ShopError) return error
   const message = error instanceof Error ? error.message : (error as { message?: string })?.message || fallback
+  if (/shop_unit_advance/i.test(message) && /Could not find|schema cache|function/i.test(message)) return new ShopError("Para concluir a etapa com um clique, rode o script 234_producao_simplificada.sql no SQL Editor do Supabase.", 503)
   if (/Could not find the function|schema cache|shop_/i.test(message) && /function|schema cache|relation/i.test(message)) return new ShopError(SHOP_MIGRATION_HINT, 503)
   if (/Sessão expirada/i.test(message)) return new ShopError(message, 401)
   if (/não encontrad/i.test(message)) return new ShopError(message, 404)
@@ -62,6 +63,7 @@ export async function managerAction(admin: Admin, action: string, body: Record<s
     case "resolve": return rpc(admin, "shop_occurrence_resolve", { p_occurrence: body.occurrenceId, p_decision: body.decision, p_note: body.note, p_actor: actor })
     case "external_send": return rpc(admin, "shop_external_send", { p_task: body.taskId, p: body.external, p_actor: actor })
     case "external_return": return rpc(admin, "shop_external_return", { p_task: body.taskId, p_cost: body.cost ?? null, p_notes: body.notes || null, p_actor: actor })
+    case "advance": return rpc(admin, "shop_unit_advance", { p_order: body.orderId, p_unit: body.unit, p_actor: actor })
     case "receive_unit": return rpc(admin, "shop_unit_receive", { p_order: body.orderId, p_unit: body.unit, p_actor: actor })
     default: throw new ShopError("Ação desconhecida.")
   }
