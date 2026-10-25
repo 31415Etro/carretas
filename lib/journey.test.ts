@@ -30,3 +30,10 @@ test("conferências do fechamento apontam o que falta", () => {
   assert.deepEqual(bad.filter((check) => !check.ok).map((check) => check.key), ["cliente", "medidas", "valores", "condicoes", "prazo"])
   assert.equal(closingChecks({ clientId: "c", items: [], totalAmount: 10, paymentConditionId: "pc", deliveryTerm: "x" }).find((check) => check.key === "produtos")?.ok, false)
 })
+
+test("fechamento recusa produto sem estrutura de fabricação", () => {
+  const checks = closingChecks({ clientId: "c", items: [{ lineType: "Produto", catalogId: "p", quantity: 1, unitPrice: 100 }], totalAmount: 100, paymentConditionId: "pc", deliveryTerm: "45 dias", structureProblems: [{ product: "FZ 1E", problem: "não tem estrutura de fabricação ativa" }] })
+  const check = checks.find((item) => item.key === "estrutura")!
+  assert.equal(check.ok, false)
+  assert.match(check.detail, /FZ 1E não tem estrutura de fabricação ativa/)
+})

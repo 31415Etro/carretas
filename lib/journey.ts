@@ -51,6 +51,8 @@ export function closingChecks(input: {
   totalAmount: number
   paymentConditionId: string
   deliveryTerm: string
+  /** produtos que não têm estrutura/kits para fabricar (vem do servidor) */
+  structureProblems?: Array<{ product: string; problem: string }>
 }): ClosingCheck[] {
   const products = input.items.filter((item) => item.lineType === "Produto")
   const unconfigured = products.filter((item) => item.requiresConfiguration && !item.configurationId)
@@ -58,6 +60,7 @@ export function closingChecks(input: {
   return [
     { key: "cliente", label: "Cliente", ok: Boolean(input.clientId), detail: input.clientId ? "Cliente informado." : "Informe o cliente na proposta." },
     { key: "produtos", label: "Produtos", ok: products.length > 0 && products.every((item) => item.catalogId && item.quantity > 0), detail: products.length ? `${products.length} produto(s) com quantidade.` : "A proposta não tem produtos." },
+    { key: "estrutura", label: "Estrutura de fabricação", ok: !(input.structureProblems || []).length, detail: (input.structureProblems || []).length ? `${(input.structureProblems || []).map((item) => `${item.product} ${item.problem}`).join("; ")}. Vincule os kits em Estoque > Produtos finais.` : "Kits e matérias-primas de cada produto conferidos." },
     { key: "medidas", label: "Medidas e acessórios", ok: unconfigured.length === 0 && invalidConfig.length === 0, detail: unconfigured.length ? `${unconfigured.length} produto(s) ainda sem configuração (medidas, acabamento, acessórios).` : invalidConfig.length ? "Há configuração inválida: revise na proposta." : "Configuração conferida." },
     { key: "valores", label: "Valores", ok: input.totalAmount > 0 && products.every((item) => item.unitPrice >= 0), detail: input.totalAmount > 0 ? "Valores da proposta conferidos." : "O valor total da proposta está zerado." },
     { key: "condicoes", label: "Condições comerciais", ok: Boolean(input.paymentConditionId), detail: input.paymentConditionId ? "Condição de pagamento negociada informada." : "Informe a condição comercial negociada." },

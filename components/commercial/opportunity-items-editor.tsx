@@ -3,7 +3,7 @@
 import { SearchableSelectField } from "@/components/operations/shared"
 
 export type OppItem = { productId: string; description: string; unit: string; quantity: string; unitPrice: string }
-export type CatalogProduct = { id: string; name: string; code: string; unit?: string; price?: number }
+export type CatalogProduct = { id: string; name: string; code: string; unit?: string; price?: number; structureProblem?: string }
 
 const none = "nenhum"
 const numeric = (value: unknown) => { const n = Number(String(value ?? "").replace(",", ".")); return Number.isFinite(n) ? n : 0 }
@@ -24,7 +24,7 @@ export function OpportunityItemsEditor({ items, products, onChange, disabled }: 
           onChange(existing
             ? items.map((line) => (line === existing ? { ...line, quantity: String(numeric(line.quantity) + 1) } : line))
             : [...items, { productId: product.id, description: product.name, unit: product.unit || "UN", quantity: "1", unitPrice: String(product.price ?? 0) }])
-        }} options={[{ value: none, label: "Pesquise e escolha um produto para adicionar" }, ...products.map((item) => ({ value: item.id, label: `${item.code ? `${item.code} · ` : ""}${item.name}${item.price ? ` — ${brl(item.price)}` : ""}` }))]} />
+        }} options={[{ value: none, label: "Pesquise e escolha um produto para adicionar" }, ...products.map((item) => ({ value: item.id, label: `${item.code ? `${item.code} · ` : ""}${item.name}${item.price ? ` — ${brl(item.price)}` : ""}${item.structureProblem ? " ⚠ sem estrutura de fabricação" : ""}` }))]} />
       )}
       {items.length ? (
         <div className="overflow-x-auto rounded-md border">
@@ -33,7 +33,7 @@ export function OpportunityItemsEditor({ items, products, onChange, disabled }: 
             <tbody>
               {items.map((line, index) => (
                 <tr key={`${line.productId}-${index}`} className="border-t align-top">
-                  <td className="px-3 py-2">{line.description}<div className="text-xs text-muted-foreground">{line.unit || "UN"}</div></td>
+                  <td className="px-3 py-2">{line.description}<div className="text-xs text-muted-foreground">{line.unit || "UN"}</div>{products.find((item) => item.id === line.productId)?.structureProblem ? <div className="text-xs font-medium text-amber-700">Atenção: este produto {products.find((item) => item.id === line.productId)?.structureProblem}. A venda só fecha depois de vincular os kits em Estoque &gt; Produtos finais.</div> : null}</td>
                   <td className="px-2 py-2"><input inputMode="decimal" disabled={disabled} className="h-9 w-full rounded-md border bg-background px-2 disabled:opacity-60" value={line.quantity} aria-label={`Quantidade de ${line.description}`} onChange={(event) => patch(index, { quantity: event.target.value })} /></td>
                   <td className="px-2 py-2"><input inputMode="decimal" disabled={disabled} className="h-9 w-full rounded-md border bg-background px-2 disabled:opacity-60" value={line.unitPrice} aria-label={`Preço de ${line.description}`} onChange={(event) => patch(index, { unitPrice: event.target.value })} /></td>
                   <td className="whitespace-nowrap px-2 py-2 text-right">{brl(numeric(line.quantity) * numeric(line.unitPrice))}</td>

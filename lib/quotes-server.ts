@@ -6,6 +6,8 @@ import { applyStockMovement } from "@/lib/stock-engine"
 import { buildInstallments, canCreateVersion, describeChanges, editableInPlace, effectiveStatus, quoteTotals, shareMessage, validateQuote, validateQuoteTransition, type QuoteInput } from "@/lib/quotes"
 import { readAllPages } from "@/lib/supabase-pagination"
 import { stageProbability } from "@/lib/commercial"
+import { quoteStructureProblems } from "@/lib/production-links-server"
+import { structureMessage } from "@/lib/production-links"
 
 type Admin = ReturnType<typeof createAdminClient>
 
@@ -408,6 +410,11 @@ export async function formalizeQuote(admin: Admin, id: string, options: { target
 export async function convertQuoteToSalesOrder(admin: Admin, id: string, responsible: string, options: { approveFirst?: boolean; role?: string } = {}) {
   let { data: quote } = await admin.from("quotes").select("*").eq("id", id).maybeSingle()
   if (!quote) fail("Orçamento não encontrado.")
+  // a fabricação precisa receber os kits e as matérias-primas do produto vendido: sem estrutura ativa com kits, a venda não fecha (nada é aprovado nem criado pela metade)
+  if (quote!.status !== "Convertido") {
+    const problems = await quoteStructureProblems(admin, id)
+    if (problems.length) fail(structureMessage(problems))
+  }
   // dentro do próprio orçamento: se ainda não foi aprovado, a aprovação é registrada junto (com o aceite do usuário e a regra de desconto de sempre)
   if (options.approveFirst && quote!.status !== "Aprovado" && quote!.status !== "Convertido") {
     await changeQuoteStatus(admin, id, "Aprovado", { acceptedBy: responsible, acceptNotes: "Aprovado ao gerar o pedido de venda." }, responsible, options.role)

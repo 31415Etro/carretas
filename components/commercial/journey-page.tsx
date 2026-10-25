@@ -19,7 +19,7 @@ import { cleanDocument, interactionKinds, isValidDocument, leadOrigins } from "@
 import { closingChecks, defaultStep, isJourneyStep, journeyLabels, journeySteps, orderConfirmed, stepAvailability, type JourneyStep } from "@/lib/journey"
 
 type Row = Record<string, any>
-type Journey = { opportunity: Row; quotes: Row[]; quote: Row | null; order: Row | null; production: Row[]; documentation: Row[]; deliveries: Row[] }
+type Journey = { opportunity: Row; quotes: Row[]; quote: Row | null; order: Row | null; production: Row[]; documentation: Row[]; deliveries: Row[]; structure?: Array<{ product: string; problem: string }> }
 
 const brl = (value: number) => Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
 const day = (value?: string) => (value ? String(value).slice(0, 10).split("-").reverse().join("/") : "-")
@@ -312,7 +312,7 @@ function ClosingStep({ journey, onClosed, toast }: { journey: Journey; onClosed:
     if (!detail) return []
     const items: Row[] = detail.items || []
     return closingChecks({
-      clientId: detail.quote?.clientId || "", totalAmount: Number(detail.quote?.totalAmount || 0), paymentConditionId: detail.quote?.paymentConditionId || "", deliveryTerm: detail.quote?.deliveryText || "",
+      structureProblems: journey.structure || [], clientId: detail.quote?.clientId || "", totalAmount: Number(detail.quote?.totalAmount || 0), paymentConditionId: detail.quote?.paymentConditionId || "", deliveryTerm: detail.quote?.deliveryText || "",
       items: items.map((item) => ({ lineType: item.lineType, catalogId: item.catalogId, quantity: Number(item.quantity), unitPrice: Number(item.unitPrice), configurationId: item.configurationId || "", requiresConfiguration: engineering.has(item.catalogId), configurationStatus: item.configuration?.status || "" })),
     })
   }, [detail, engineering])

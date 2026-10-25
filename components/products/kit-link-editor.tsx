@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react"
 import { Loader2, Search, Trash2, TriangleAlert } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { api } from "@/components/catalog/catalog-fields"
-import { linkFromOption, type KitLinkForm, type KitOption, type ProductErrors, type StructureForm } from "@/lib/products"
+import { linkFromOption, newLinkKey, type KitLinkForm, type KitOption, type ProductErrors, type StructureForm } from "@/lib/products"
 
 /** Pesquisa de kits ativos (com versão vigente). Só devolve kits existentes: nunca cria cadastro. */
 function KitPicker({ onPick, excludeIds }: { onPick: (option: KitOption) => void; excludeIds: string[] }) {
@@ -53,12 +53,47 @@ function KitPicker({ onPick, excludeIds }: { onPick: (option: KitOption) => void
   )
 }
 
+/** Copia os kits (e as quantidades) de outro produto que já tem estrutura: útil para variações e cadastros duplicados do mesmo modelo. */
+function CopyStructure({ onCopy, currentKits }: { onCopy: (kits: KitLinkForm[]) => void; currentKits: number }) {
+  const [products, setProducts] = useState<Array<{ id: string; name: string; sku: string }>>([])
+  const [choice, setChoice] = useState("")
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState("")
+  useEffect(() => {
+    api<{ items: Array<{ id: string; name: string; sku: string; bom_version: number | null }> }>("/api/produtos?tamanho=100&status=Ativo").then((data) => setProducts(data.items.filter((item) => item.bom_version).map((item) => ({ id: item.id, name: item.name, sku: item.sku })))).catch(() => undefined)
+  }, [])
+  if (!products.length) return null
+  async function copy() {
+    if (!choice) return
+    setBusy(true); setMessage("")
+    try {
+      const { detail } = await api<{ detail: { kits: Array<Record<string, any>> } }>(`/api/produtos/${choice}`)
+      const kits: KitLinkForm[] = (detail.kits || []).map((kit) => ({ key: newLinkKey(), kitId: String(kit.kit_id), sku: String(kit.sku || ""), name: String(kit.name || ""), quantity: String(Number(kit.quantity)), pinVersion: Boolean(kit.pinned_version_id), activeVersion: kit.kit_version ?? null, cost: Number(kit.kit_cost || 0), componentsCount: Number(kit.components_count || 0) }))
+      if (!kits.length) { setMessage("Esse produto não tem kits para copiar."); return }
+      onCopy(kits)
+      setMessage(`${kits.length} kit(s) copiado(s). Confira as quantidades e salve.`)
+    } catch (reason) { setMessage(reason instanceof Error ? reason.message : "Não foi possível copiar.") } finally { setBusy(false) }
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed p-2 text-sm">
+      <span className="text-muted-foreground">Já existe outro produto igual? Copie os kits dele:</span>
+      <select className="h-9 rounded-md border bg-background px-2" value={choice} onChange={(event) => setChoice(event.target.value)} aria-label="Produto de origem">
+        <option value="">Escolha o produto</option>
+        {products.map((item) => <option key={item.id} value={item.id}>{item.sku} · {item.name}</option>)}
+      </select>
+      <button type="button" disabled={!choice || busy} onClick={() => void copy()} className="h-9 rounded-md border px-3 hover:bg-muted disabled:opacity-50">{busy ? "Copiando..." : currentKits ? "Copiar (soma aos kits atuais)" : "Copiar kits"}</button>
+      {message ? <span className="text-xs text-muted-foreground">{message}</span> : null}
+    </div>
+  )
+}
+
 /** Estrutura de fabricação do produto: só os kits (por ID e versão) e a quantidade de cada um por unidade do produto. */
 export function KitLinkEditor({ structure, onChange, errors, readOnlyReason }: { structure: StructureForm; onChange: (structure: StructureForm) => void; errors: ProductErrors; readOnlyReason?: string }) {
   const update = (key: string, patch: Partial<KitLinkForm>) => onChange({ ...structure, kits: structure.kits.map((link) => (link.key === key ? { ...link, ...patch } : link)) })
   return (
     <div className="space-y-3">
       {readOnlyReason ? <p className="rounded-md border bg-muted/40 p-3 text-sm">{readOnlyReason}</p> : null}
+      {readOnlyReason ? null : <CopyStructure currentKits={structure.kits.length} onCopy={(kits) => onChange({ ...structure, kits: [...structure.kits, ...kits.filter((kit) => !structure.kits.some((link) => link.kitId === kit.kitId))] })} />}
       <KitPicker excludeIds={structure.kits.map((link) => link.kitId)} onPick={(option) => onChange({ ...structure, kits: [...structure.kits, linkFromOption(option)] })} />
       {errors.kits ? <p className="flex items-center gap-1 text-sm text-destructive"><TriangleAlert className="h-4 w-4" />{errors.kits}</p> : null}
       {structure.kits.length === 0 ? (

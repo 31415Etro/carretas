@@ -1,5 +1,6 @@
 import type { createAdminClient } from "@/lib/supabase/server"
 import { getOpportunity } from "@/lib/commercial-server"
+import { quoteStructureProblems } from "@/lib/production-links-server"
 
 type Admin = ReturnType<typeof createAdminClient>
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -63,5 +64,7 @@ export async function journeyState(admin: Admin, opportunityId: string) {
     for (const row of delivered.data || []) deliveries.push({ id: row.id, at: row.created_at, by: row.delivered_by || "", items: row.items || [] })
   }
 
-  return { opportunity, quotes, quote, order, production, documentation, deliveries }
+  // o que impede de fabricar o que está na proposta em vigor (aparece nas conferências do fechamento)
+  const structure = quote ? await quoteStructureProblems(admin, quote.id).catch(() => []) : []
+  return { opportunity, quotes, quote, order, production, documentation, deliveries, structure }
 }
