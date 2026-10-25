@@ -3,6 +3,7 @@
 //
 // Configuração (em .env.local, nunca vai para o Git):
 //   WEBCONTROL_AUTH_HEADER=Authorization: Bearer SEU_TOKEN      (copie o nome e o valor do cabeçalho de qualquer chamada da API no DevTools > Rede)
+//   (se o token vier por cookie: WEBCONTROL_COOKIE=nome=valor; outro=valor)
 //   WEBCONTROL_ID_CADASTRO=ID_DA_EMPRESA_NO_WEBCONTROL           (o número que aparece na URL .../download/zip/{idCadastro}/...)
 //
 // Uso:
@@ -25,9 +26,9 @@ for (const file of [path.join(root, ".env.local")]) {
 const args = process.argv.slice(2)
 const option = (name, fallback = "") => { const index = args.indexOf(`--${name}`); return index >= 0 ? args[index + 1] : fallback }
 const from = option("desde"), to = option("ate"), cnpj = option("cnpj").replace(/\D/g, ""), format = option("formato", "yyyy-mm-dd"), folder = option("pasta", path.join(root, "notas-baixadas"))
-const header = process.env.WEBCONTROL_AUTH_HEADER || "", id = process.env.WEBCONTROL_ID_CADASTRO || ""
+const header = process.env.WEBCONTROL_AUTH_HEADER || (process.env.WEBCONTROL_COOKIE ? `Cookie: ${process.env.WEBCONTROL_COOKIE}` : ""), id = process.env.WEBCONTROL_ID_CADASTRO || ""
 if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || cnpj.length !== 14) { console.error("Informe --desde AAAA-MM-DD --ate AAAA-MM-DD --cnpj (14 dígitos)."); process.exit(2) }
-if (!header.includes(":") || !id) { console.error("Configure WEBCONTROL_AUTH_HEADER e WEBCONTROL_ID_CADASTRO no .env.local (veja o topo deste arquivo)."); process.exit(2) }
+if (!header.includes(":") || !id) { console.error("Configure WEBCONTROL_AUTH_HEADER (ou WEBCONTROL_COOKIE) e WEBCONTROL_ID_CADASTRO no .env.local (veja o topo deste arquivo)."); process.exit(2) }
 const fmt = (iso) => (format === "dd-mm-yyyy" ? iso.split("-").reverse().join("-") : format === "ddmmyyyy" ? iso.split("-").reverse().join("") : iso)
 const [name, ...rest] = header.split(":")
 const url = `https://api2.webcontrolempresas.com.br/api-notas/api/v1/download/zip/${encodeURIComponent(id)}/${fmt(from)}/${fmt(to)}`
