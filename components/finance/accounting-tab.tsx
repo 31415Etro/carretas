@@ -268,6 +268,36 @@ function AnalysisPanel({ analysis }: { analysis: AccountingAnalysis }) {
   )
 }
 
+type Consolidated = { companies: Array<{ id: string; name: string; cnpj: string; analysis: AccountingAnalysis }>; total: AccountingAnalysis }
+
+/** Soma das notas de todas as empresas: o conjunto no topo e a comparação lado a lado, empresa por empresa. */
+function ConsolidatedPanel({ data }: { data: Consolidated }) {
+  const head = ["Empresa", "Notas", "Total das notas", "Impostos destacados", "% de imposto", "ICMS", "IPI", "PIS", "COFINS", "ISS", "Crédito potencial"]
+  const line = (name: string, a: AccountingAnalysis) => [name, a.totals.notes.toLocaleString("pt-BR"), brl(a.totals.total), brl(a.taxesTotal), pct(a.taxBurden), brl(a.totals.icms), brl(a.totals.ipi), brl(a.totals.pis), brl(a.totals.cofins), brl(a.totals.iss), brl(a.potentialCredit)]
+  const rows = [...data.companies.map((company) => line(company.name, company.analysis)), line("TOTAL DAS EMPRESAS", data.total)]
+  const months = [...new Set([...data.companies.flatMap((company) => company.analysis.months.map((month) => month.key)), ...data.total.months.map((month) => month.key)])].sort()
+  const monthOf = (a: AccountingAnalysis, key: string) => a.months.find((month) => month.key === key)
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">Soma das notas de {data.companies.length} empresa(s), com os mesmos filtros de operação e período acima. Cada nota continua pertencendo à empresa que a recebeu ou emitiu.</p>
+      <AnalysisPanel analysis={data.total} />
+      <div className="overflow-auto rounded-md border">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/50 text-left text-xs"><tr>{head.map((label, index) => <th key={label} className={`px-3 py-2 font-medium ${index ? "text-right" : ""}`}>{label}</th>)}</tr></thead>
+          <tbody>{rows.map((row, index) => <tr key={row[0]} className={`border-t ${index === rows.length - 1 ? "bg-muted/30 font-semibold" : ""}`}>{row.map((cell, column) => <td key={column} className={`px-3 py-2 ${column ? "whitespace-nowrap text-right" : ""}`}>{cell}</td>)}</tr>)}</tbody>
+        </table>
+      </div>
+      <div className="overflow-auto rounded-md border">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/50 text-left text-xs"><tr><th className="px-3 py-2 font-medium">Mês</th>{data.companies.map((company) => <th key={company.id} className="px-3 py-2 text-right font-medium">{company.name}</th>)}<th className="px-3 py-2 text-right font-medium">Total</th></tr></thead>
+          <tbody>{months.map((key) => <tr key={key} className="border-t"><td className="px-3 py-2">{key}</td>{data.companies.map((company) => { const month = monthOf(company.analysis, key); return <td key={company.id} className="whitespace-nowrap px-3 py-2 text-right">{month ? <>{brl(month.total)}<div className="text-xs text-muted-foreground">{brl(month.taxes)} em impostos</div></> : "-"}</td> })}<td className="whitespace-nowrap px-3 py-2 text-right font-semibold">{brl(monthOf(data.total, key)?.total)}</td></tr>)}</tbody>
+        </table>
+      </div>
+      <Button type="button" variant="outline" size="sm" onClick={() => downloadCsv("contabilidade-empresas.csv", head, rows)}><Download className="h-4 w-4" />Planilha do consolidado</Button>
+    </div>
+  )
+}
+
 export function AccountingTab({ emitir }: { emitir?: React.ReactNode }) {
   const input = useRef<HTMLInputElement>(null)
   const [sub, setSub] = useState("analise")
@@ -284,6 +314,8 @@ export function AccountingTab({ emitir }: { emitir?: React.ReactNode }) {
   const [progress, setProgress] = useState("")
   const [report, setReport] = useState<string[]>([])
   const [open, setOpen] = useState<string | null>(null)
+  const [consolidated, setConsolidated] = useState<Consolidated | null>(null)
+  const [consolidatedError, setConsolidatedError] = useState("")
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -297,6 +329,15 @@ export function AccountingTab({ emitir }: { emitir?: React.ReactNode }) {
       setRows(result.invoices || []); setAnalysis(summary.analysis || null); setError("")
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível carregar.") } finally { setLoading(false) }
   }, [filter, q, de, ate])
+  useEffect(() => {
+    if (sub !== "consolidado") return
+    const params = new URLSearchParams()
+    if (filter) params.set("operacao", filter)
+    if (de) params.set("de", de)
+    if (ate) params.set("ate", ate)
+    setConsolidated(null); setConsolidatedError("")
+    send<Consolidated>(`/api/contabilidade/consolidado?${params}`).then(setConsolidated).catch((reason) => setConsolidatedError(reason instanceof Error ? reason.message : "Não foi possível consolidar."))
+  }, [sub, filter, de, ate])
   useEffect(() => { const timer = setTimeout(() => void load(), 250); return () => clearTimeout(timer) }, [load])
 
   async function upload(event: React.ChangeEvent<HTMLInputElement>) {
@@ -355,7 +396,7 @@ export function AccountingTab({ emitir }: { emitir?: React.ReactNode }) {
 
       <Tabs value={sub} onValueChange={setSub}>
         <div className="flex flex-wrap items-end gap-3">
-          <TabsList><TabsTrigger value="analise">Análise</TabsTrigger><TabsTrigger value="notas">Notas</TabsTrigger><TabsTrigger value="materiais">Materiais comprados</TabsTrigger><TabsTrigger value="emitir">Emitir NF</TabsTrigger><TabsTrigger value="importar">Importar NF (clientes e fornecedores)</TabsTrigger></TabsList>
+          <TabsList><TabsTrigger value="analise">Análise</TabsTrigger><TabsTrigger value="consolidado">Todas as empresas</TabsTrigger><TabsTrigger value="notas">Notas</TabsTrigger><TabsTrigger value="materiais">Materiais comprados</TabsTrigger><TabsTrigger value="emitir">Emitir NF</TabsTrigger><TabsTrigger value="importar">Importar NF (clientes e fornecedores)</TabsTrigger></TabsList>
           <div className={`${off}flex rounded-md border p-0.5 text-sm`}>
             {([["", "Todas"], ["Entrada", "Entradas"], ["Saída", "Saídas"]] as Array<["" | Operation, string]>).map(([value, label]) => (
               <button key={value || "todas"} type="button" onClick={() => setFilter(value)} className={`rounded px-3 py-1.5 ${filter === value ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>{label}</button>
@@ -371,6 +412,8 @@ export function AccountingTab({ emitir }: { emitir?: React.ReactNode }) {
         </div>
 
         <TabsContent value="analise" className="mt-3">{analysis ? <AnalysisPanel analysis={analysis} /> : <p className="text-sm text-muted-foreground">Carregando indicadores...</p>}</TabsContent>
+
+        <TabsContent value="consolidado" className="mt-3">{consolidatedError ? <p className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{consolidatedError}</p> : consolidated ? <ConsolidatedPanel data={consolidated} /> : <p className="text-sm text-muted-foreground">Somando as empresas...</p>}</TabsContent>
 
         <TabsContent value="notas" className="mt-3">
           <div className="mb-2 flex gap-2"><Button type="button" variant="outline" size="sm" onClick={exportNotes} disabled={!rows.length}><Download className="h-4 w-4" />Planilha das notas</Button><Button type="button" variant="outline" size="sm" onClick={() => void exportItems()} disabled={!rows.length}><Download className="h-4 w-4" />Planilha dos itens com impostos</Button></div>
