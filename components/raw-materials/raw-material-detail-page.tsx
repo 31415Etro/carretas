@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { DataTable, MetricCard, PageShell, SectionCard, StatusBadge } from "@/components/operations/shared"
 import { api, brl, dateBr, qty } from "@/components/catalog/catalog-fields"
+import { StockAdjustSheet, type StockAdjustTarget } from "@/components/raw-materials/stock-adjust-sheet"
 import { RawMaterialSheet, type RawMaterialSheetTarget } from "@/components/raw-materials/raw-material-sheet"
 import { entityHref, type EntityKind } from "@/lib/entity-links"
 import { formatNcm, stockSituation, type RawMaterialForm } from "@/lib/raw-materials"
@@ -40,6 +41,7 @@ export function RawMaterialDetailPage({ id }: { id: string }) {
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(true)
   const [sheet, setSheet] = useState<RawMaterialSheetTarget>(null)
+  const [adjust, setAdjust] = useState<StockAdjustTarget>(null)
 
   const load = useCallback(async () => {
     setLoading(true); setError("")
@@ -66,6 +68,7 @@ export function RawMaterialDetailPage({ id }: { id: string }) {
       actions={<>
         <Button variant="outline" asChild><Link href="/materias-primas"><ArrowLeft className="h-4 w-4" />Voltar</Link></Button>
         <Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />Atualizar</Button>
+        <Button variant="outline" onClick={() => setAdjust({ id, name: m.name, unit: m.unit, physical: Number(a.physical) })}><Boxes className="h-4 w-4" />Ajustar quantidade</Button>
         <Button onClick={() => setSheet({ id, form, hasHistory, originalSku: m.internal_code || "" })}><Pencil className="h-4 w-4" />Editar</Button>
       </>}>
       <div className="flex flex-wrap items-center gap-2">
@@ -221,6 +224,7 @@ export function RawMaterialDetailPage({ id }: { id: string }) {
         </TabsContent>
       </Tabs>
 
+      <StockAdjustSheet target={adjust} onClose={() => setAdjust(null)} onSaved={() => { setAdjust(null); void load() }} />
       <RawMaterialSheet target={sheet} onClose={() => setSheet(null)} onSaved={() => { setSheet(null); void load() }} />
     </PageShell>
   )

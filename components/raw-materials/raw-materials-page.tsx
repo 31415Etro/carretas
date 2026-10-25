@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { AlertTriangle, Boxes, PackageCheck, Plus, RefreshCw, ShoppingCart } from "lucide-react"
+import { AlertTriangle, Boxes, PackageCheck, Pencil, Plus, RefreshCw, ShoppingCart } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { DataTable, MetricCard, PageShell, SectionCard, StatusBadge } from "@/components/operations/shared"
 import { api, brl, qty, SearchBox } from "@/components/catalog/catalog-fields"
+import { StockAdjustSheet, type StockAdjustTarget } from "@/components/raw-materials/stock-adjust-sheet"
 import { RawMaterialSheet, type RawMaterialSheetTarget } from "@/components/raw-materials/raw-material-sheet"
 import { stockSituation } from "@/lib/raw-materials"
 import { useAuth } from "@/lib/auth-context"
@@ -30,6 +31,7 @@ export function RawMaterialsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [sheet, setSheet] = useState<RawMaterialSheetTarget>(null)
+  const [adjust, setAdjust] = useState<StockAdjustTarget>(null)
 
   const load = useCallback(async () => {
     setLoading(true); setError("")
@@ -70,7 +72,7 @@ export function RawMaterialsPage() {
           <Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />Atualizar</Button>
         </div>
         {error ? <p className="mb-3 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{error}</p> : null}
-        <DataTable headers={["SKU", "Matéria-prima", "Categoria", "Un.", "Custo vigente", "Físico", "Reservado", "Disponível", "A receber", "Situação", "Fornecedor principal", "Kits", "Status"]} empty={!rows.length && !loading} stickyHeader viewportClassName="max-h-[62vh]">
+        <DataTable headers={["SKU", "Matéria-prima", "Categoria", "Un.", "Custo vigente", "Físico", "Reservado", "Disponível", "A receber", "Situação", "Fornecedor principal", "Kits", "Status", ...(canStock ? ["Quantidade"] : [])]} empty={!rows.length && !loading} stickyHeader viewportClassName="max-h-[62vh]">
           {rows.map((row) => {
             const situation = stockSituation({ physical: Number(row.physical), available: Number(row.available), incoming: Number(row.incoming), minimumStock: Number(row.minimum_stock), reorderPoint: Number(row.reorder_point) })
             return (
@@ -88,6 +90,7 @@ export function RawMaterialsPage() {
                 <TableCell>{row.primary_supplier || <span className="text-muted-foreground">Sem fornecedor</span>}</TableCell>
                 <TableCell className="text-center">{row.kits_count || "-"}</TableCell>
                 <TableCell><StatusBadge status={row.status} /></TableCell>
+                {canStock ? <TableCell><Button type="button" variant="outline" size="sm" onClick={(event) => { event.stopPropagation(); setAdjust({ id: row.id, name: row.name, unit: row.unit, physical: Number(row.physical) }) }}><Pencil className="h-3.5 w-3.5" />Editar</Button></TableCell> : null}
               </TableRow>
             )
           })}
@@ -95,6 +98,7 @@ export function RawMaterialsPage() {
         <p className="mt-2 text-xs text-muted-foreground">Os saldos mostram o estoque da empresa selecionada. O cadastro é compartilhado entre as empresas; estoque, compras e produção não.</p>
       </SectionCard>
 
+      <StockAdjustSheet target={adjust} onClose={() => setAdjust(null)} onSaved={() => { setAdjust(null); void load() }} />
       <RawMaterialSheet target={sheet} onClose={() => setSheet(null)} onSaved={(result, created) => { setSheet(null); if (created) router.push(`/materias-primas/${result.id}`); else void load() }} />
     </PageShell>
   )
