@@ -74,6 +74,7 @@ export async function GET(request: Request) {
     const client = clientId ? { name: clientName, document: clientDocument } : null
     const view = params.get("visao")
     if (view === "modelo") return NextResponse.json({ found: rows.length, notes: loaded.notes, client, byModel: chassisByModel(rows), byModelMonth: chassisByModelMonth(rows) })
+    if (view === "todos") return NextResponse.json({ notes: loaded.notes, rows: loaded.rows.map(({ description, accessKey, nature, ...slim }) => slim) }) // página Chassis: gráficos e filtros são feitos no navegador
     if (view === "chassi") return NextResponse.json({ found: rows.length, notes: loaded.notes, client, perChassis: chassisPerChassis(rows) })
     rows.sort((a, b) => String(b.issuedAt || "").localeCompare(String(a.issuedAt || "")) || b.number.localeCompare(a.number))
     return NextResponse.json({ rows: rows.slice(0, 500), found: rows.length, notes: loaded.notes, chart: chassisChart(loaded.rows), client })

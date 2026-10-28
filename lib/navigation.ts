@@ -23,6 +23,7 @@ export const navGroups: NavGroup[] = [
   ] },
   { title: "Operação", items: [
     { label: "Financeiro", href: "/financeiro", permission: "financeiro", icon: "finance" },
+    { label: "Chassis", href: "/chassis", permission: "financeiro", icon: "chassis" },
     { label: "Compras", href: "/compras", permission: "compras", icon: "purchases" },
     { label: "Estoque", href: "/estoque-interno", permission: "produtos_servicos", icon: "inventory", alsoPrefixes: ["/materias-primas", "/kits", "/produtos"] },
     { label: "Produção", href: "/producao", permission: "estoque", icon: "production", alternate: { permission: "chao_fabrica", href: "/producao/tablet" } },

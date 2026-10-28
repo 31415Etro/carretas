@@ -15,7 +15,7 @@ test("chassi vem depois do código do produto; com ou sem espaços e em minúscu
 })
 
 test("modelo, cor, ano e código do produto da descrição", () => {
-  assert.deepEqual(describeTrailer(FZ), { model: "FZ 1E", color: "PRATA", year: "2026", productCode: "600043" })
+  assert.deepEqual(describeTrailer(FZ), { model: "FZ 1E", family: "FZ", axles: 1, pbt: 0.75, capacity: 0.55, color: "PRATA", year: "2026", productCode: "600043" })
   assert.equal(describeTrailer(JET).model, "JET 1E")
   assert.equal(describeTrailer("MARCA MOD R/ND CARRETAS FC 1E, ANO 2026/MOD 2026 COR PRATA COD (600099) 980NDFC1ETD000001").model, "FC 1E")
 })
@@ -89,4 +89,37 @@ test("análise: quantidade e valor por modelo, por modelo e mês, e por chassi",
   const repeated = per.find((p) => p.chassis === "980NDFZ1ETD000233")!
   assert.equal(repeated.notes, 2); assert.equal(repeated.total, 18000); assert.equal(repeated.lastClient, "PEDRO"); assert.equal(repeated.numbers, "100, 103")
   assert.equal(per.length, 3)
+})
+
+test("tamanho: PBT e capacidade em toneladas nos formatos da descrição e eixos pelo modelo", () => {
+  assert.equal(describeTrailer(JET).capacity, 0.55)                                   // "CAP 055"
+  const pr = describeTrailer("MARCA MOD: R/ND CARRETAS PR 2E ANO 2026/MOD 2026 PBT2,350t CAP1,700t COR PRETA COD (600948) 980NDPR2ETD000020")
+  assert.deepEqual([pr.model, pr.family, pr.axles, pr.pbt, pr.capacity], ["PR 2E", "PR", 2, 2.35, 1.7])
+  const fc = describeTrailer("MARCA MOD R/ND CARRETAS BC 1E ANO 2026/MOD 2026 PBT0,750 t CAP0,550 t COR PRATA COD (1) 980NDBC1ETD000001")
+  assert.deepEqual([fc.pbt, fc.capacity], [0.75, 0.55])
+})
+
+test("página Chassis: períodos (mês/semana), modelo ou linha, tamanho e a abertura das notas do gráfico", async () => {
+  const { chassisBySize, chassisTimeline, periodKey, pickChassis } = await import("./chassis.ts")
+  const PR = "MARCA MOD: R/ND CARRETAS PR 2E ANO 2026/MOD 2026 PBT 2,35 t CAP1,90 t COR PRETA COD (600948) 980NDPR2ETD000020"
+  const rows = [
+    ...chassisFromInvoice(invoice("1", "100", "JOÃO", "12345678900", "2026-02-10T10:00:00-03:00"), company, group),
+    ...chassisFromInvoice(invoice("2", "101", "JOÃO", "12345678900", "2026-02-12T10:00:00-03:00", FZ.replace("000233", "000234").replace("FZ 1E", "FZ 2E")), company, group),
+    ...chassisFromInvoice(invoice("3", "102", "MARIA", "98765432100", "2026-03-05T10:00:00-03:00", JET), company, group),
+    ...chassisFromInvoice(invoice("4", "103", "PEDRO", "11122233344", "2026-03-06T10:00:00-03:00", PR), company, group),
+  ]
+  assert.equal(periodKey("2026-03-05T10:00:00-03:00", "mes"), "2026-03")
+  assert.equal(periodKey("2026-03-05T10:00:00-03:00", "semana"), "2026-03-02")            // quinta-feira -> segunda-feira da semana
+  assert.equal(periodKey("2026-03-08T23:00:00-03:00", "semana"), "2026-03-02")            // domingo ainda é da mesma semana
+  const byModel = chassisTimeline(rows, "mes", "model")
+  assert.deepEqual(byModel.periods, ["2026-02", "2026-03"])
+  assert.equal(byModel.series.length, 4)
+  const byFamily = chassisTimeline(rows, "mes", "family")
+  assert.deepEqual(byFamily.series[0], "FZ")                                              // FZ 1E + FZ 2E juntos
+  assert.equal(byFamily.data[0].FZ, 2)
+  assert.deepEqual(chassisBySize(rows, "axles").map((s) => [s.label, s.chassis]), [["1 eixo", 2], ["2 eixos", 2]])
+  assert.deepEqual(chassisBySize(rows, "capacity").map((s) => s.label), ["0,55 t", "1,9 t"])
+  assert.equal(pickChassis(rows, { name: "FZ", by: "family", period: "2026-02", granularity: "mes" }).length, 2)
+  assert.equal(pickChassis(rows, { name: "FZ", by: "family", period: "2026-03", granularity: "mes" }).length, 0)
+  assert.equal(pickChassis(rows, { size: { field: "axles", value: 2 } })[0].number, "103")  // mais recente primeiro
 })

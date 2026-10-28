@@ -6,7 +6,7 @@ import { useEffect, useState } from "react"
 import {
   Activity, BarChart3, Building2, Calculator, Car, FileCheck2, Check, ChevronDown, ChevronsUpDown, ClipboardList, Cog, Factory, FileText, Landmark, LayoutDashboard, LogOut,
   MapPinned, Menu, Package, PackageCheck, PanelLeftClose, PanelLeftOpen, Receipt, Settings2, ShoppingCart, Tablet, Users, X,
-  Boxes, Layers, Workflow,
+  Boxes, Layers, Workflow, Truck,
 } from "lucide-react"
 import { BrandMark } from "@/components/shell/brand-mark"
 import { Button } from "@/components/ui/button"
@@ -17,7 +17,7 @@ import { isActive, isParent, visibleNav, type NavLeaf } from "@/lib/navigation"
 
 const icons: Record<string, React.ComponentType<{ className?: string }>> = {
   dashboard: LayoutDashboard, crm: MapPinned, clients: Users, quotes: Calculator, sales: Receipt, documents: FileCheck2, contracts: FileText, finance: Landmark, purchases: ShoppingCart,
-  inventory: Package, materials: Boxes, kits: Layers, products: PackageCheck, production: Factory, mrp: Cog, line: Workflow, tablet: Tablet, fleet: Car, machines: Factory, reports: BarChart3, logs: Activity, settings: Settings2,
+  chassis: Truck, inventory: Package, materials: Boxes, kits: Layers, products: PackageCheck, production: Factory, mrp: Cog, line: Workflow, tablet: Tablet, fleet: Car, machines: Factory, reports: BarChart3, logs: Activity, settings: Settings2,
 }
 const iconOf = (key: string) => icons[key] || ClipboardList
 

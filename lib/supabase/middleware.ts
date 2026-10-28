@@ -40,6 +40,7 @@ const pagePermissions = [
   { prefix: "/estoque", permission: "estoque" },
   { prefix: "/compras", permission: "compras" },
   { prefix: "/financeiro", permission: "financeiro" },
+  { prefix: "/chassis", permission: "financeiro" },
   { prefix: "/comercial", permission: "comercial" },
   { prefix: "/orcamento", permission: "orcamento" },
   { prefix: "/vendas", permission: "orcamento" },
