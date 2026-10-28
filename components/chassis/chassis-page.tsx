@@ -55,6 +55,7 @@ export function ChassisPage() {
   const [ate, setAte] = useState("")
   const [company, setCompany] = useState("")
   const [model, setModel] = useState("")
+  const [color, setColor] = useState("")
   const [granularity, setGranularity] = useState<Granularity>("mes")
   const [by, setBy] = useState<GroupBy>("model")
   const [sizeField, setSizeField] = useState<SizeField>("capacity")
@@ -71,6 +72,7 @@ export function ChassisPage() {
   useEffect(() => { void load() }, [load])
 
   const companies = useMemo(() => [...new Set(all.map((row) => row.companyName))].sort(), [all])
+  const colors = useMemo(() => [...new Set(all.map((row) => row.color || "Sem cor"))].sort(), [all])
   const models = useMemo(() => [...new Set(all.map((row) => row.model || "Sem modelo"))].sort(), [all])
   const rows = useMemo(() => all.filter((row) => {
     const issued = issuedDay(row.issuedAt)
@@ -78,9 +80,10 @@ export function ChassisPage() {
     if (ate && issued > ate) return false
     if (company && row.companyName !== company) return false
     if (model && (row.model || "Sem modelo") !== model) return false
+    if (color && (row.color || "Sem cor") !== color) return false
     if (!intercompany && row.intercompany) return false
     return true
-  }) as ChassisRow[], [all, de, ate, company, model, intercompany])
+  }) as ChassisRow[], [all, de, ate, company, model, color, intercompany])
 
   const timeline = useMemo(() => chassisTimeline(rows, granularity, by), [rows, granularity, by])
   const colorOf = useMemo(() => Object.fromEntries(timeline.series.map((name, index) => [name, COLORS[index % COLORS.length]])), [timeline.series])
@@ -115,6 +118,9 @@ export function ChassisPage() {
           <label className="text-xs text-muted-foreground">Modelo
             <select value={model} onChange={(event) => setModel(event.target.value)} className="mt-1 block h-9 rounded-md border bg-background px-2 text-sm text-foreground"><option value="">Todos</option>{models.map((name) => <option key={name} value={name}>{name}</option>)}</select>
           </label>
+          <label className="text-xs text-muted-foreground">Cor
+            <select value={color} onChange={(event) => setColor(event.target.value)} className="mt-1 block h-9 rounded-md border bg-background px-2 text-sm text-foreground"><option value="">Todas</option>{colors.map((name) => <option key={name} value={name}>{name}</option>)}</select>
+          </label>
           <div className="text-xs text-muted-foreground">Período do gráfico
             <div className="mt-1 flex rounded-md border p-0.5 text-sm">{([["mes", "Mês"], ["semana", "Semana"]] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setGranularity(value)} className={`rounded px-3 py-1 ${granularity === value ? "bg-primary text-primary-foreground" : "text-foreground"}`}>{label}</button>)}</div>
           </div>
@@ -122,7 +128,7 @@ export function ChassisPage() {
             <div className="mt-1 flex rounded-md border p-0.5 text-sm">{([["model", "Modelo (FZ 1E)"], ["family", "Linha (FZ)"]] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setBy(value)} className={`rounded px-3 py-1 ${by === value ? "bg-primary text-primary-foreground" : "text-foreground"}`}>{label}</button>)}</div>
           </div>
           <label className="flex items-center gap-2 pb-2 text-sm"><input type="checkbox" checked={intercompany} onChange={(event) => setIntercompany(event.target.checked)} />Incluir vendas entre as empresas ND</label>
-          {(de || ate || company || model) ? <Button variant="ghost" size="sm" onClick={() => { setDe(""); setAte(""); setCompany(""); setModel("") }}>Limpar filtros</Button> : null}
+          {(de || ate || company || model || color) ? <Button variant="ghost" size="sm" onClick={() => { setDe(""); setAte(""); setCompany(""); setModel(""); setColor("") }}>Limpar filtros</Button> : null}
           {loading ? <Loader2 className="mb-2 h-4 w-4 animate-spin text-muted-foreground" /> : null}
         </div>
         {error ? <p className="mt-3 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{error}</p> : null}
@@ -211,13 +217,14 @@ export function ChassisPage() {
             <DialogDescription>{opened.length.toLocaleString("pt-BR")} chassi(s) em {new Set(opened.map((row) => row.invoiceId)).size.toLocaleString("pt-BR")} nota(s) · {brl(opened.reduce((sum, row) => sum + row.itemTotal, 0))} nos itens{de || ate ? ` · filtro ${de ? day(`${de}T12:00:00-03:00`) : "início"} a ${ate ? day(`${ate}T12:00:00-03:00`) : "hoje"}` : ""}</DialogDescription>
           </DialogHeader>
           <div><Button type="button" variant="outline" size="sm" onClick={exportOpened} disabled={!opened.length}><Download className="h-4 w-4" />Planilha das notas</Button></div>
-          <DataTable headers={["Nota", "Emissão", "Chassi", "Modelo", "Tamanho", "Cliente", "CPF/CNPJ", "Valor do item", "Valor da nota", "Empresa"]} empty={!opened.length} stickyHeader viewportClassName="max-h-[55vh]">
+          <DataTable headers={["Nota", "Emissão", "Chassi", "Modelo", "Cor", "Tamanho", "Cliente", "CPF/CNPJ", "Valor do item", "Valor da nota", "Empresa"]} empty={!opened.length} stickyHeader viewportClassName="max-h-[55vh]">
             {opened.map((row) => (
               <TableRow key={`${row.invoiceId}-${row.chassis}`}>
                 <TableCell className="whitespace-nowrap">{row.number}{row.series ? `/${row.series}` : ""}</TableCell>
                 <TableCell className="whitespace-nowrap">{day(row.issuedAt)}</TableCell>
                 <TableCell className="whitespace-nowrap font-mono text-xs font-medium">{row.chassis}</TableCell>
                 <TableCell className="whitespace-nowrap">{row.model || "-"}</TableCell>
+                <TableCell className="whitespace-nowrap">{row.color || "-"}</TableCell>
                 <TableCell className="whitespace-nowrap text-xs">PBT {tons(row.pbt)} · cap. {tons(row.capacity)} · {row.axles ? `${row.axles} eixo${row.axles > 1 ? "s" : ""}` : "-"}</TableCell>
                 <TableCell className="max-w-[240px] truncate" title={row.clientName}>{row.clientName || "-"}{row.intercompany ? <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-700">entre empresas</span> : null}</TableCell>
                 <TableCell className="whitespace-nowrap">{formatDocument(row.clientDocument) || "-"}</TableCell>
