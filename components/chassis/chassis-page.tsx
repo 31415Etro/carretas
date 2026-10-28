@@ -56,6 +56,7 @@ export function ChassisPage() {
   const [company, setCompany] = useState("")
   const [model, setModel] = useState("")
   const [color, setColor] = useState("")
+  const [capacity, setCapacity] = useState("")
   const [granularity, setGranularity] = useState<Granularity>("mes")
   const [by, setBy] = useState<GroupBy>("model")
   const [sizeField, setSizeField] = useState<SizeField>("capacity")
@@ -73,6 +74,7 @@ export function ChassisPage() {
 
   const companies = useMemo(() => [...new Set(all.map((row) => row.companyName))].sort(), [all])
   const colors = useMemo(() => [...new Set(all.map((row) => row.color || "Sem cor"))].sort(), [all])
+  const capacities = useMemo(() => [...new Set(all.map((row) => row.capacity || 0))].sort((a, b) => a - b), [all])
   const models = useMemo(() => [...new Set(all.map((row) => row.model || "Sem modelo"))].sort(), [all])
   const rows = useMemo(() => all.filter((row) => {
     const issued = issuedDay(row.issuedAt)
@@ -81,9 +83,10 @@ export function ChassisPage() {
     if (company && row.companyName !== company) return false
     if (model && (row.model || "Sem modelo") !== model) return false
     if (color && (row.color || "Sem cor") !== color) return false
+    if (capacity && String(row.capacity || 0) !== capacity) return false
     if (!intercompany && row.intercompany) return false
     return true
-  }) as ChassisRow[], [all, de, ate, company, model, color, intercompany])
+  }) as ChassisRow[], [all, de, ate, company, model, color, capacity, intercompany])
 
   const timeline = useMemo(() => chassisTimeline(rows, granularity, by), [rows, granularity, by])
   const colorOf = useMemo(() => Object.fromEntries(timeline.series.map((name, index) => [name, COLORS[index % COLORS.length]])), [timeline.series])
@@ -121,6 +124,9 @@ export function ChassisPage() {
           <label className="text-xs text-muted-foreground">Cor
             <select value={color} onChange={(event) => setColor(event.target.value)} className="mt-1 block h-9 rounded-md border bg-background px-2 text-sm text-foreground"><option value="">Todas</option>{colors.map((name) => <option key={name} value={name}>{name}</option>)}</select>
           </label>
+          <label className="text-xs text-muted-foreground">Capacidade de carga
+            <select value={capacity} onChange={(event) => setCapacity(event.target.value)} className="mt-1 block h-9 rounded-md border bg-background px-2 text-sm text-foreground"><option value="">Todas</option>{capacities.map((value) => <option key={value} value={String(value)}>{value ? tons(value) : "Sem informação"}</option>)}</select>
+          </label>
           <div className="text-xs text-muted-foreground">Período do gráfico
             <div className="mt-1 flex rounded-md border p-0.5 text-sm">{([["mes", "Mês"], ["semana", "Semana"]] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setGranularity(value)} className={`rounded px-3 py-1 ${granularity === value ? "bg-primary text-primary-foreground" : "text-foreground"}`}>{label}</button>)}</div>
           </div>
@@ -128,7 +134,7 @@ export function ChassisPage() {
             <div className="mt-1 flex rounded-md border p-0.5 text-sm">{([["model", "Modelo (FZ 1E)"], ["family", "Linha (FZ)"]] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setBy(value)} className={`rounded px-3 py-1 ${by === value ? "bg-primary text-primary-foreground" : "text-foreground"}`}>{label}</button>)}</div>
           </div>
           <label className="flex items-center gap-2 pb-2 text-sm"><input type="checkbox" checked={intercompany} onChange={(event) => setIntercompany(event.target.checked)} />Incluir vendas entre as empresas ND</label>
-          {(de || ate || company || model || color) ? <Button variant="ghost" size="sm" onClick={() => { setDe(""); setAte(""); setCompany(""); setModel(""); setColor("") }}>Limpar filtros</Button> : null}
+          {(de || ate || company || model || color || capacity) ? <Button variant="ghost" size="sm" onClick={() => { setDe(""); setAte(""); setCompany(""); setModel(""); setColor(""); setCapacity("") }}>Limpar filtros</Button> : null}
           {loading ? <Loader2 className="mb-2 h-4 w-4 animate-spin text-muted-foreground" /> : null}
         </div>
         {error ? <p className="mt-3 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{error}</p> : null}
