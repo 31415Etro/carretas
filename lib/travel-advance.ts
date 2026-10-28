@@ -57,6 +57,13 @@ export function canUpload(status: AdvanceStatus, endDate: string, today?: string
   return status === "Aberto" && daysUntil(endDate, today) >= 0
 }
 
+/** Quem pode EXCLUIR uma antecipação (apagar de vez, com notinhas e lançamento): só os usuários Vitor e Pietro. */
+export const ADVANCE_DELETE_EMAILS = ["vitorfilho1976@gmail.com", "pmalvesi61@gmail.com"]
+export const canDeleteAdvance = (email?: string | null) => ADVANCE_DELETE_EMAILS.includes(String(email || "").trim().toLowerCase())
+
+/** Cancelar vale até a antecipação ser concluída: aberta (funcionário ainda prestando contas) ou finalizada (aguardando revisão). */
+export const canCancelAdvance = (status: string) => status === "Aberto" || status === "Finalizado"
+
 export function statusLabel(status: AdvanceStatus) {
   return { Aberto: "Em andamento", Finalizado: "Aguardando aprovação", Concluido: "Concluído", Cancelado: "Cancelado" }[status]
 }

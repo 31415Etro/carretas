@@ -1,7 +1,8 @@
 import { randomBytes, randomUUID } from "node:crypto"
+import { audit } from "@/lib/audit"
 import type { createAdminClient } from "@/lib/supabase/server"
 import { categorizeReceipt, parseReceiptText } from "@/lib/receipt-ocr"
-import { canFinalize, canUpload, needsSettlementChoice, summarizeAdvance, summarizeCategories, validateCategoryBudgets, type CategoryBudgets, type SettlementAction } from "@/lib/travel-advance"
+import { canCancelAdvance, canFinalize, canUpload, needsSettlementChoice, summarizeAdvance, summarizeCategories, validateCategoryBudgets, type CategoryBudgets, type SettlementAction } from "@/lib/travel-advance"
 
 type Admin = ReturnType<typeof createAdminClient>
 export const ADVANCE_MIGRATION_HINT = "Antecipação de reembolso para viagem ainda não instalado no banco. Rode scripts/217_orcamento_viagem.sql no SQL Editor do Supabase."
@@ -154,11 +155,40 @@ export async function markSettlementResolved(admin: Admin, advanceId: string, no
   if (error) throw error
 }
 
-export async function cancelAdvance(admin: Admin, advanceId: string) {
-  const { data, error } = await admin.from("travel_advances").update({ status: "Cancelado" }).eq("id", advanceId).eq("status", "Aberto").select("id")
-  if (error) throw error
+/** Cancela a antecipação (aberta ou finalizada) com motivo obrigatório: o link para de aceitar notinhas e o lançamento da saída fica cancelado. */
+export async function cancelAdvance(admin: Admin, advanceId: string, input: { reason: string; by: string }) {
+  const reason = input.reason.trim()
+  if (!reason) throw new Error("Informe o motivo do cancelamento.")
+  const { data: current, error: readError } = await admin.from("travel_advances").select("id,status,employee_name,amount").eq("id", advanceId).maybeSingle()
+  if (readError) throw readError
+  if (!current) throw new Error("Antecipação não encontrada.")
+  if (current.status === "Cancelado") return
+  if (!canCancelAdvance(String(current.status))) throw new Error("Só dá para cancelar antecipação aberta ou finalizada. Esta já foi concluída.")
+  const stamp = { cancel_reason: reason.slice(0, 500), cancelled_by: input.by, cancelled_at: new Date().toISOString() }
+  let update = await admin.from("travel_advances").update({ status: "Cancelado", ...stamp }).eq("id", advanceId).in("status", ["Aberto", "Finalizado"]).select("id")
+  // colunas novas (script 240): sem elas o motivo vai na observação da antecipação
+  if (update.error && /cancel_reason|cancelled_by|cancelled_at/.test(update.error.message)) update = await admin.from("travel_advances").update({ status: "Cancelado", settlement_note: `Cancelada por ${input.by}: ${reason}`.slice(0, 500) }).eq("id", advanceId).in("status", ["Aberto", "Finalizado"]).select("id")
+  if (update.error) throw update.error
   // cancelada, a saída não aconteceu: o lançamento fica cancelado (e fora do saldo)
-  if (data?.length) await admin.from("financial_transactions").update({ status: "Cancelado", realized_amount: 0, realized_date: null }).eq("origin", ADVANCE_ORIGIN).like("notes", `${ADVANCE_ORIGIN} | ${advanceId}%`)
+  if (update.data?.length) {
+    await admin.from("financial_transactions").update({ status: "Cancelado", realized_amount: 0, realized_date: null }).eq("origin", ADVANCE_ORIGIN).like("notes", `${ADVANCE_ORIGIN} | ${advanceId}%`)
+    await audit({ module: "financeiro", action: "Cancelamento", description: `Cancelou a antecipação de reembolso para viagem de ${current.employee_name} (R$ ${Number(current.amount).toFixed(2)}).`, recordId: advanceId, tableName: "travel_advances", reason })
+  }
+}
+
+/** Exclui de vez a antecipação: notinhas (e as fotos), lançamento da saída e o registro. Só chamar depois de checar canDeleteAdvance. */
+export async function deleteAdvance(admin: Admin, advanceId: string, by: string) {
+  const { data: advance, error } = await admin.from("travel_advances").select("id,status,employee_name,amount,reason,number").eq("id", advanceId).maybeSingle()
+  if (error) throw error
+  if (!advance) throw new Error("Antecipação não encontrada.")
+  const { data: receipts } = await admin.from("travel_advance_receipts").select("photo_url").eq("advance_id", advanceId)
+  const paths = (receipts || []).map((row) => String(row.photo_url || "").split(`/${BUCKET}/`)[1]).filter(Boolean)
+  if (paths.length) await admin.storage.from(BUCKET).remove(paths).catch(() => null) // foto que não sai do armazenamento não impede a exclusão
+  const { error: transactionError } = await admin.from("financial_transactions").delete().eq("origin", ADVANCE_ORIGIN).like("notes", `${ADVANCE_ORIGIN} | ${advanceId}%`)
+  if (transactionError) throw transactionError
+  const { error: deleteError } = await admin.from("travel_advances").delete().eq("id", advanceId) // as notinhas saem junto (cascata)
+  if (deleteError) throw deleteError
+  await audit({ module: "financeiro", action: "Exclusão", description: `Excluiu a antecipação de reembolso para viagem de ${advance.employee_name} (R$ ${Number(advance.amount).toFixed(2)}, situação ${advance.status}) e o lançamento da saída.`, recordId: advanceId, tableName: "travel_advances", oldValues: advance, reason: `Excluída por ${by}` })
 }
 
 // ---------------- Portal público (sem sessão; o token é a autorização) ----------------

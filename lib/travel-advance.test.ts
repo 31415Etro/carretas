@@ -54,3 +54,21 @@ test("gasto por categoria é só informativo: cada uma soma suas notas, sem trav
   // Combustível não tem teto definido: não aparece no resumo por categoria
   assert.equal(summary.some((item) => item.category === "Combustivel"), false)
 })
+
+test("cancelar vale para aberta e finalizada; concluída e cancelada não", async () => {
+  const { canCancelAdvance } = await import("./travel-advance.ts")
+  assert.equal(canCancelAdvance("Aberto"), true)
+  assert.equal(canCancelAdvance("Finalizado"), true)
+  assert.equal(canCancelAdvance("Concluido"), false)
+  assert.equal(canCancelAdvance("Cancelado"), false)
+})
+
+test("excluir: só os e-mails do Vitor e do Pietro (sem diferenciar maiúsculas)", async () => {
+  const { canDeleteAdvance } = await import("./travel-advance.ts")
+  assert.equal(canDeleteAdvance("vitorfilho1976@gmail.com"), true)
+  assert.equal(canDeleteAdvance("PMalvesi61@Gmail.com "), true)
+  assert.equal(canDeleteAdvance("ndcarretas@ndcarretasfort.com.br"), false)   // Ellen
+  assert.equal(canDeleteAdvance("klinghoferneusa@gmail.com"), false)          // administrador, mas não autorizado a excluir
+  assert.equal(canDeleteAdvance(""), false)
+  assert.equal(canDeleteAdvance(null), false)
+})

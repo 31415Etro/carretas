@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
-import { ArrowLeft, Ban, Check, Copy, FileText, Loader2, Plus, Receipt, X } from "lucide-react"
+import { ArrowLeft, Ban, Check, Copy, FileText, Loader2, Plus, Receipt, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -11,15 +11,16 @@ import { TableCell, TableRow } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { DataTable, FormSheet, PageShell, SaveButton, SearchableSelectField, SectionCard, SelectField, StatusBadge, TextAreaField, TextField, useCrudFeedback } from "@/components/operations/shared"
 import { accountTypes } from "@/lib/registry"
-import { BUDGETABLE_CATEGORIES, CATEGORY_LABEL, statusLabel, validateCategoryBudgets } from "@/lib/travel-advance"
+import { BUDGETABLE_CATEGORIES, CATEGORY_LABEL, canCancelAdvance, canDeleteAdvance, statusLabel, validateCategoryBudgets } from "@/lib/travel-advance"
 import { advanceNumber, buildAdvanceTermPdf } from "@/lib/travel-advance-term"
+import { useAuth } from "@/lib/auth-context"
 
 type Bank = { bankName: string; bankAgency: string; bankAccount: string; bankAccountType: string; pixKey: string }
 type Employee = { id: string; name: string; email: string; cpf?: string; bank: Bank }
 type Receipt = { id: string; photo_url: string; amount: number; establishment: string; category: string; occurred_at: string | null; status: string; review_note: string; advance_id?: string; advance?: { id: string; employee_name: string; reason: string; amount: number; end_date: string } }
 type CategorySummary = { category: string; budget: number; spent: number; remaining: number; overspent: boolean }
 type Advance = {
-  id: string; token: string; number?: number | null; employee_cpf?: string; company?: { name: string; cnpj: string }; employee_name: string; reason: string; amount: number; start_date: string; end_date: string; status: string
+  id: string; token: string; number?: number | null; cancel_reason?: string | null; cancelled_by?: string | null; cancelled_at?: string | null; settlement_note?: string | null; employee_cpf?: string; company?: { name: string; cnpj: string }; employee_name: string; reason: string; amount: number; start_date: string; end_date: string; status: string
   own_pocket_justification: string; settlement_action: string | null; settlement_resolved: boolean; receipts: Array<{ status: string }>
   summary: { budget: number; spent: number; remaining: number; overspent: boolean }; categories: CategorySummary[]
 }
@@ -43,6 +44,8 @@ const STATUS_TONE: Record<string, string> = { Aberto: "default", Finalizado: "wa
 
 export function TravelAdvancesPage() {
   const { toast, requireFields } = useCrudFeedback()
+  const { user } = useAuth()
+  const mayDelete = canDeleteAdvance(user?.email)
   const [advances, setAdvances] = useState<Advance[]>([])
   const [pending, setPending] = useState<Receipt[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
@@ -56,6 +59,10 @@ export function TravelAdvancesPage() {
   const [contesting, setContesting] = useState<string>("")
   const [note, setNote] = useState("")
   const [busyId, setBusyId] = useState("")
+  const [cancelTarget, setCancelTarget] = useState<Advance | null>(null)
+  const [cancelReason, setCancelReason] = useState("")
+  const [deleteTarget, setDeleteTarget] = useState<Advance | null>(null)
+  const [acting, setActing] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -134,11 +141,33 @@ export function TravelAdvancesPage() {
     }
   }
 
-  async function cancelAdvance(id: string) {
-    if (!window.confirm("Cancelar esta antecipação de reembolso para viagem? O link deixa de aceitar novas notinhas.")) return
-    await send(`/api/financeiro/orcamento-viagem/${id}`, { method: "PATCH", body: JSON.stringify({ action: "cancelar" }) })
-    setDetail(null)
-    await load()
+  function askCancel(advance: Advance) { setCancelReason(""); setCancelTarget(advance) }
+
+  async function confirmCancel() {
+    if (!cancelTarget) return
+    if (!cancelReason.trim()) { toast({ title: "Informe o motivo do cancelamento", variant: "destructive" }); return }
+    setActing(true)
+    try {
+      await send(`/api/financeiro/orcamento-viagem/${cancelTarget.id}`, { method: "PATCH", body: JSON.stringify({ action: "cancelar", reason: cancelReason.trim() }) })
+      toast({ title: "Antecipação cancelada", description: "O link não aceita mais notinhas e a saída lançada em Entradas e Saídas foi cancelada." })
+      setCancelTarget(null); setDetail(null)
+      await load()
+    } catch (reason) {
+      toast({ title: "Não foi possível cancelar", description: reason instanceof Error ? reason.message : "", variant: "destructive" })
+    } finally { setActing(false) }
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return
+    setActing(true)
+    try {
+      await send(`/api/financeiro/orcamento-viagem/${deleteTarget.id}`, { method: "DELETE" })
+      toast({ title: "Antecipação excluída", description: "As notinhas e o lançamento da saída também foram apagados." })
+      setDeleteTarget(null); setDetail(null)
+      await load()
+    } catch (reason) {
+      toast({ title: "Não foi possível excluir", description: reason instanceof Error ? reason.message : "", variant: "destructive" })
+    } finally { setActing(false) }
   }
 
   async function resolveSettlement(id: string) {
@@ -199,7 +228,12 @@ export function TravelAdvancesPage() {
               <TableCell className={advance.summary.overspent ? "text-destructive" : ""}>{brl(advance.summary.remaining)}</TableCell>
               <TableCell><StatusBadge status={STATUS_TONE[advance.status] ? advance.status : advance.status} /><span className="ml-1 text-xs text-muted-foreground">{statusLabel(advance.status as never)}</span></TableCell>
               <TableCell onClick={(event) => event.stopPropagation()}><Button size="sm" variant="outline" onClick={() => void copyLink(advance.token)}><Copy className="h-4 w-4" />Copiar link</Button></TableCell>
-              <TableCell onClick={(event) => event.stopPropagation()}>{advance.status === "Aberto" ? <Button size="sm" variant="ghost" onClick={() => void cancelAdvance(advance.id)}><Ban className="h-4 w-4" /></Button> : null}</TableCell>
+              <TableCell onClick={(event) => event.stopPropagation()}>
+                <div className="flex gap-1">
+                  {canCancelAdvance(advance.status) ? <Button size="sm" variant="ghost" title="Cancelar antecipação" onClick={() => askCancel(advance)}><Ban className="h-4 w-4" /></Button> : null}
+                  {mayDelete ? <Button size="sm" variant="ghost" title="Excluir antecipação" className="text-destructive hover:text-destructive" onClick={() => setDeleteTarget(advance)}><Trash2 className="h-4 w-4" /></Button> : null}
+                </div>
+              </TableCell>
             </TableRow>
           ))}
         </DataTable>
@@ -251,11 +285,42 @@ export function TravelAdvancesPage() {
         )}
       </FormSheet>
 
+      <Dialog open={Boolean(cancelTarget)} onOpenChange={(open) => { if (!open && !acting) setCancelTarget(null) }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Cancelar antecipação{cancelTarget && advanceNumber(cancelTarget.number) ? ` ${advanceNumber(cancelTarget.number)}` : ""}</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">{cancelTarget?.employee_name} · {brl(cancelTarget?.amount)}. O link deixa de aceitar notinhas e a saída lançada em Entradas e Saídas fica cancelada. A antecipação continua na lista como "Cancelado".</p>
+          <div className="space-y-2"><Label>Motivo do cancelamento (obrigatório)</Label><Textarea rows={3} value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} placeholder="Ex.: viagem cancelada, valor lançado errado..." autoFocus /></div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setCancelTarget(null)} disabled={acting}>Voltar</Button>
+            <Button variant="destructive" onClick={() => void confirmCancel()} disabled={acting || !cancelReason.trim()}>{acting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Ban className="h-4 w-4" />}Cancelar antecipação</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(deleteTarget)} onOpenChange={(open) => { if (!open && !acting) setDeleteTarget(null) }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Excluir antecipação{deleteTarget && advanceNumber(deleteTarget.number) ? ` ${advanceNumber(deleteTarget.number)}` : ""}</DialogTitle></DialogHeader>
+          <p className="text-sm">{deleteTarget?.employee_name} · {brl(deleteTarget?.amount)} · situação {deleteTarget?.status}.</p>
+          <p className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">A exclusão é definitiva: apaga a antecipação, todas as notinhas (com as fotos) e o lançamento da saída em Entradas e Saídas. Fica só o registro na trilha de auditoria. Para só encerrar, use Cancelar.</p>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={acting}>Voltar</Button>
+            <Button variant="destructive" onClick={() => void confirmDelete()} disabled={acting}>{acting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}Excluir definitivamente</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={Boolean(detail)} onOpenChange={(open) => !open && setDetail(null)}>
         <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
           {detail ? (
             <>
               <DialogHeader><DialogTitle>{advanceNumber(detail.number) ? `${advanceNumber(detail.number)} · ` : ""}{detail.employee_name} · {detail.reason || "Antecipação de reembolso para viagem"}</DialogTitle></DialogHeader>
+              {(canCancelAdvance(detail.status) || mayDelete) ? (
+                <div className="flex flex-wrap gap-2">
+                  {canCancelAdvance(detail.status) ? <Button size="sm" variant="outline" onClick={() => askCancel(detail)}><Ban className="h-4 w-4" />Cancelar antecipação</Button> : null}
+                  {mayDelete ? <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={() => setDeleteTarget(detail)}><Trash2 className="h-4 w-4" />Excluir</Button> : null}
+                </div>
+              ) : null}
+              {detail.status === "Cancelado" ? <p className="rounded-md border border-slate-300 bg-slate-100 p-3 text-sm text-slate-700">Antecipação cancelada{detail.cancelled_by ? ` por ${detail.cancelled_by}` : ""}{detail.cancelled_at ? ` em ${new Date(detail.cancelled_at).toLocaleDateString("pt-BR")}` : ""}.{detail.cancel_reason ? ` Motivo: ${detail.cancel_reason}` : detail.settlement_note ? ` ${detail.settlement_note}` : ""}</p> : null}
               <div className="grid gap-3 text-sm sm:grid-cols-3">
                 <p>Orçamento<br /><strong>{brl(detail.amount)}</strong></p>
                 <p>Gasto<br /><strong>{brl(detail.summary.spent)}</strong></p>

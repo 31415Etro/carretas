@@ -13,7 +13,7 @@ export async function stockContext() {
     return { error: NextResponse.json({ error: "Acesso restrito ao estoque." }, { status: 403 }) } as const
   }
   const responsible = String(user.user_metadata?.full_name || user.user_metadata?.name || user.email || "Usuario")
-  return { admin: createAdminClient(), responsible, role } as const
+  return { admin: createAdminClient(), responsible, role, email: String(user.email || ""), userId: user.id } as const
 }
 
 export function stockError(error: unknown, fallback: string) {
