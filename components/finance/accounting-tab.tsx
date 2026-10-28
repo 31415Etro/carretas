@@ -381,19 +381,6 @@ export function AccountingTab({ emitir }: { emitir?: React.ReactNode }) {
 
   return (
     <div className="space-y-4">
-      <div className={off}><SectionCard title="Contabilidade: subir notas fiscais" description="Envie os XML das notas (NF-e, NFC-e ou NFS-e), de uma só vez ou várias. Cada nota é guardada com todos os campos, impostos destacados e itens, e a mesma nota não entra duas vezes.">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="flex rounded-md border p-0.5 text-sm">
-            {(["Entrada", "Saída"] as Operation[]).map((value) => (
-              <button key={value} type="button" onClick={() => setOperation(value)} className={`rounded px-3 py-1.5 ${operation === value ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>{value === "Entrada" ? "Notas de compra (entrada)" : "Notas de venda (saída)"}</button>
-            ))}
-          </div>
-          <input ref={input} type="file" accept=".xml,text/xml,application/xml" multiple hidden onChange={upload} />
-          <Button type="button" onClick={() => input.current?.click()} disabled={!!progress}>{progress ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}Escolher arquivos XML</Button>
-          {progress ? <span className="text-sm text-muted-foreground">{progress}</span> : null}
-        </div>
-        {report.length ? <div className="mt-3 max-h-40 overflow-auto rounded-md border bg-muted/30 p-2 text-xs">{report.map((line, index) => <div key={index} className={line.startsWith("ERRO") ? "text-destructive" : ""}>{line}</div>)}</div> : null}
-      </SectionCard></div>
 
       <Tabs value={sub} onValueChange={setSub}>
         <div className="flex flex-wrap items-end gap-3">
@@ -451,6 +438,20 @@ export function AccountingTab({ emitir }: { emitir?: React.ReactNode }) {
         </TabsContent>
 
       </Tabs>
+
+      <div className={off}><SectionCard title="Contabilidade: subir notas fiscais" description="Envie os XML das notas (NF-e, NFC-e ou NFS-e), de uma só vez ou várias. Cada nota é guardada com todos os campos, impostos destacados e itens, e a mesma nota não entra duas vezes.">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex rounded-md border p-0.5 text-sm">
+            {(["Entrada", "Saída"] as Operation[]).map((value) => (
+              <button key={value} type="button" onClick={() => setOperation(value)} className={`rounded px-3 py-1.5 ${operation === value ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>{value === "Entrada" ? "Notas de compra (entrada)" : "Notas de venda (saída)"}</button>
+            ))}
+          </div>
+          <input ref={input} type="file" accept=".xml,text/xml,application/xml" multiple hidden onChange={upload} />
+          <Button type="button" onClick={() => input.current?.click()} disabled={!!progress}>{progress ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}Escolher arquivos XML</Button>
+          {progress ? <span className="text-sm text-muted-foreground">{progress}</span> : null}
+        </div>
+        {report.length ? <div className="mt-3 max-h-40 overflow-auto rounded-md border bg-muted/30 p-2 text-xs">{report.map((line, index) => <div key={index} className={line.startsWith("ERRO") ? "text-destructive" : ""}>{line}</div>)}</div> : null}
+      </SectionCard></div>
 
       <FormSheet open={!!open} onOpenChange={(value) => !value && setOpen(null)} title="Nota fiscal completa" description="Todos os campos lidos do XML.">
         {open ? <InvoiceDetail key={open} id={open} /> : null}
