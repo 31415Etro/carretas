@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { DataTable, PageShell, SearchableSelectField, SectionCard } from "@/components/operations/shared"
-import { chassisBySize, chassisTimeline, issuedDay, pickChassis, type ChassisPick, type ChassisRow, type Granularity, type GroupBy } from "@/lib/chassis"
+import { chassisBySize, chassisTimeline, issuedDay, periodKey, pickChassis, type ChassisPick, type ChassisRow, type Granularity, type GroupBy } from "@/lib/chassis"
 
 type Row = Omit<ChassisRow, "description" | "accessKey" | "nature">
 type SizeField = "capacity" | "pbt" | "axles"
@@ -39,6 +39,23 @@ function Card({ label, value, hint }: { label: string; value: string; hint?: str
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="text-xl font-semibold">{value}</div>
       {hint ? <div className="mt-0.5 text-xs text-muted-foreground">{hint}</div> : null}
+    </div>
+  )
+}
+
+type TipEntry = { name?: string | number; value?: number | string; color?: string; dataKey?: string | number; payload?: Record<string, unknown> }
+const avg = (total: number, count: number) => brl(count ? total / count : 0)
+
+/** Balão do mouse das barras de ranking e de tamanho: quantidade, valor total e valor médio. */
+function SummaryTip({ active, payload }: { active?: boolean; payload?: TipEntry[] }) {
+  const item = payload?.[0]?.payload as { name?: string; chassis?: number; total?: number } | undefined
+  if (!active || !item) return null
+  return (
+    <div className="rounded-md border bg-background p-3 text-sm shadow-md">
+      <div className="font-semibold">{item.name}</div>
+      <div className="mt-1 text-muted-foreground">Quantidade: <span className="font-medium text-foreground">{Number(item.chassis || 0).toLocaleString("pt-BR")} chassi(s)</span></div>
+      <div className="text-muted-foreground">Valor total: <span className="font-medium text-foreground">{brl(item.total)}</span></div>
+      <div className="text-muted-foreground">Valor médio: <span className="font-medium text-foreground">{avg(Number(item.total || 0), Number(item.chassis || 0))}</span></div>
     </div>
   )
 }
@@ -103,7 +120,10 @@ export function ChassisPage() {
 
   const timeline = useMemo(() => chassisTimeline(rows, granularity, by), [rows, granularity, by])
   const colorOf = useMemo(() => Object.fromEntries(timeline.series.map((name, index) => [name, COLORS[index % COLORS.length]])), [timeline.series])
-  const ranking = useMemo(() => timeline.series.map((name) => ({ name, chassis: timeline.data.reduce((sum, row) => sum + Number(row[name] || 0), 0) })).sort((a, b) => b.chassis - a.chassis), [timeline])
+  const groupOf = useCallback((row: ChassisRow) => (by === "family" ? row.family : row.model) || "Sem modelo", [by])
+  const valueByGroup = useMemo(() => { const map = new Map<string, number>(); for (const row of rows) map.set(groupOf(row), (map.get(groupOf(row)) || 0) + row.itemTotal); return map }, [rows, groupOf])
+  const valueByCell = useMemo(() => { const map = new Map<string, number>(); for (const row of rows) { const key = `${periodKey(row.issuedAt, granularity)}|${groupOf(row)}`; map.set(key, (map.get(key) || 0) + row.itemTotal) } return map }, [rows, granularity, groupOf])
+  const ranking = useMemo(() => timeline.series.map((name) => ({ name, chassis: timeline.data.reduce((sum, row) => sum + Number(row[name] || 0), 0), total: Math.round((valueByGroup.get(name) || 0) * 100) / 100 })).sort((a, b) => b.chassis - a.chassis), [timeline, valueByGroup])
   const bySize = useMemo(() => chassisBySize(rows, sizeField), [rows, sizeField])
   const chartData = timeline.data.map((row) => ({ ...row, label: periodLabel(String(row.period), granularity) }))
   const distinct = new Set(rows.map((row) => row.chassis)).size
@@ -168,7 +188,19 @@ export function ChassisPage() {
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="label" tick={{ fontSize: 11 }} />
               <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-              <Tooltip />
+              <Tooltip content={({ active, payload, label }) => {
+                if (!active || !payload?.length) return null
+                const period = String((payload[0].payload as { period?: string }).period || "")
+                const lines = (payload as TipEntry[]).filter((entry) => Number(entry.value) > 0).map((entry) => ({ name: String(entry.dataKey), color: String(entry.color), chassis: Number(entry.value), total: valueByCell.get(`${period}|${String(entry.dataKey)}`) || 0 }))
+                const chassisTotal = lines.reduce((sum, line) => sum + line.chassis, 0), valueTotal = lines.reduce((sum, line) => sum + line.total, 0)
+                return (
+                  <div className="rounded-md border bg-background p-3 text-sm shadow-md">
+                    <div className="mb-1 font-semibold capitalize">{periodTitle(period, granularity) || String(label)}</div>
+                    {lines.map((line) => <div key={line.name} className="flex items-center justify-between gap-4"><span><span className="mr-1.5 inline-block h-2.5 w-2.5 rounded-sm" style={{ background: line.color }} />{line.name}</span><span className="whitespace-nowrap font-medium">{line.chassis} · {brl(line.total)}</span></div>)}
+                    <div className="mt-1 flex items-center justify-between gap-4 border-t pt-1 font-semibold"><span>Total</span><span className="whitespace-nowrap">{chassisTotal} · {brl(valueTotal)}</span></div>
+                  </div>
+                )
+              }} />
               <Legend onClick={(entry) => open({ name: String(entry.dataKey || entry.value) }, `${String(entry.dataKey || entry.value)} · todo o período filtrado`)} wrapperStyle={{ cursor: "pointer", fontSize: 12 }} />
               {timeline.series.map((name) => (
                 <Bar key={name} dataKey={name} stackId="chassis" fill={colorOf[name]} cursor="pointer"
@@ -187,7 +219,7 @@ export function ChassisPage() {
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                 <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
                 <YAxis type="category" dataKey="name" width={70} tick={{ fontSize: 12 }} />
-                <Tooltip formatter={(value) => [`${value} chassi(s)`, "Emitidos"]} />
+                <Tooltip content={<SummaryTip />} cursor={{ fill: "rgba(30,58,138,0.08)" }} />
                 <Bar dataKey="chassis" cursor="pointer" radius={[0, 3, 3, 0]} fill="#1e3a8a" onClick={(entry) => { const name = clickedName(entry); open({ name }, `${name} · período filtrado`) }} label={{ position: "right", fontSize: 11 }} />
               </BarChart>
             </ResponsiveContainer>
@@ -204,7 +236,7 @@ export function ChassisPage() {
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                 <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
                 <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 12 }} />
-                <Tooltip formatter={(value) => [`${value} chassi(s)`, "Emitidos"]} />
+                <Tooltip content={<SummaryTip />} cursor={{ fill: "rgba(15,118,110,0.08)" }} />
                 <Bar dataKey="chassis" cursor="pointer" radius={[0, 3, 3, 0]} fill="#0f766e" onClick={(entry) => { const name = clickedName(entry); const found = bySize.find((item) => item.label === name); if (found) open({ size: { field: sizeField, value: found.value } }, `${sizeName[sizeField]}: ${name}`) }} label={{ position: "right", fontSize: 11 }} />
               </BarChart>
             </ResponsiveContainer>
