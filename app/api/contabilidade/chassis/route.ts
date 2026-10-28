@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { stockContext } from "@/lib/stock-api"
 import { ACCOUNTING_MIGRATION_HINT } from "@/lib/accounting-server"
-import { chassisByModel, chassisByModelMonth, chassisChart, chassisFromInvoice, chassisPerChassis, digits, filterChassis, otherNoteFromInvoice, type ChassisRow, type OtherNote } from "@/lib/chassis"
+import { chassisByModel, chassisByModelMonth, chassisChart, chassisFromInvoice, chassisPerChassis, digits, filterChassis, isSaleNature, otherNoteFromInvoice, type ChassisRow, type OtherNote } from "@/lib/chassis"
 import { fetchAllPages, memoize } from "@/lib/paged-fetch"
 import { createAdminClient } from "@/lib/supabase/server"
 
@@ -28,14 +28,26 @@ function loadChassis(de: string, ate: string) {
       })
       const rows: ChassisRow[] = []
       const others: OtherNote[] = []
+      const excluded = new Map<string, { label: string; notes: number; carretas: number; value: number }>()
       for (const invoice of invoices) {
+        // só nota de venda entra na análise; o que não é venda (remessa, demonstração, industrialização...) é só contado à parte
+        if (!isSaleNature(String((invoice as { nature?: string }).nature || ""))) {
+          const label = String((invoice as { nature?: string }).nature || "Sem natureza").trim()
+          const trailers = chassisFromInvoice(invoice as never, { id: company.id, name: company.trade_name || company.name }, groupDocuments)
+          const entry = excluded.get(label) || { label, notes: 0, carretas: 0, value: 0 }
+          entry.notes += 1; entry.carretas += trailers.reduce((sum, row) => sum + (row.chassis ? 1 : row.quantity), 0); entry.value += Number((invoice as { total_invoice?: number }).total_invoice || 0)
+          excluded.set(label, entry)
+          continue
+        }
         const found = chassisFromInvoice(invoice as never, { id: company.id, name: company.trade_name || company.name }, groupDocuments)
         if (found.length) rows.push(...found)
         else others.push(otherNoteFromInvoice(invoice as never, { id: company.id, name: company.trade_name || company.name }, groupDocuments)) // peças e outros: só nos totais
       }
-      return { rows, others, notes: invoices.length }
+      return { rows, others, excluded: [...excluded.values()], notes: invoices.length }
     }))
-    return { rows: perCompany.flatMap((entry) => entry.rows), others: perCompany.flatMap((entry) => entry.others), notes: perCompany.reduce((sum, entry) => sum + entry.notes, 0) }
+    const excluded = new Map<string, { label: string; notes: number; carretas: number; value: number }>()
+    for (const entry of perCompany.flatMap((item) => item.excluded)) { const total = excluded.get(entry.label) || { label: entry.label, notes: 0, carretas: 0, value: 0 }; total.notes += entry.notes; total.carretas += entry.carretas; total.value += entry.value; excluded.set(entry.label, total) }
+    return { rows: perCompany.flatMap((entry) => entry.rows), others: perCompany.flatMap((entry) => entry.others), excluded: [...excluded.values()].sort((a, b) => b.value - a.value), notes: perCompany.reduce((sum, entry) => sum + entry.notes, 0) }
   })
 }
 
@@ -79,7 +91,7 @@ export async function GET(request: Request) {
     const client = clientId ? { name: clientName, document: clientDocument } : null
     const view = params.get("visao")
     if (view === "modelo") return NextResponse.json({ found: rows.length, notes: loaded.notes, client, byModel: chassisByModel(rows), byModelMonth: chassisByModelMonth(rows) })
-    if (view === "todos") return NextResponse.json({ notes: loaded.notes, others: loaded.others, rows: loaded.rows.map(({ description, accessKey, nature, ...slim }) => slim) }) // página Chassis: gráficos e filtros são feitos no navegador
+    if (view === "todos") return NextResponse.json({ notes: loaded.notes, others: loaded.others, excluded: loaded.excluded, rows: loaded.rows.map(({ description, accessKey, nature, ...slim }) => slim) }) // página Chassis: gráficos e filtros são feitos no navegador
     if (view === "chassi") return NextResponse.json({ found: rows.length, notes: loaded.notes, client, perChassis: chassisPerChassis(rows) })
     rows.sort((a, b) => String(b.issuedAt || "").localeCompare(String(a.issuedAt || "")) || b.number.localeCompare(a.number))
     return NextResponse.json({ rows: rows.slice(0, 500), found: rows.length, notes: loaded.notes, chart: chassisChart(loaded.rows), client })

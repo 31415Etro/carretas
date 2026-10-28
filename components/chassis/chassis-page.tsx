@@ -78,6 +78,7 @@ export function ChassisPage() {
   const [capacity, setCapacity] = useState("")
   const [clients, setClients] = useState<string[]>([])
   const [others, setOthers] = useState<OtherNote[]>([])
+  const [excluded, setExcluded] = useState<Array<{ label: string; notes: number; carretas: number; value: number }>>([])
   const [granularity, setGranularity] = useState<Granularity>("mes")
   const [by, setBy] = useState<GroupBy>("model")
   const [sizeField, setSizeField] = useState<SizeField>("capacity")
@@ -88,8 +89,8 @@ export function ChassisPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const result = await send<{ rows: Row[]; others: OtherNote[]; notes: number }>("/api/contabilidade/chassis?visao=todos")
-      setAll(result.rows); setOthers(result.others || []); setNotes(result.notes); setError("")
+      const result = await send<{ rows: Row[]; others: OtherNote[]; excluded: Array<{ label: string; notes: number; carretas: number; value: number }>; notes: number }>("/api/contabilidade/chassis?visao=todos")
+      setAll(result.rows); setOthers(result.others || []); setExcluded(result.excluded || []); setNotes(result.notes); setError("")
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível carregar.") } finally { setLoading(false) }
   }, [])
   useEffect(() => { void load() }, [load])
@@ -217,6 +218,10 @@ export function ChassisPage() {
           {loading ? <Loader2 className="mb-2 h-4 w-4 animate-spin text-muted-foreground" /> : null}
         </div>
         {error ? <p className="mt-3 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{error}</p> : null}
+        <p className="mt-3 text-xs text-muted-foreground">
+          Só entram notas de <strong>saída</strong> com natureza de <strong>venda</strong>. Notas de entrada não são usadas.
+          {excluded.length ? <> Ficam de fora, por não serem venda: {excluded.slice(0, 4).map((entry) => `${entry.label} (${entry.notes.toLocaleString("pt-BR")} nota(s)${entry.carretas ? `, ${entry.carretas.toLocaleString("pt-BR")} carreta(s)` : ""}, ${brl(entry.value)})`).join("; ")}{excluded.length > 4 ? `; e mais ${excluded.length - 4} tipo(s)` : ""}.</> : null}
+        </p>
       </SectionCard>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

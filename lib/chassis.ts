@@ -54,6 +54,9 @@ type InvoiceRow = {
   items: Array<{ description?: string; total?: number | string; quantity?: number | string; unitPrice?: number | string; ncm?: string }> | null
 }
 
+/** Só nota de VENDA conta: a natureza da operação começa por "Venda". Remessa (demonstração, industrialização, conserto), transferência e devolução ficam de fora. */
+export const isSaleNature = (nature: string | null | undefined) => /^\s*venda/i.test(String(nature || ""))
+
 /** Item de carreta da ND (descrição "MARCA MOD R/ND CARRETAS <modelo> ANO ...") mesmo quando a nota não traz o número do chassi (venda em lote). */
 const isTrailerItem = (description: string) => /\bND\s+CARRETAS?\b/i.test(description) && (/\bANO\s+\d{4}/i.test(description) || /COD\s*\(/i.test(description))
 

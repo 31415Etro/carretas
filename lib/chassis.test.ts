@@ -124,6 +124,17 @@ test("página Chassis: períodos (mês/semana), modelo ou linha, tamanho e a abe
   assert.equal(pickChassis(rows, { size: { field: "axles", value: 2 } })[0].number, "103")  // mais recente primeiro
 })
 
+test("só natureza de venda conta; remessa, demonstração, transferência e devolução ficam de fora", async () => {
+  const { isSaleNature } = await import("./chassis.ts")
+  assert.equal(isSaleNature("Venda de produção do estabelecimento"), true)
+  assert.equal(isSaleNature("Venda de mercadoria"), true)
+  assert.equal(isSaleNature("Remessa p/ demonstração"), false)
+  assert.equal(isSaleNature("Remessa para industrialização por encomenda"), false)
+  assert.equal(isSaleNature("Devolução de venda"), false)
+  assert.equal(isSaleNature("Transferência de mercadoria"), false)
+  assert.equal(isSaleNature(null), false)
+})
+
 test("item CHASSI genérico (NCM 8716) conta como carreta por quantidade; peça e nota sem carreta ficam fora e viram 'outras notas'", async () => {
   const { chassisFromInvoice: from, otherNoteFromInvoice, GENERIC_MODEL, trailerUnits } = await import("./chassis.ts")
   const nota = { id: "7", number: "15001", series: "1", issued_at: "2026-04-10T10:00:00-03:00", access_key: "x", nature: "Venda", recipient_name: "REVENDA", recipient_document: "11122233000144", total_invoice: 16500,
