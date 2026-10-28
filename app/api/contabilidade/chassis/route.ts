@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { stockContext } from "@/lib/stock-api"
 import { ACCOUNTING_MIGRATION_HINT } from "@/lib/accounting-server"
-import { chassisByModel, chassisByModelMonth, chassisChart, chassisFromInvoice, chassisPerChassis, digits, filterChassis, type ChassisRow } from "@/lib/chassis"
+import { chassisByModel, chassisByModelMonth, chassisChart, chassisFromInvoice, chassisPerChassis, digits, filterChassis, otherNoteFromInvoice, type ChassisRow, type OtherNote } from "@/lib/chassis"
 import { fetchAllPages, memoize } from "@/lib/paged-fetch"
 import { createAdminClient } from "@/lib/supabase/server"
 
@@ -27,10 +27,15 @@ function loadChassis(de: string, ate: string) {
         return query.order("issued_at", { ascending: false }).order("id").range(from, to) as unknown as PromiseLike<{ data: Record<string, unknown>[] | null; error: { message: string } | null }>
       })
       const rows: ChassisRow[] = []
-      for (const invoice of invoices) rows.push(...chassisFromInvoice(invoice as never, { id: company.id, name: company.trade_name || company.name }, groupDocuments))
-      return { rows, notes: invoices.length }
+      const others: OtherNote[] = []
+      for (const invoice of invoices) {
+        const found = chassisFromInvoice(invoice as never, { id: company.id, name: company.trade_name || company.name }, groupDocuments)
+        if (found.length) rows.push(...found)
+        else others.push(otherNoteFromInvoice(invoice as never, { id: company.id, name: company.trade_name || company.name }, groupDocuments)) // peças e outros: só nos totais
+      }
+      return { rows, others, notes: invoices.length }
     }))
-    return { rows: perCompany.flatMap((entry) => entry.rows), notes: perCompany.reduce((sum, entry) => sum + entry.notes, 0) }
+    return { rows: perCompany.flatMap((entry) => entry.rows), others: perCompany.flatMap((entry) => entry.others), notes: perCompany.reduce((sum, entry) => sum + entry.notes, 0) }
   })
 }
 
@@ -74,7 +79,7 @@ export async function GET(request: Request) {
     const client = clientId ? { name: clientName, document: clientDocument } : null
     const view = params.get("visao")
     if (view === "modelo") return NextResponse.json({ found: rows.length, notes: loaded.notes, client, byModel: chassisByModel(rows), byModelMonth: chassisByModelMonth(rows) })
-    if (view === "todos") return NextResponse.json({ notes: loaded.notes, rows: loaded.rows.map(({ description, accessKey, nature, ...slim }) => slim) }) // página Chassis: gráficos e filtros são feitos no navegador
+    if (view === "todos") return NextResponse.json({ notes: loaded.notes, others: loaded.others, rows: loaded.rows.map(({ description, accessKey, nature, ...slim }) => slim) }) // página Chassis: gráficos e filtros são feitos no navegador
     if (view === "chassi") return NextResponse.json({ found: rows.length, notes: loaded.notes, client, perChassis: chassisPerChassis(rows) })
     rows.sort((a, b) => String(b.issuedAt || "").localeCompare(String(a.issuedAt || "")) || b.number.localeCompare(a.number))
     return NextResponse.json({ rows: rows.slice(0, 500), found: rows.length, notes: loaded.notes, chart: chassisChart(loaded.rows), client })

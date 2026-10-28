@@ -7,7 +7,9 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { TableCell, TableRow } from "@/components/ui/table"
-import { DataTable, PageShell, SearchableSelectField, SectionCard } from "@/components/operations/shared"
+import { DataTable, PageShell, SectionCard } from "@/components/operations/shared"
+import { MultiSelectSearch } from "@/components/chassis/client-multi-select"
+import type { OtherNote } from "@/lib/chassis"
 import { chassisBySize, chassisTimeline, issuedDay, periodKey, pickChassis, rowUnits, trailerUnits, type ChassisPick, type ChassisRow, type Granularity, type GroupBy } from "@/lib/chassis"
 
 type Row = Omit<ChassisRow, "description" | "accessKey" | "nature">
@@ -74,7 +76,8 @@ export function ChassisPage() {
   const [model, setModel] = useState("")
   const [color, setColor] = useState("")
   const [capacity, setCapacity] = useState("")
-  const [client, setClient] = useState("")
+  const [clients, setClients] = useState<string[]>([])
+  const [others, setOthers] = useState<OtherNote[]>([])
   const [granularity, setGranularity] = useState<Granularity>("mes")
   const [by, setBy] = useState<GroupBy>("model")
   const [sizeField, setSizeField] = useState<SizeField>("capacity")
@@ -85,8 +88,8 @@ export function ChassisPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const result = await send<{ rows: Row[]; notes: number }>("/api/contabilidade/chassis?visao=todos")
-      setAll(result.rows); setNotes(result.notes); setError("")
+      const result = await send<{ rows: Row[]; others: OtherNote[]; notes: number }>("/api/contabilidade/chassis?visao=todos")
+      setAll(result.rows); setOthers(result.others || []); setNotes(result.notes); setError("")
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível carregar.") } finally { setLoading(false) }
   }, [])
   useEffect(() => { void load() }, [load])
@@ -95,16 +98,21 @@ export function ChassisPage() {
   const colors = useMemo(() => [...new Set(all.map((row) => row.color || "Sem cor"))].sort(), [all])
   const capacities = useMemo(() => [...new Set(all.map((row) => row.capacity || 0))].sort((a, b) => a - b), [all])
   const clientKey = (row: Row) => row.clientDocument || `nome:${row.clientName}`
+  const otherKey = (note: OtherNote) => note.clientDocument || `nome:${note.clientName}`
   const clientOptions = useMemo(() => {
-    const byKey = new Map<string, { name: string; document: string; chassis: number }>()
+    const byKey = new Map<string, { name: string; document: string; units: number }>()
     for (const row of all) {
       if (!intercompany && row.intercompany) continue
-      const entry = byKey.get(clientKey(row)) || { name: row.clientName || "Sem nome", document: row.clientDocument, chassis: 0 }
-      entry.chassis += 1
+      const entry = byKey.get(clientKey(row)) || { name: row.clientName || "Sem nome", document: row.clientDocument, units: 0 }
+      entry.units += rowUnits(row)
       byKey.set(clientKey(row), entry)
     }
-    return [{ value: "", label: "Todos os clientes" }, ...[...byKey.entries()].sort((a, b) => a[1].name.localeCompare(b[1].name, "pt-BR")).map(([value, entry]) => ({ value, label: `${entry.name}${entry.document ? ` (${formatDocument(entry.document)})` : ""} · ${entry.chassis}` }))]
-  }, [all, intercompany])
+    for (const note of others) {
+      if (!intercompany && note.intercompany) continue
+      if (!byKey.has(otherKey(note))) byKey.set(otherKey(note), { name: note.clientName || "Sem nome", document: note.clientDocument, units: 0 })
+    }
+    return [...byKey.entries()].sort((a, b) => a[1].name.localeCompare(b[1].name, "pt-BR")).map(([value, entry]) => ({ value, label: `${entry.name}${entry.document ? ` (${formatDocument(entry.document)})` : ""}${entry.units ? ` · ${entry.units}` : ""}` }))
+  }, [all, others, intercompany])
   const models = useMemo(() => [...new Set(all.map((row) => row.model || "Sem modelo"))].sort(), [all])
   const rows = useMemo(() => all.filter((row) => {
     const issued = issuedDay(row.issuedAt)
@@ -114,10 +122,25 @@ export function ChassisPage() {
     if (model && (row.model || "Sem modelo") !== model) return false
     if (color && (row.color || "Sem cor") !== color) return false
     if (capacity && String(row.capacity || 0) !== capacity) return false
-    if (client && clientKey(row) !== client) return false
+    if (clients.length && !clients.includes(clientKey(row))) return false
     if (!intercompany && row.intercompany) return false
     return true
-  }) as ChassisRow[], [all, de, ate, company, model, color, capacity, client, intercompany])
+  }) as ChassisRow[], [all, de, ate, company, model, color, capacity, clients, intercompany])
+
+  const othersShown = useMemo(() => others.filter((note) => {
+    const issued = issuedDay(note.issuedAt)
+    if (model || color || capacity) return false
+    if (de && issued < de) return false
+    if (ate && issued > ate) return false
+    if (company && note.companyName !== company) return false
+    if (clients.length && !clients.includes(otherKey(note))) return false
+    if (!intercompany && note.intercompany) return false
+    return true
+  }).sort((a, b) => String(b.issuedAt || "").localeCompare(String(a.issuedAt || ""))), [others, de, ate, company, model, color, capacity, clients, intercompany])
+  const othersValue = othersShown.reduce((sum, note) => sum + note.total, 0)
+  const othersQuantity = othersShown.reduce((sum, note) => sum + note.quantity, 0)
+  const notesWithTrailer = useMemo(() => { const map = new Map<string, number>(); for (const row of rows) map.set(row.invoiceId, row.invoiceTotal); return map }, [rows])
+  const allNotesValue = [...notesWithTrailer.values()].reduce((sum, value) => sum + value, 0) + othersValue
 
   const timeline = useMemo(() => chassisTimeline(rows, granularity, by), [rows, granularity, by])
   const colorOf = useMemo(() => Object.fromEntries(timeline.series.map((name, index) => [name, COLORS[index % COLORS.length]])), [timeline.series])
@@ -182,7 +205,7 @@ export function ChassisPage() {
           <label className="text-xs text-muted-foreground">Capacidade de carga
             <select value={capacity} onChange={(event) => setCapacity(event.target.value)} className="mt-1 block h-9 rounded-md border bg-background px-2 text-sm text-foreground"><option value="">Todas</option>{capacities.map((value) => <option key={value} value={String(value)}>{value ? tons(value) : "Sem informação"}</option>)}</select>
           </label>
-          <div className="w-full sm:w-[320px]"><SearchableSelectField label="Cliente" value={client} onChange={setClient} options={clientOptions} placeholder="Todos os clientes" searchPlaceholder="Pesquisar cliente por nome ou CNPJ/CPF..." /></div>
+          <MultiSelectSearch label="Clientes (marque quantos quiser)" options={clientOptions} value={clients} onChange={setClients} placeholder="Todos os clientes" searchPlaceholder="Pesquisar cliente por nome ou CNPJ/CPF..." />
           <div className="text-xs text-muted-foreground">Período do gráfico
             <div className="mt-1 flex rounded-md border p-0.5 text-sm">{([["mes", "Mês"], ["semana", "Semana"]] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setGranularity(value)} className={`rounded px-3 py-1 ${granularity === value ? "bg-primary text-primary-foreground" : "text-foreground"}`}>{label}</button>)}</div>
           </div>
@@ -190,7 +213,7 @@ export function ChassisPage() {
             <div className="mt-1 flex rounded-md border p-0.5 text-sm">{([["model", "Modelo (FZ 1E)"], ["family", "Linha (FZ)"]] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setBy(value)} className={`rounded px-3 py-1 ${by === value ? "bg-primary text-primary-foreground" : "text-foreground"}`}>{label}</button>)}</div>
           </div>
           <label className="flex items-center gap-2 pb-2 text-sm"><input type="checkbox" checked={intercompany} onChange={(event) => setIntercompany(event.target.checked)} />Incluir vendas entre as empresas ND</label>
-          {(de || ate || company || model || color || capacity || client) ? <Button variant="ghost" size="sm" onClick={() => { setDe(""); setAte(""); setCompany(""); setModel(""); setColor(""); setCapacity(""); setClient("") }}>Limpar filtros</Button> : null}
+          {(de || ate || company || model || color || capacity || clients.length) ? <Button variant="ghost" size="sm" onClick={() => { setDe(""); setAte(""); setCompany(""); setModel(""); setColor(""); setCapacity(""); setClients([]) }}>Limpar filtros</Button> : null}
           {loading ? <Loader2 className="mb-2 h-4 w-4 animate-spin text-muted-foreground" /> : null}
         </div>
         {error ? <p className="mt-3 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{error}</p> : null}
@@ -199,8 +222,8 @@ export function ChassisPage() {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Card label="Carretas emitidas" value={distinct.toLocaleString("pt-BR")} hint={`${units.numbered.toLocaleString("pt-BR")} com número de chassi · ${units.batch.toLocaleString("pt-BR")} em lote sem número`} />
         <Card label="Valor das carretas" value={brl(total)} hint={`valor médio por carreta ${brl(distinct ? total / distinct : 0)}`} />
-        <Card label={by === "model" ? "Modelos" : "Linhas"} value={String(timeline.series.length)} hint={ranking[0] ? `mais emitido: ${ranking[0].name} (${ranking[0].chassis})` : ""} />
-        <Card label="Notas de venda lidas" value={notes.toLocaleString("pt-BR")} hint="saídas da Contabilidade, todas as empresas" />
+        <Card label="Notas sem carreta" value={othersShown.length.toLocaleString("pt-BR")} hint={`${brl(othersValue)} · ${othersQuantity.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} itens (peças, madeira e outros)`} />
+        <Card label="Total das notas de venda" value={brl(allNotesValue)} hint={`${(notesWithTrailer.size + othersShown.length).toLocaleString("pt-BR")} nota(s): ${notesWithTrailer.size.toLocaleString("pt-BR")} com carreta + ${othersShown.length.toLocaleString("pt-BR")} sem`} />
       </div>
 
       <SectionCard title={`Carretas por ${granularity === "mes" ? "mês" : "semana"} e ${by === "model" ? "modelo" : "linha"}`} description="Cada cor é um modelo. Clique em um trecho da barra para ver as notas daquele modelo naquele período.">
@@ -281,6 +304,23 @@ export function ChassisPage() {
               </TableRow>
             )
           })}
+        </DataTable>
+      </SectionCard>
+
+      <SectionCard title="Notas sem carreta (peças, madeira, chapas e outros)" description={`${othersShown.length.toLocaleString("pt-BR")} nota(s) · ${brl(othersValue)} · ${othersQuantity.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} itens no total. Entram no "Total das notas de venda", mas não nas carretas.${model || color || capacity ? " Com filtro de modelo, cor ou capacidade esta lista fica vazia." : ""}`}>
+        <DataTable headers={["Nota", "Emissão", "Cliente", "CPF/CNPJ", "Itens", "Quantidade", "Valor da nota", "Empresa"]} empty={!othersShown.length && !loading} stickyHeader viewportClassName="max-h-[45vh]">
+          {othersShown.map((note) => (
+            <TableRow key={note.invoiceId}>
+              <TableCell className="whitespace-nowrap">{note.number}{note.series ? `/${note.series}` : ""}</TableCell>
+              <TableCell className="whitespace-nowrap">{day(note.issuedAt)}</TableCell>
+              <TableCell className="max-w-[240px] truncate" title={note.clientName}>{note.clientName || "-"}</TableCell>
+              <TableCell className="whitespace-nowrap">{formatDocument(note.clientDocument) || "-"}</TableCell>
+              <TableCell className="max-w-[320px] truncate text-xs" title={note.summary}>{note.summary || "-"}</TableCell>
+              <TableCell className="whitespace-nowrap text-right">{note.quantity.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}</TableCell>
+              <TableCell className="whitespace-nowrap text-right font-medium">{brl(note.total)}</TableCell>
+              <TableCell className="whitespace-nowrap">{note.companyName}</TableCell>
+            </TableRow>
+          ))}
         </DataTable>
       </SectionCard>
 

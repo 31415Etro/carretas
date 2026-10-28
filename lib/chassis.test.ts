@@ -124,6 +124,20 @@ test("página Chassis: períodos (mês/semana), modelo ou linha, tamanho e a abe
   assert.equal(pickChassis(rows, { size: { field: "axles", value: 2 } })[0].number, "103")  // mais recente primeiro
 })
 
+test("item CHASSI genérico (NCM 8716) conta como carreta por quantidade; peça e nota sem carreta ficam fora e viram 'outras notas'", async () => {
+  const { chassisFromInvoice: from, otherNoteFromInvoice, GENERIC_MODEL, trailerUnits } = await import("./chassis.ts")
+  const nota = { id: "7", number: "15001", series: "1", issued_at: "2026-04-10T10:00:00-03:00", access_key: "x", nature: "Venda", recipient_name: "REVENDA", recipient_document: "11122233000144", total_invoice: 16500,
+    items: [{ description: "CHASSI", quantity: 10, unitPrice: 1500, total: 15000, ncm: "87164000" }, { description: "PEÇAS", quantity: 300, unitPrice: 5, total: 1500, ncm: "87169090" }] }
+  const rows = from(nota, company, group)
+  assert.equal(rows.length, 1)
+  assert.deepEqual([rows[0].model, rows[0].quantity, rows[0].itemTotal, rows[0].unitPrice], [GENERIC_MODEL, 10, 15000, 1500])
+  assert.equal(trailerUnits(rows).units, 10)
+  const pecas = { ...nota, id: "8", total_invoice: 3000, items: [{ description: "MADEIRA", quantity: 100, total: 2000, ncm: "44071100" }, { description: "PEÇAS", quantity: 200, total: 1000, ncm: "87169090" }] }
+  assert.equal(from(pecas, company, group).length, 0)
+  const other = otherNoteFromInvoice(pecas, company, group)
+  assert.deepEqual([other.total, other.quantity, other.summary], [3000, 300, "MADEIRA · PEÇAS"])
+})
+
 test("lote sem número de chassi: conta pela quantidade da nota, com valor unitário e total, junto com os chassis numerados", async () => {
   const { chassisByModel, chassisChart, chassisTimeline, chassisFromInvoice: from, trailerUnits } = await import("./chassis.ts")
   const BATCH = "MARCA MOD R/ND CARRETAS FZ 1E ANO 2026/MOD 2026 PBT 0,75 t CAP 0,55 t COR PRATA COD (600043)"            // sem número de chassi

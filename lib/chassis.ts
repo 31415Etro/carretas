@@ -51,11 +51,15 @@ export function describeTrailer(description: string) {
 type InvoiceRow = {
   id: string; number: string | null; series: string | null; issued_at: string | null; access_key: string | null; nature: string | null
   recipient_name: string | null; recipient_document: string | null; total_invoice: number | string | null
-  items: Array<{ description?: string; total?: number | string; quantity?: number | string; unitPrice?: number | string }> | null
+  items: Array<{ description?: string; total?: number | string; quantity?: number | string; unitPrice?: number | string; ncm?: string }> | null
 }
 
 /** Item de carreta da ND (descrição "MARCA MOD R/ND CARRETAS <modelo> ANO ...") mesmo quando a nota não traz o número do chassi (venda em lote). */
 const isTrailerItem = (description: string) => /\bND\s+CARRETAS?\b/i.test(description) && (/\bANO\s+\d{4}/i.test(description) || /COD\s*\(/i.test(description))
+
+/** Item "CHASSI" lançado sem modelo nem número (NCM 8716): é carreta vendida por quantidade e valor, só que a nota não descreve o modelo. */
+const isGenericChassisItem = (description: string, ncm: string) => /\bCHASSIS?\b/i.test(description) && /^8716/.test(String(ncm || "").replace(/\D/g, "")) && !/COMPONENTE|PE[ÇC]A/i.test(description)
+export const GENERIC_MODEL = "CHASSI SEM MODELO"
 
 /** Carretas que a linha representa: 1 quando tem número de chassi; a quantidade da nota quando é lote sem número. */
 export const rowUnits = (row: Pick<ChassisRow, "chassis" | "quantity">) => (row.chassis ? 1 : Math.max(1, row.quantity))
@@ -73,8 +77,10 @@ export function chassisFromInvoice(invoice: InvoiceRow, company: { id: string; n
   const rows: ChassisRow[] = []
   for (const item of invoice.items || []) {
     const chassis = extractChassis(item.description || "") || ""
-    if (!chassis && !isTrailerItem(String(item.description || ""))) continue
+    const generic = !chassis && !isTrailerItem(String(item.description || "")) && isGenericChassisItem(String(item.description || ""), String(item.ncm || ""))
+    if (!chassis && !generic && !isTrailerItem(String(item.description || ""))) continue
     const trailer = describeTrailer(item.description || "")
+    if (generic) trailer.model = GENERIC_MODEL
     const document = digits(invoice.recipient_document || "")
     rows.push({
       chassis, ...trailer, description: String(item.description || ""), invoiceId: invoice.id, number: String(invoice.number || ""), series: String(invoice.series || ""), issuedAt: invoice.issued_at,
@@ -245,4 +251,18 @@ export function pickChassis(rows: ChassisRow[], pick: ChassisPick) {
     if (pick.size && Number(row[pick.size.field] || 0) !== pick.size.value) return false
     return true
   }).sort((a, b) => String(b.issuedAt || "").localeCompare(String(a.issuedAt || "")) || a.number.localeCompare(b.number))
+}
+
+/** Nota de venda sem nenhuma carreta (peças, madeira, chapas...): entra só nos totais de valor e quantidade. */
+export type OtherNote = { invoiceId: string; number: string; series: string; issuedAt: string | null; clientName: string; clientDocument: string; total: number; quantity: number; summary: string; companyName: string; intercompany: boolean }
+
+export function otherNoteFromInvoice(invoice: InvoiceRow, company: { id: string; name: string }, companyDocuments: string[] = []): OtherNote {
+  const items = invoice.items || []
+  const document = digits(invoice.recipient_document || "")
+  const names = [...new Set(items.map((item) => String(item.description || "").trim()).filter(Boolean))]
+  return {
+    invoiceId: invoice.id, number: String(invoice.number || ""), series: String(invoice.series || ""), issuedAt: invoice.issued_at, clientName: String(invoice.recipient_name || ""), clientDocument: document,
+    total: Number(invoice.total_invoice || 0), quantity: items.reduce((sum, item) => sum + Number(item.quantity || 0), 0), summary: names.slice(0, 3).join(" · ") + (names.length > 3 ? ` (+${names.length - 3})` : ""),
+    companyName: company.name, intercompany: companyDocuments.includes(document),
+  }
 }
