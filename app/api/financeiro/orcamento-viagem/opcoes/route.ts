@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { stockContext } from "@/lib/stock-api"
 import { listEmployeeOptions } from "@/lib/travel-advance-server"
 
-/** Funcionários ativos para escolher no "Novo orçamento de viagem", já com os dados bancários salvos no cadastro dele. */
+/** Funcionários ativos para escolher no "Nova antecipação de reembolso para viagem", já com os dados bancários salvos no cadastro dele. */
 export async function GET() {
   const context = await stockContext()
   if ("error" in context) return context.error

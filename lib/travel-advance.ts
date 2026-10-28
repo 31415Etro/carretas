@@ -1,4 +1,4 @@
-// Orçamento de viagem: orçamento de gasto para um funcionário, prestado por um link público (sem login) onde ele
+// Antecipação de reembolso para viagem: orçamento de gasto para um funcionário, prestado por um link público (sem login) onde ele
 // sobe fotos das notinhas. Funções puras (testáveis); a parte com banco fica em lib/travel-advance-server.ts.
 
 export type AdvanceStatus = "Aberto" | "Finalizado" | "Concluido" | "Cancelado"
@@ -38,7 +38,7 @@ export function needsSettlementChoice(summary: TravelAdvanceSummary, settlementA
   return summary.remaining > 0.004 && !settlementAction
 }
 
-/** O orçamento de viagem está pronto para o financeiro marcar como concluído? Nenhuma nota pendente nem contestada, e (se sobrou saldo) a devolução já foi resolvida. */
+/** O antecipação de reembolso para viagem está pronto para o financeiro marcar como concluído? Nenhuma nota pendente nem contestada, e (se sobrou saldo) a devolução já foi resolvida. */
 export function isFullyReviewed(receipts: Array<{ status: ReceiptStatus }>) {
   return receipts.length > 0 && receipts.every((receipt) => receipt.status === "Aprovado")
 }

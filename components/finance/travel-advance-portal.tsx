@@ -11,10 +11,12 @@ import { AppFooter } from "@/components/shell/app-footer"
 import { ocrReceiptImage } from "@/lib/ocr-client"
 import { compressPhoto } from "@/lib/image-compress"
 import { CATEGORY_LABEL } from "@/lib/travel-advance"
+import { advanceNumber, buildAdvanceTermPdf } from "@/lib/travel-advance-term"
 
 type PortalReceipt = { id: string; photoUrl: string; amount: number; establishment: string; category: string; occurredAt: string | null; status: string; reviewNote: string }
 type CategorySummary = { category: string; budget: number; spent: number; remaining: number; overspent: boolean }
 type PortalState = {
+  number: number | null; employeeCpf: string; company: { name: string; cnpj: string }
   reason: string; amount: number; startDate: string; endDate: string; status: "Aberto" | "Finalizado" | "Concluido" | "Cancelado"
   employeeName: string; ownPocketJustification: string; settlementAction: string | null; settlementResolved: boolean; canUpload: boolean
   summary: { budget: number; spent: number; remaining: number; overspent: boolean; overspentAmount: number }
@@ -69,8 +71,21 @@ export function TravelAdvancePortal({ token }: { token: string }) {
   const [editingId, setEditingId] = useState("")
   const [editDraft, setEditDraft] = useState({ amount: "", establishment: "", occurredAt: "", category: "" })
   const [finalizing, setFinalizing] = useState(false)
+  const [termError, setTermError] = useState("")
   const input = useRef<HTMLInputElement>(null)
   const gallery = useRef<HTMLInputElement>(null)
+
+  async function downloadTerm() {
+    if (!state) return
+    setTermError("")
+    try {
+      const { blob, fileName } = await buildAdvanceTermPdf({ employeeName: state.employeeName, employeeCpf: state.employeeCpf, companyName: state.company.name, companyCnpj: state.company.cnpj, amount: state.summary.remaining, number: state.number })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement("a")
+      anchor.href = url; anchor.download = fileName; anchor.click()
+      URL.revokeObjectURL(url)
+    } catch (reason) { setTermError(reason instanceof Error ? reason.message : "Não foi possível gerar o termo.") }
+  }
 
   const load = useCallback(async () => {
     try {
@@ -158,7 +173,7 @@ export function TravelAdvancePortal({ token }: { token: string }) {
   }
 
   async function finalize() {
-    if (!window.confirm("Finalizar a prestação de contas deste orçamento de viagem? Depois disso você não poderá mais enviar ou remover notinhas, só até o financeiro revisar.")) return
+    if (!window.confirm("Finalizar a prestação de contas desta antecipação de reembolso para viagem? Depois disso você não poderá mais enviar ou remover notinhas, só até o financeiro revisar.")) return
     setFinalizing(true)
     try {
       await send(`/api/viagem/portal/${token}/finalizar`, { method: "POST", body: JSON.stringify({ ownPocketJustification: justification, settlementAction: settlement || null }) })
@@ -191,7 +206,7 @@ export function TravelAdvancePortal({ token }: { token: string }) {
   return shell(
     <div className="space-y-4">
       <Card>
-        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--brand)]">Orçamento de viagem de {state.employeeName}</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--brand)]">{advanceNumber(state.number) ? `${advanceNumber(state.number)} · ` : ""}Antecipação de reembolso para viagem de {state.employeeName}</p>
         <h1 className="mt-1 text-xl font-semibold text-slate-900">{state.reason || "Prestação de contas"}</h1>
         <p className="mt-1 text-sm text-slate-500">Prazo: {day(state.startDate)} até {day(state.endDate)}</p>
         <div className="mt-4 grid grid-cols-3 gap-3 text-center">
@@ -202,7 +217,7 @@ export function TravelAdvancePortal({ token }: { token: string }) {
         <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full ${state.summary.overspent ? "bg-red-500" : "bg-[var(--brand)]"}`} style={{ width: `${pct}%` }} /></div>
         {state.status === "Finalizado" ? <p className="mt-3 flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800"><Clock className="h-4 w-4 shrink-0" />Prestação de contas enviada: o financeiro está revisando as notinhas.</p> : null}
         {state.status === "Concluido" ? <p className="mt-3 flex items-center gap-2 rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-800"><CheckCircle2 className="h-4 w-4 shrink-0" />Prestação de contas concluída. Obrigado!</p> : null}
-        {state.status === "Cancelado" ? <p className="mt-3 flex items-center gap-2 rounded-md border border-slate-300 bg-slate-100 p-3 text-sm text-slate-700"><X className="h-4 w-4 shrink-0" />Este orçamento de viagem foi cancelado.</p> : null}
+        {state.status === "Cancelado" ? <p className="mt-3 flex items-center gap-2 rounded-md border border-slate-300 bg-slate-100 p-3 text-sm text-slate-700"><X className="h-4 w-4 shrink-0" />Esta antecipação de reembolso para viagem foi cancelada.</p> : null}
       </Card>
 
       {state.categories.length > 0 ? (
@@ -306,6 +321,13 @@ export function TravelAdvancePortal({ token }: { token: string }) {
                 <button type="button" onClick={() => setSettlement("devolver")} className={`flex-1 rounded-md border p-3 text-left text-sm ${settlement === "devolver" ? "border-[var(--brand)] bg-[var(--brand-softer)]" : "border-slate-200"}`}>Devolver o valor ao financeiro</button>
                 <button type="button" onClick={() => setSettlement("desconto_folha")} className={`flex-1 rounded-md border p-3 text-left text-sm ${settlement === "desconto_folha" ? "border-[var(--brand)] bg-[var(--brand-softer)]" : "border-slate-200"}`}>Descontar do meu salário</button>
               </div>
+              {settlement === "desconto_folha" ? (
+                <div className="mt-3 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm">
+                  <p>O valor de {brl(state.summary.remaining)} será descontado do seu salário. Gere o termo, imprima e assine para entregar ao financeiro.</p>
+                  <Button type="button" variant="outline" className="mt-2 w-full sm:w-auto" onClick={() => void downloadTerm()}><Receipt className="h-4 w-4" />Solicitação de adiantamento</Button>
+                  {termError ? <p className="mt-2 text-xs text-red-600">{termError}</p> : null}
+                </div>
+              ) : null}
             </div>
           ) : null}
           <Button className="w-full bg-[var(--brand)] hover:bg-[var(--brand-dark)]" disabled={finalizing || needsJustification || needsSettlement || !state.receipts.length} onClick={() => void finalize()}>

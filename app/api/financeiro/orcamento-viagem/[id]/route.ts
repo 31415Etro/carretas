@@ -8,7 +8,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   try {
     return NextResponse.json(await getAdvanceDetail(context.admin, (await params).id))
   } catch (error) {
-    return NextResponse.json({ error: advanceError(error, "Erro ao carregar o orçamento de viagem.").message }, { status: 400 })
+    return NextResponse.json({ error: advanceError(error, "Erro ao carregar a antecipação de reembolso para viagem.").message }, { status: 400 })
   }
 }
 
@@ -24,6 +24,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     else return NextResponse.json({ error: "Ação inválida." }, { status: 400 })
     return NextResponse.json({ ok: true })
   } catch (error) {
-    return NextResponse.json({ error: advanceError(error, "Erro ao atualizar o orçamento de viagem.").message }, { status: 400 })
+    return NextResponse.json({ error: advanceError(error, "Erro ao atualizar a antecipação de reembolso para viagem.").message }, { status: 400 })
   }
 }

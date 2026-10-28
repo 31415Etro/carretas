@@ -19,7 +19,7 @@ const publicPaths = [
   "/api/documentacao/cron",
   // Importação automática de NF (agendador local): autenticada por NF_SYNC_SECRET dentro da própria rota.
   "/api/financeiro/nf/sync",
-  // Portal de orçamento de viagem (link enviado ao funcionário): sem login; o token da URL é a autorização, validado dentro da rota.
+  // Portal de antecipação de reembolso para viagem (link enviado ao funcionário): sem login; o token da URL é a autorização, validado dentro da rota.
   "/portal-viagem",
   "/api/viagem/portal",
   // Idioma do leitor de texto (OCR) das notinhas: o funcionário do portal não está logado e o navegador precisa baixar o arquivo.

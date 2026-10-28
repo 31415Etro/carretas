@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { stockContext } from "@/lib/stock-api"
 import { advanceError, listPendingReview } from "@/lib/travel-advance-server"
 
-/** Todos os registros (notinhas) à espera de aprovação do financeiro, de orçamentos de viagem já finalizados pelo funcionário. */
+/** Todos os registros (notinhas) à espera de aprovação do financeiro, de antecipações de reembolso para viagem já finalizadas pelo funcionário. */
 export async function GET() {
   const context = await stockContext()
   if ("error" in context) return context.error

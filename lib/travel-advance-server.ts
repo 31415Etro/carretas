@@ -4,7 +4,7 @@ import { categorizeReceipt, parseReceiptText } from "@/lib/receipt-ocr"
 import { canFinalize, canUpload, needsSettlementChoice, summarizeAdvance, summarizeCategories, validateCategoryBudgets, type CategoryBudgets, type SettlementAction } from "@/lib/travel-advance"
 
 type Admin = ReturnType<typeof createAdminClient>
-export const ADVANCE_MIGRATION_HINT = "Orçamento de viagem ainda não instalado no banco. Rode scripts/217_orcamento_viagem.sql no SQL Editor do Supabase."
+export const ADVANCE_MIGRATION_HINT = "Antecipação de reembolso para viagem ainda não instalado no banco. Rode scripts/217_orcamento_viagem.sql no SQL Editor do Supabase."
 const BUCKET = "comprovantes-viagem"
 const MAX_PHOTO_BYTES = 12 * 1024 * 1024
 
@@ -21,17 +21,40 @@ function newToken() {
 }
 
 export async function listEmployeeOptions(admin: Admin) {
-  const { data, error } = await admin.from("profiles").select("id,full_name,email,bank_name,bank_agency,bank_account,bank_account_type,pix_key").eq("active", true).neq("role", "client").order("full_name")
+  const columns = "id,full_name,email,bank_name,bank_agency,bank_account,bank_account_type,pix_key"
+  let result: { data: Array<Record<string, any>> | null; error: { message: string } | null } = await admin.from("profiles").select(`${columns},cpf`).eq("active", true).neq("role", "client").order("full_name")
+  if (result.error && /cpf/.test(result.error.message)) result = await admin.from("profiles").select(columns).eq("active", true).neq("role", "client").order("full_name") // script 239 ainda não rodou
+  const { data, error } = result
   if (error) throw error
   return (data || []).map((row) => ({
-    id: String(row.id), name: String(row.full_name || row.email || "Sem nome"), email: String(row.email || ""),
+    id: String(row.id), name: String(row.full_name || row.email || "Sem nome"), email: String(row.email || ""), cpf: String(row.cpf || ""),
     bank: { bankName: String(row.bank_name || ""), bankAgency: String(row.bank_agency || ""), bankAccount: String(row.bank_account || ""), bankAccountType: String(row.bank_account_type || ""), pixKey: String(row.pix_key || "") } as BankSnapshot,
   }))
 }
 
-export type CreateAdvanceInput = { employeeId: string; reason: string; amount: number; startDate: string; endDate: string; bank: BankSnapshot; categoryBudgets: CategoryBudgets }
+export type CreateAdvanceInput = { employeeId: string; reason: string; amount: number; startDate: string; endDate: string; bank: BankSnapshot; categoryBudgets: CategoryBudgets; cpf?: string }
+export const ADVANCE_ORIGIN = "Antecipacao Viagem"
+const today = () => new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" })
 
-/** Cria o orçamento de viagem, gera o link e salva/atualiza os dados bancários do funcionário no cadastro (para reaproveitar da próxima vez). */
+/** O dinheiro sai do caixa quando a antecipação é liberada: o valor total entra em Entradas e Saídas como Saída realizada, ligada à antecipação pela chave em `notes`. */
+async function postAdvanceOutflow(admin: Admin, advance: { id: string; number?: number | null; employee_name: string; reason: string; amount: number }) {
+  const { data: dre } = await admin.from("dre_accounts").select("id").eq("name", "Sem classificacao").limit(1)
+  const code = advance.number ? `ANT-${String(advance.number).padStart(5, "0")}` : ""
+  const day = today()
+  const { error } = await admin.from("financial_transactions").insert({
+    id: randomUUID(), type: "saida", description: `Antecipação de reembolso para viagem${code ? ` ${code}` : ""} - ${advance.employee_name}`, dre_account_id: dre?.[0]?.id ? String(dre[0].id) : null,
+    supplier_name: advance.employee_name, competence_date: day, due_date: day, realized_date: day, expected_amount: advance.amount, realized_amount: advance.amount, status: "Realizado", origin: ADVANCE_ORIGIN,
+    notes: `${ADVANCE_ORIGIN} | ${advance.id}\n${code ? `Lançamento ${code}\n` : ""}${advance.employee_name}${advance.reason ? ` - ${advance.reason}` : ""}`,
+  })
+  if (error) throw error
+}
+
+export async function advanceCompany(admin: Admin, companyId: string) {
+  const { data } = await admin.from("system_companies").select("name,legal_name,trade_name,cnpj").eq("id", companyId).maybeSingle()
+  return { name: String(data?.legal_name || data?.trade_name || data?.name || ""), cnpj: String(data?.cnpj || "") }
+}
+
+/** Cria a antecipação de reembolso para viagem, gera o link e salva/atualiza os dados bancários do funcionário no cadastro (para reaproveitar da próxima vez). */
 export async function createAdvance(admin: Admin, input: CreateAdvanceInput, createdBy: string) {
   if (!input.employeeId) throw new Error("Escolha o funcionário.")
   if (!(input.amount > 0)) throw new Error("Informe um valor maior que zero.")
@@ -42,6 +65,7 @@ export async function createAdvance(admin: Admin, input: CreateAdvanceInput, cre
   if (employeeError) throw employeeError
   if (!employee) throw new Error("Funcionário não encontrado.")
 
+  if (input.cpf?.trim()) await admin.from("profiles").update({ cpf: input.cpf.trim() }).eq("id", input.employeeId) // coluna nova (script 239): sem ela o CPF só vai na antecipação
   await admin.from("profiles").update({
     bank_name: input.bank.bankName || null, bank_agency: input.bank.bankAgency || null, bank_account: input.bank.bankAccount || null,
     bank_account_type: input.bank.bankAccountType || null, pix_key: input.bank.pixKey || null,
@@ -51,9 +75,17 @@ export async function createAdvance(admin: Admin, input: CreateAdvanceInput, cre
     token: newToken(), employee_id: input.employeeId, employee_name: String(employee.full_name || employee.email || ""), employee_email: employee.email || null,
     reason: input.reason.slice(0, 300), amount: input.amount, category_budgets: input.categoryBudgets, start_date: input.startDate, end_date: input.endDate, bank_snapshot: input.bank, created_by: createdBy,
   }
-  const { data, error } = await admin.from("travel_advances").insert(row).select("id,token").single()
-  if (error) throw advanceError(error, "Erro ao criar o orçamento de viagem.")
-  return data as { id: string; token: string }
+  let created = await admin.from("travel_advances").insert({ ...row, employee_cpf: input.cpf?.trim() || "" }).select("*").single()
+  if (created.error && /employee_cpf/.test(created.error.message)) created = await admin.from("travel_advances").insert(row).select("*").single() // script 239 ainda não rodou
+  if (created.error) throw advanceError(created.error, "Erro ao criar a antecipação de reembolso para viagem.")
+  const data = created.data as { id: string; token: string; number?: number | null; employee_name: string; reason: string; amount: number }
+  try {
+    await postAdvanceOutflow(admin, { id: data.id, number: data.number, employee_name: data.employee_name, reason: data.reason, amount: Number(data.amount) })
+  } catch (error) {
+    await admin.from("travel_advances").delete().eq("id", data.id) // sem o lançamento no caixa a antecipação não fica criada
+    throw advanceError(error, "Não foi possível lançar a saída da antecipação em Entradas e Saídas.")
+  }
+  return { id: data.id, token: data.token, number: data.number ?? null }
 }
 
 async function withReceipts<T extends { id: string }>(admin: Admin, advances: T[]) {
@@ -72,12 +104,12 @@ async function withReceipts<T extends { id: string }>(admin: Admin, advances: T[
 /** Lista para a tela interna do financeiro (com resumo de gasto/saldo de cada um). */
 export async function listAdvances(admin: Admin) {
   const { data, error } = await admin.from("travel_advances").select("*").order("created_at", { ascending: false }).limit(300)
-  if (error) throw advanceError(error, "Erro ao carregar os orçamentos de viagem.")
+  if (error) throw advanceError(error, "Erro ao carregar os antecipações de reembolso para viagem.")
   const withReceiptsData = await withReceipts(admin, data || [])
   return withReceiptsData.map((row) => ({ ...row, summary: summarizeAdvance(Number(row.amount), row.receipts), categories: summarizeCategories(row.category_budgets || {}, row.receipts) }))
 }
 
-/** Notas pendentes de revisão (de orçamentos de viagem já finalizados pelo funcionário): a "página de pendências". */
+/** Notas pendentes de revisão (de antecipações de reembolso para viagem já finalizadas pelo funcionário): a "página de pendências". */
 export async function listPendingReview(admin: Admin) {
   const { data: advances, error } = await admin.from("travel_advances").select("id,employee_name,reason,amount,end_date").eq("status", "Finalizado").order("finalized_at", { ascending: true })
   if (error) throw advanceError(error, "Erro ao carregar as pendências.")
@@ -90,11 +122,11 @@ export async function listPendingReview(admin: Admin) {
 
 export async function getAdvanceDetail(admin: Admin, id: string) {
   const { data: advance, error } = await admin.from("travel_advances").select("*").eq("id", id).maybeSingle()
-  if (error) throw advanceError(error, "Erro ao carregar o orçamento de viagem.")
-  if (!advance) throw new Error("Orçamento de viagem não encontrado.")
+  if (error) throw advanceError(error, "Erro ao carregar a antecipação de reembolso para viagem.")
+  if (!advance) throw new Error("Antecipação de reembolso para viagem não encontrada.")
   const { data: receipts, error: receiptsError } = await admin.from("travel_advance_receipts").select("*").eq("advance_id", id).order("created_at", { ascending: false })
   if (receiptsError) throw receiptsError
-  return { ...advance, receipts: receipts || [], summary: summarizeAdvance(Number(advance.amount), receipts || []), categories: summarizeCategories(advance.category_budgets || {}, receipts || []) }
+  return { ...advance, company: await advanceCompany(admin, String(advance.system_company_id)), receipts: receipts || [], summary: summarizeAdvance(Number(advance.amount), receipts || []), categories: summarizeCategories(advance.category_budgets || {}, receipts || []) }
 }
 
 export async function reviewReceipt(admin: Admin, receiptId: string, action: "aprovar" | "contestar", note: string, reviewer: string) {
@@ -108,7 +140,7 @@ export async function reviewReceipt(admin: Admin, receiptId: string, action: "ap
   const { error: updateError } = await admin.from("travel_advance_receipts").update(update).eq("id", receiptId)
   if (updateError) throw updateError
 
-  // alguma nota contestada: reabre o link para o funcionário ver e agir; nenhuma pendente/contestada: fecha o orçamento de viagem
+  // alguma nota contestada: reabre o link para o funcionário ver e agir; nenhuma pendente/contestada: fecha a antecipação de reembolso para viagem
   const { data: all, error: allError } = await admin.from("travel_advance_receipts").select("status").eq("advance_id", receipt.advance_id)
   if (allError) throw allError
   const statuses = (all || []).map((row) => String(row.status))
@@ -123,8 +155,10 @@ export async function markSettlementResolved(admin: Admin, advanceId: string, no
 }
 
 export async function cancelAdvance(admin: Admin, advanceId: string) {
-  const { error } = await admin.from("travel_advances").update({ status: "Cancelado" }).eq("id", advanceId).eq("status", "Aberto")
+  const { data, error } = await admin.from("travel_advances").update({ status: "Cancelado" }).eq("id", advanceId).eq("status", "Aberto").select("id")
   if (error) throw error
+  // cancelada, a saída não aconteceu: o lançamento fica cancelado (e fora do saldo)
+  if (data?.length) await admin.from("financial_transactions").update({ status: "Cancelado", realized_amount: 0, realized_date: null }).eq("origin", ADVANCE_ORIGIN).like("notes", `${ADVANCE_ORIGIN} | ${advanceId}%`)
 }
 
 // ---------------- Portal público (sem sessão; o token é a autorização) ----------------
@@ -154,7 +188,8 @@ export async function portalState(admin: Admin, token: string) {
   const summary = summarizeAdvance(Number(advance.amount), receipts)
   const categoryBudgets: CategoryBudgets = advance.category_budgets || {}
   return {
-    id: advance.id, reason: advance.reason, amount: Number(advance.amount), startDate: advance.start_date, endDate: advance.end_date,
+    id: advance.id, number: advance.number ?? null, employeeCpf: String(advance.employee_cpf || ""), company: await advanceCompany(admin, String(advance.system_company_id)),
+    reason: advance.reason, amount: Number(advance.amount), startDate: advance.start_date, endDate: advance.end_date,
     status: advance.status, employeeName: advance.employee_name, ownPocketJustification: advance.own_pocket_justification,
     settlementAction: advance.settlement_action, settlementResolved: advance.settlement_resolved,
     canUpload: canUpload(advance.status, advance.end_date), summary, categories: summarizeCategories(categoryBudgets, receipts),
@@ -228,7 +263,7 @@ export async function deleteReceipt(admin: Admin, token: string, receiptId: stri
 
 export async function finalizeAdvance(admin: Admin, token: string, input: { ownPocketJustification: string; settlementAction: SettlementAction | null }) {
   const { advance, receipts } = await getByToken(admin, token)
-  if (advance.status !== "Aberto") throw new Error("Este orçamento de viagem já foi finalizado.")
+  if (advance.status !== "Aberto") throw new Error("Esta antecipação de reembolso para viagem já foi finalizada.")
   if (!receipts.length) throw new Error("Suba ao menos uma notinha antes de finalizar.")
   const summary = summarizeAdvance(Number(advance.amount), receipts)
   const canFinish = canFinalize(summary, input.ownPocketJustification)

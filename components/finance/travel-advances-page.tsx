@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
-import { ArrowLeft, Ban, Check, Copy, Loader2, Plus, Receipt, X } from "lucide-react"
+import { ArrowLeft, Ban, Check, Copy, FileText, Loader2, Plus, Receipt, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -12,13 +12,14 @@ import { Textarea } from "@/components/ui/textarea"
 import { DataTable, FormSheet, PageShell, SaveButton, SearchableSelectField, SectionCard, SelectField, StatusBadge, TextAreaField, TextField, useCrudFeedback } from "@/components/operations/shared"
 import { accountTypes } from "@/lib/registry"
 import { BUDGETABLE_CATEGORIES, CATEGORY_LABEL, statusLabel, validateCategoryBudgets } from "@/lib/travel-advance"
+import { advanceNumber, buildAdvanceTermPdf } from "@/lib/travel-advance-term"
 
 type Bank = { bankName: string; bankAgency: string; bankAccount: string; bankAccountType: string; pixKey: string }
-type Employee = { id: string; name: string; email: string; bank: Bank }
+type Employee = { id: string; name: string; email: string; cpf?: string; bank: Bank }
 type Receipt = { id: string; photo_url: string; amount: number; establishment: string; category: string; occurred_at: string | null; status: string; review_note: string; advance_id?: string; advance?: { id: string; employee_name: string; reason: string; amount: number; end_date: string } }
 type CategorySummary = { category: string; budget: number; spent: number; remaining: number; overspent: boolean }
 type Advance = {
-  id: string; token: string; employee_name: string; reason: string; amount: number; start_date: string; end_date: string; status: string
+  id: string; token: string; number?: number | null; employee_cpf?: string; company?: { name: string; cnpj: string }; employee_name: string; reason: string; amount: number; start_date: string; end_date: string; status: string
   own_pocket_justification: string; settlement_action: string | null; settlement_resolved: boolean; receipts: Array<{ status: string }>
   summary: { budget: number; spent: number; remaining: number; overspent: boolean }; categories: CategorySummary[]
 }
@@ -26,7 +27,7 @@ type Advance = {
 const brl = (value: unknown) => Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
 const day = (value?: string | null) => (value ? value.split("-").reverse().join("/") : "-")
 const emptyForm = () => ({
-  employeeId: "", reason: "", amount: "", startDate: new Date().toISOString().slice(0, 10), endDate: "",
+  employeeId: "", cpf: "", reason: "", amount: "", startDate: new Date().toISOString().slice(0, 10), endDate: "",
   bank: { bankName: "", bankAgency: "", bankAccount: "", bankAccountType: "", pixKey: "" } as Bank,
   categoryBudgets: Object.fromEntries(BUDGETABLE_CATEGORIES.map((category) => [category, ""])) as Record<string, string>,
 })
@@ -78,7 +79,7 @@ export function TravelAdvancesPage() {
 
   function pickEmployee(id: string) {
     const employee = employees.find((item) => item.id === id)
-    setForm((current) => ({ ...current, employeeId: id, bank: employee?.bank && (employee.bank.bankName || employee.bank.pixKey) ? employee.bank : current.bank }))
+    setForm((current) => ({ ...current, employeeId: id, cpf: employee?.cpf || current.cpf, bank: employee?.bank && (employee.bank.bankName || employee.bank.pixKey) ? employee.bank : current.bank }))
   }
 
   async function createAdvance() {
@@ -88,19 +89,29 @@ export function TravelAdvancesPage() {
     if (!check.ok) { toast({ title: "Sub-orçamentos passam do total", description: check.reason, variant: "destructive" }); return }
     setSaving(true)
     try {
-      const result = await send<{ id: string; link: string }>("/api/financeiro/orcamento-viagem", {
+      const result = await send<{ id: string; number: number | null; link: string }>("/api/financeiro/orcamento-viagem", {
         method: "POST",
-        body: JSON.stringify({ employeeId: form.employeeId, reason: form.reason, amount: Number(form.amount), startDate: form.startDate, endDate: form.endDate, bank: form.bank, categoryBudgets }),
+        body: JSON.stringify({ employeeId: form.employeeId, cpf: form.cpf, reason: form.reason, amount: Number(form.amount), startDate: form.startDate, endDate: form.endDate, bank: form.bank, categoryBudgets }),
       })
       setLink(`${window.location.origin}${result.link}`)
       setForm(emptyForm())
       await load()
-      toast({ title: "Orçamento de viagem criado", description: "Copie o link e envie para o funcionário." })
+      toast({ title: `Antecipação de reembolso para viagem criada${result.number ? ` (${advanceNumber(result.number)})` : ""}`, description: "A saída já foi lançada em Entradas e Saídas. Copie o link e envie para o funcionário." })
     } catch (reason) {
       toast({ title: "Erro ao criar", description: reason instanceof Error ? reason.message : "", variant: "destructive" })
     } finally {
       setSaving(false)
     }
+  }
+
+  async function downloadTerm(advance: Advance) {
+    try {
+      const { blob, fileName } = await buildAdvanceTermPdf({ employeeName: advance.employee_name, employeeCpf: advance.employee_cpf || "", companyName: advance.company?.name || "", companyCnpj: advance.company?.cnpj || "", amount: advance.summary.remaining, number: advance.number ?? null })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement("a")
+      anchor.href = url; anchor.download = fileName; anchor.click()
+      URL.revokeObjectURL(url)
+    } catch (reason) { toast({ title: "Não foi possível gerar o termo", description: reason instanceof Error ? reason.message : "", variant: "destructive" }) }
   }
 
   async function copyLink(token: string) {
@@ -124,7 +135,7 @@ export function TravelAdvancesPage() {
   }
 
   async function cancelAdvance(id: string) {
-    if (!window.confirm("Cancelar este orçamento de viagem? O link deixa de aceitar novas notinhas.")) return
+    if (!window.confirm("Cancelar esta antecipação de reembolso para viagem? O link deixa de aceitar novas notinhas.")) return
     await send(`/api/financeiro/orcamento-viagem/${id}`, { method: "PATCH", body: JSON.stringify({ action: "cancelar" }) })
     setDetail(null)
     await load()
@@ -139,13 +150,13 @@ export function TravelAdvancesPage() {
   const employeeOptions = employees.map((item) => ({ value: item.id, label: item.name }))
 
   return (
-    <PageShell title="Orçamento de Viagem" description="Orçamento de gasto para viagem ou visita do funcionário, com prestação de contas por um link público." actions={<>
+    <PageShell title="Antecipação de Reembolso para Viagem" description="Valor adiantado ao funcionário para viagem ou visita (a saída já entra em Entradas e Saídas), com prestação de contas por um link público." actions={<>
       <Button variant="outline" asChild><Link href="/financeiro"><ArrowLeft className="h-4 w-4" />Voltar ao Financeiro</Link></Button>
-      <Button onClick={() => { setForm(emptyForm()); setLink(""); setSheetOpen(true) }}><Plus className="h-4 w-4" />Novo orçamento de viagem</Button>
+      <Button onClick={() => { setForm(emptyForm()); setLink(""); setSheetOpen(true) }}><Plus className="h-4 w-4" />Nova antecipação de reembolso para viagem</Button>
     </>}>
       {error ? <p className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{error}</p> : null}
 
-      <SectionCard title="Pendências de aprovação" description="Notinhas de orçamentos de viagem já finalizados pelo funcionário.">
+      <SectionCard title="Pendências de aprovação" description="Notinhas de antecipações de reembolso para viagem já finalizadas pelo funcionário.">
         {pending.length === 0 ? <p className="text-sm text-muted-foreground">{loading ? "Carregando..." : "Nada pendente no momento."}</p> : (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {pending.map((receipt) => (
@@ -175,10 +186,11 @@ export function TravelAdvancesPage() {
         )}
       </SectionCard>
 
-      <SectionCard title="Orçamentos de viagem">
-        <DataTable headers={["Funcionário", "Motivo", "Período", "Valor", "Gasto", "Saldo", "Status", "Link", ""]} empty={!advances.length && !loading}>
+      <SectionCard title="Antecipações de reembolso para viagem">
+        <DataTable headers={["Nº", "Funcionário", "Motivo", "Período", "Valor", "Gasto", "Saldo", "Status", "Link", ""]} empty={!advances.length && !loading}>
           {advances.map((advance) => (
             <TableRow key={advance.id} className="cursor-pointer" onClick={() => setDetail(advance)}>
+              <TableCell className="whitespace-nowrap font-mono text-xs">{advanceNumber(advance.number) || "-"}</TableCell>
               <TableCell>{advance.employee_name}</TableCell>
               <TableCell className="max-w-[200px] truncate">{advance.reason || "-"}</TableCell>
               <TableCell className="whitespace-nowrap">{day(advance.start_date)} - {day(advance.end_date)}</TableCell>
@@ -193,15 +205,16 @@ export function TravelAdvancesPage() {
         </DataTable>
       </SectionCard>
 
-      <FormSheet open={sheetOpen} onOpenChange={setSheetOpen} title="Novo orçamento de viagem" description="Escolha o funcionário, o valor e o prazo: um link é gerado para ele prestar contas." footer={!link ? <SaveButton onClick={() => void createAdvance()} disabled={saving}>{saving ? "Salvando..." : "Criar e gerar link"}</SaveButton> : <Button onClick={() => setSheetOpen(false)}>Concluir</Button>}>
+      <FormSheet open={sheetOpen} onOpenChange={setSheetOpen} title="Nova antecipação de reembolso para viagem" description="Escolha o funcionário, o valor e o prazo: um link é gerado para ele prestar contas." footer={!link ? <SaveButton onClick={() => void createAdvance()} disabled={saving}>{saving ? "Salvando..." : "Criar e gerar link"}</SaveButton> : <Button onClick={() => setSheetOpen(false)}>Concluir</Button>}>
         {link ? (
           <div className="space-y-3">
-            <p className="flex items-center gap-2 rounded-md border border-green-600/40 bg-green-600/10 p-3 text-sm"><Receipt className="h-4 w-4 shrink-0" />Orçamento de viagem criado. Envie este link para o funcionário.</p>
+            <p className="flex items-center gap-2 rounded-md border border-green-600/40 bg-green-600/10 p-3 text-sm"><Receipt className="h-4 w-4 shrink-0" />Antecipação de reembolso para viagem criada. Envie este link para o funcionário.</p>
             <div className="flex gap-2"><Input readOnly value={link} /><Button variant="outline" onClick={() => { void navigator.clipboard.writeText(link); toast({ title: "Link copiado" }) }}><Copy className="h-4 w-4" />Copiar</Button></div>
           </div>
         ) : (
           <div className="space-y-4">
             <SearchableSelectField label="Funcionário" value={form.employeeId} onChange={pickEmployee} options={employeeOptions} placeholder="Escolha o funcionário" />
+            <TextField label="CPF do funcionário (vai no termo de desconto em folha)" value={form.cpf} onChange={(value) => setForm((current) => ({ ...current, cpf: value }))} />
             <TextAreaField label="Motivo (viagem, visita...)" value={form.reason} onChange={(value) => setForm((current) => ({ ...current, reason: value }))} />
             <div className="grid gap-4 sm:grid-cols-3">
               <TextField label="Valor do orçamento" type="number" value={form.amount} onChange={(value) => setForm((current) => ({ ...current, amount: value }))} />
@@ -242,7 +255,7 @@ export function TravelAdvancesPage() {
         <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
           {detail ? (
             <>
-              <DialogHeader><DialogTitle>{detail.employee_name} · {detail.reason || "Orçamento de viagem"}</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>{advanceNumber(detail.number) ? `${advanceNumber(detail.number)} · ` : ""}{detail.employee_name} · {detail.reason || "Antecipação de reembolso para viagem"}</DialogTitle></DialogHeader>
               <div className="grid gap-3 text-sm sm:grid-cols-3">
                 <p>Orçamento<br /><strong>{brl(detail.amount)}</strong></p>
                 <p>Gasto<br /><strong>{brl(detail.summary.spent)}</strong></p>
@@ -255,7 +268,12 @@ export function TravelAdvancesPage() {
                   {detail.settlement_resolved ? <StatusBadge status="Concluida" /> : <Button size="sm" onClick={() => void resolveSettlement(detail.id)}>Marcar como resolvido</Button>}
                 </p>
               ) : null}
-              {detail.settlement_action === "desconto_folha" ? <p className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm">Funcionário optou por descontar {brl(detail.summary.remaining)} do salário.</p> : null}
+              {detail.settlement_action === "desconto_folha" ? (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm">
+                  <span>Funcionário optou por descontar {brl(detail.summary.remaining)} do salário.</span>
+                  <Button size="sm" variant="outline" onClick={() => void downloadTerm(detail)}><FileText className="h-4 w-4" />Solicitação de adiantamento (termo)</Button>
+                </div>
+              ) : null}
               {detail.categories.length ? (
                 <div className="space-y-2">
                   <p className="text-sm font-medium">Sub-orçamentos</p>
