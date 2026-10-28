@@ -85,6 +85,7 @@ export function ChassisPage() {
   const [intercompany, setIntercompany] = useState(false)
   const [pick, setPick] = useState<(ChassisPick & { title: string }) | null>(null)
   const [dialogMode, setDialogMode] = useState<"nota" | "chassi">("nota")
+  const [dialogModel, setDialogModel] = useState("")
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -155,8 +156,15 @@ export function ChassisPage() {
   const distinct = units.units
   const total = rows.reduce((sum, row) => sum + row.itemTotal, 0)
 
-  const opened = useMemo(() => (pick ? pickChassis(rows, pick) : []), [pick, rows])
-  const open = (next: ChassisPick, title: string) => setPick({ ...next, by, granularity, title })
+  // ao abrir pela coluna do mês entram TODAS as notas e carretas do período; o modelo se escolhe dentro da lista
+  const openedAll = useMemo(() => (pick ? pickChassis(rows, { ...pick, name: undefined }) : []), [pick, rows])
+  const opened = useMemo(() => (dialogModel ? openedAll.filter((row) => groupOf(row) === dialogModel) : openedAll), [openedAll, dialogModel, groupOf])
+  const dialogModels = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const row of openedAll) map.set(groupOf(row), (map.get(groupOf(row)) || 0) + rowUnits(row))
+    return [...map.entries()].sort((a, b) => b[1] - a[1])
+  }, [openedAll, groupOf])
+  const open = (next: ChassisPick, title: string) => { setPick({ ...next, by, granularity, title }); setDialogModel(next.name || "") }
   // o que a nota tem no total (todos os chassis dela, mesmo os de outro modelo ou fora do filtro)
   const noteTotals = useMemo(() => {
     const map = new Map<string, number>()
@@ -231,7 +239,7 @@ export function ChassisPage() {
         <Card label="Total das notas de venda" value={brl(allNotesValue)} hint={`${(notesWithTrailer.size + othersShown.length).toLocaleString("pt-BR")} nota(s): ${notesWithTrailer.size.toLocaleString("pt-BR")} com carreta + ${othersShown.length.toLocaleString("pt-BR")} sem`} />
       </div>
 
-      <SectionCard title={`Carretas por ${granularity === "mes" ? "mês" : "semana"} e ${by === "model" ? "modelo" : "linha"}`} description="Cada cor é um modelo. Clique em um trecho da barra para ver as notas daquele modelo naquele período.">
+      <SectionCard title={`Carretas por ${granularity === "mes" ? "mês" : "semana"} e ${by === "model" ? "modelo" : "linha"}`} description="Cada cor é um modelo. Clique na barra para ver todas as notas e carretas do período; dentro da lista você filtra por modelo.">
         <div className="h-80">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={chartData} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
@@ -254,7 +262,7 @@ export function ChassisPage() {
               <Legend onClick={(entry) => open({ name: String(entry.dataKey || entry.value) }, `${String(entry.dataKey || entry.value)} · todo o período filtrado`)} wrapperStyle={{ cursor: "pointer", fontSize: 12 }} />
               {timeline.series.map((name) => (
                 <Bar key={name} dataKey={name} stackId="chassis" fill={colorOf[name]} cursor="pointer"
-                  onClick={(entry) => { const period = String((entry as { payload?: { period?: string } })?.payload?.period || ""); open({ name, period }, `${name} · ${periodTitle(period, granularity)}`) }} />
+                  onClick={(entry) => { const period = String((entry as { payload?: { period?: string } })?.payload?.period || ""); open({ period }, `${periodTitle(period, granularity)} · todos os modelos`) }} />
               ))}
             </BarChart>
           </ResponsiveContainer>
@@ -339,6 +347,12 @@ export function ChassisPage() {
             <div className="flex rounded-md border p-0.5 text-sm">
               {([["nota", "Por nota (vários chassis na mesma linha)"], ["chassi", "Um chassi por linha"]] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setDialogMode(value)} className={`rounded px-3 py-1 ${dialogMode === value ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>{label}</button>)}
             </div>
+            <label className="flex items-center gap-2 text-sm text-muted-foreground">Modelo
+              <select value={dialogModel} onChange={(event) => setDialogModel(event.target.value)} className="h-9 rounded-md border bg-background px-2 text-sm text-foreground">
+                <option value="">Todos os modelos ({openedAll.reduce((sum, row) => sum + rowUnits(row), 0).toLocaleString("pt-BR")})</option>
+                {dialogModels.map(([name, units]) => <option key={name} value={name}>{name} ({units.toLocaleString("pt-BR")})</option>)}
+              </select>
+            </label>
             <Button type="button" variant="outline" size="sm" onClick={exportOpened} disabled={!opened.length}><Download className="h-4 w-4" />Planilha das notas</Button>
           </div>
 
