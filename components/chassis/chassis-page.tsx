@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { TableCell, TableRow } from "@/components/ui/table"
-import { DataTable, PageShell, SectionCard } from "@/components/operations/shared"
+import { DataTable, PageShell, SearchableSelectField, SectionCard } from "@/components/operations/shared"
 import { chassisBySize, chassisTimeline, issuedDay, pickChassis, type ChassisPick, type ChassisRow, type Granularity, type GroupBy } from "@/lib/chassis"
 
 type Row = Omit<ChassisRow, "description" | "accessKey" | "nature">
@@ -57,6 +57,7 @@ export function ChassisPage() {
   const [model, setModel] = useState("")
   const [color, setColor] = useState("")
   const [capacity, setCapacity] = useState("")
+  const [client, setClient] = useState("")
   const [granularity, setGranularity] = useState<Granularity>("mes")
   const [by, setBy] = useState<GroupBy>("model")
   const [sizeField, setSizeField] = useState<SizeField>("capacity")
@@ -75,6 +76,17 @@ export function ChassisPage() {
   const companies = useMemo(() => [...new Set(all.map((row) => row.companyName))].sort(), [all])
   const colors = useMemo(() => [...new Set(all.map((row) => row.color || "Sem cor"))].sort(), [all])
   const capacities = useMemo(() => [...new Set(all.map((row) => row.capacity || 0))].sort((a, b) => a - b), [all])
+  const clientKey = (row: Row) => row.clientDocument || `nome:${row.clientName}`
+  const clientOptions = useMemo(() => {
+    const byKey = new Map<string, { name: string; document: string; chassis: number }>()
+    for (const row of all) {
+      if (!intercompany && row.intercompany) continue
+      const entry = byKey.get(clientKey(row)) || { name: row.clientName || "Sem nome", document: row.clientDocument, chassis: 0 }
+      entry.chassis += 1
+      byKey.set(clientKey(row), entry)
+    }
+    return [{ value: "", label: "Todos os clientes" }, ...[...byKey.entries()].sort((a, b) => a[1].name.localeCompare(b[1].name, "pt-BR")).map(([value, entry]) => ({ value, label: `${entry.name}${entry.document ? ` (${formatDocument(entry.document)})` : ""} · ${entry.chassis}` }))]
+  }, [all, intercompany])
   const models = useMemo(() => [...new Set(all.map((row) => row.model || "Sem modelo"))].sort(), [all])
   const rows = useMemo(() => all.filter((row) => {
     const issued = issuedDay(row.issuedAt)
@@ -84,9 +96,10 @@ export function ChassisPage() {
     if (model && (row.model || "Sem modelo") !== model) return false
     if (color && (row.color || "Sem cor") !== color) return false
     if (capacity && String(row.capacity || 0) !== capacity) return false
+    if (client && clientKey(row) !== client) return false
     if (!intercompany && row.intercompany) return false
     return true
-  }) as ChassisRow[], [all, de, ate, company, model, color, capacity, intercompany])
+  }) as ChassisRow[], [all, de, ate, company, model, color, capacity, client, intercompany])
 
   const timeline = useMemo(() => chassisTimeline(rows, granularity, by), [rows, granularity, by])
   const colorOf = useMemo(() => Object.fromEntries(timeline.series.map((name, index) => [name, COLORS[index % COLORS.length]])), [timeline.series])
@@ -127,6 +140,7 @@ export function ChassisPage() {
           <label className="text-xs text-muted-foreground">Capacidade de carga
             <select value={capacity} onChange={(event) => setCapacity(event.target.value)} className="mt-1 block h-9 rounded-md border bg-background px-2 text-sm text-foreground"><option value="">Todas</option>{capacities.map((value) => <option key={value} value={String(value)}>{value ? tons(value) : "Sem informação"}</option>)}</select>
           </label>
+          <div className="w-full sm:w-[320px]"><SearchableSelectField label="Cliente" value={client} onChange={setClient} options={clientOptions} placeholder="Todos os clientes" searchPlaceholder="Pesquisar cliente por nome ou CNPJ/CPF..." /></div>
           <div className="text-xs text-muted-foreground">Período do gráfico
             <div className="mt-1 flex rounded-md border p-0.5 text-sm">{([["mes", "Mês"], ["semana", "Semana"]] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setGranularity(value)} className={`rounded px-3 py-1 ${granularity === value ? "bg-primary text-primary-foreground" : "text-foreground"}`}>{label}</button>)}</div>
           </div>
@@ -134,7 +148,7 @@ export function ChassisPage() {
             <div className="mt-1 flex rounded-md border p-0.5 text-sm">{([["model", "Modelo (FZ 1E)"], ["family", "Linha (FZ)"]] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setBy(value)} className={`rounded px-3 py-1 ${by === value ? "bg-primary text-primary-foreground" : "text-foreground"}`}>{label}</button>)}</div>
           </div>
           <label className="flex items-center gap-2 pb-2 text-sm"><input type="checkbox" checked={intercompany} onChange={(event) => setIntercompany(event.target.checked)} />Incluir vendas entre as empresas ND</label>
-          {(de || ate || company || model || color || capacity) ? <Button variant="ghost" size="sm" onClick={() => { setDe(""); setAte(""); setCompany(""); setModel(""); setColor(""); setCapacity("") }}>Limpar filtros</Button> : null}
+          {(de || ate || company || model || color || capacity || client) ? <Button variant="ghost" size="sm" onClick={() => { setDe(""); setAte(""); setCompany(""); setModel(""); setColor(""); setCapacity(""); setClient("") }}>Limpar filtros</Button> : null}
           {loading ? <Loader2 className="mb-2 h-4 w-4 animate-spin text-muted-foreground" /> : null}
         </div>
         {error ? <p className="mt-3 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{error}</p> : null}
