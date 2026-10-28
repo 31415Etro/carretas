@@ -8,6 +8,7 @@ import { TableCell, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DataTable, FormSheet, SectionCard } from "@/components/operations/shared"
 import { NfImportPage } from "@/components/finance/nf-import-page"
+import { ChassisPanel } from "@/components/finance/chassis-panel"
 import type { AccountingInvoice } from "@/lib/accounting-invoice"
 import type { AccountingAnalysis } from "@/lib/accounting-analysis"
 
@@ -301,7 +302,7 @@ function ConsolidatedPanel({ data }: { data: Consolidated }) {
 export function AccountingTab({ emitir }: { emitir?: React.ReactNode }) {
   const input = useRef<HTMLInputElement>(null)
   const [sub, setSub] = useState("analise")
-  const off = sub === "emitir" || sub === "importar" ? "hidden " : ""
+  const off = sub === "emitir" || sub === "importar" || sub === "chassis" ? "hidden " : ""
   const [operation, setOperation] = useState<Operation>("Entrada")
   const [filter, setFilter] = useState<"" | Operation>("")
   const [q, setQ] = useState("")
@@ -396,7 +397,7 @@ export function AccountingTab({ emitir }: { emitir?: React.ReactNode }) {
 
       <Tabs value={sub} onValueChange={setSub}>
         <div className="flex flex-wrap items-end gap-3">
-          <TabsList><TabsTrigger value="analise">Análise</TabsTrigger><TabsTrigger value="consolidado">Todas as empresas</TabsTrigger><TabsTrigger value="notas">Notas</TabsTrigger><TabsTrigger value="materiais">Materiais comprados</TabsTrigger><TabsTrigger value="emitir">Emitir NF</TabsTrigger><TabsTrigger value="importar">Importar NF (clientes e fornecedores)</TabsTrigger></TabsList>
+          <TabsList><TabsTrigger value="analise">Análise</TabsTrigger><TabsTrigger value="consolidado">Todas as empresas</TabsTrigger><TabsTrigger value="chassis">Chassis (notas de venda)</TabsTrigger><TabsTrigger value="notas">Notas</TabsTrigger><TabsTrigger value="materiais">Materiais comprados</TabsTrigger><TabsTrigger value="emitir">Emitir NF</TabsTrigger><TabsTrigger value="importar">Importar NF (clientes e fornecedores)</TabsTrigger></TabsList>
           <div className={`${off}flex rounded-md border p-0.5 text-sm`}>
             {([["", "Todas"], ["Entrada", "Entradas"], ["Saída", "Saídas"]] as Array<["" | Operation, string]>).map(([value, label]) => (
               <button key={value || "todas"} type="button" onClick={() => setFilter(value)} className={`rounded px-3 py-1.5 ${filter === value ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>{label}</button>
@@ -414,6 +415,8 @@ export function AccountingTab({ emitir }: { emitir?: React.ReactNode }) {
         <TabsContent value="analise" className="mt-3">{analysis ? <AnalysisPanel analysis={analysis} /> : <p className="text-sm text-muted-foreground">Carregando indicadores...</p>}</TabsContent>
 
         <TabsContent value="consolidado" className="mt-3">{consolidatedError ? <p className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{consolidatedError}</p> : consolidated ? <ConsolidatedPanel data={consolidated} /> : <p className="text-sm text-muted-foreground">Somando as empresas...</p>}</TabsContent>
+
+        <TabsContent value="chassis" className="mt-3">{sub === "chassis" ? <ChassisPanel /> : null}</TabsContent>
 
         <TabsContent value="notas" className="mt-3">
           <div className="mb-2 flex gap-2"><Button type="button" variant="outline" size="sm" onClick={exportNotes} disabled={!rows.length}><Download className="h-4 w-4" />Planilha das notas</Button><Button type="button" variant="outline" size="sm" onClick={() => void exportItems()} disabled={!rows.length}><Download className="h-4 w-4" />Planilha dos itens com impostos</Button></div>

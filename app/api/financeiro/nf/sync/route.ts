@@ -29,7 +29,8 @@ export async function POST(request: Request) {
     const dryRun = String(form.get("dryRun") || "") === "1"
     const results = []
     const accountingOnly = String(form.get("destino") || "") === "contabilidade"
-    for (const file of files) results.push(accountingOnly ? await syncXmlAccounting(admin, String(company.cnpj), file.name, await file.text(), dryRun) : await syncXml(admin, String(company.id), String(company.cnpj), file.name, await file.text(), dryRun))
+    const accountingOperation = String(form.get("operacao") || "") === "saida" ? "Saída" : "Entrada"
+    for (const file of files) results.push(accountingOnly ? await syncXmlAccounting(admin, String(company.cnpj), file.name, await file.text(), dryRun, accountingOperation) : await syncXml(admin, String(company.id), String(company.cnpj), file.name, await file.text(), dryRun))
     return NextResponse.json({ company: company.name, summary: summarize(results), results })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Erro na importação automática." }, { status: 500 })

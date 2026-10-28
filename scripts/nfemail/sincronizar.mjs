@@ -4,6 +4,8 @@
 //   node scripts/nfemail/sincronizar.mjs --desde 2026-01-01    carga inicial / reprocesso (notas já importadas são ignoradas)
 //   node scripts/nfemail/sincronizar.mjs --tipo entrada        só entrada (ou: saida)
 //   node scripts/nfemail/sincronizar.mjs --contabil --desde 2026-01-01 --ate 2026-10-01   só entradas, só na aba Contabilidade (não cria financeiro)
+//   node scripts/nfemail/sincronizar.mjs --contabil --tipo saida --desde 2026-01-01 --ate 2026-09-30   as notas de VENDA (saída) das empresas, só na Contabilidade
+//   node scripts/nfemail/sincronizar.mjs --manual --empresa 21161569000109 --contabil --desde 2026-01-01 --ate 2026-09-30   abre o portal para VOCÊ entrar e escolher a empresa; depois baixa e importa
 //   node scripts/nfemail/sincronizar.mjs --simular             não grava nada no ERP
 //   node scripts/nfemail/sincronizar.mjs --zip pasta           usa ZIPs já baixados (nomes <cnpj>-entrada.zip / <cnpj>-saida.zip)
 //
@@ -13,7 +15,7 @@ import os from "node:os"
 import path from "node:path"
 import { spawnSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
-import { login, listCompanies, onlyDigits, openPortal, selectCompany, downloadXmlZip } from "./nfemail-client.mjs"
+import { login, listCompanies, onlyDigits, openPortal, selectCompany, downloadXmlZip, waitForSelectedCompany } from "./nfemail-client.mjs"
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(here, "..", "..")
@@ -37,7 +39,7 @@ const today = new Date()
 const from = option("desde") || iso(new Date(today.getTime() - 15 * 86_400_000))
 const to = option("ate") || iso(today)
 const accountingOnly = flag("contabil")
-const tipos = accountingOnly ? ["entrada"] : option("tipo") ? [option("tipo")] : ["entrada", "saida"]
+const tipos = option("tipo") ? [option("tipo")] : accountingOnly ? ["entrada"] : ["entrada", "saida"]
 const dryRun = flag("simular")
 const zipDir = option("zip")
 const limit = Number(option("limite")) || 0 // teste: só os N primeiros XMLs de cada ZIP
@@ -75,11 +77,11 @@ function unzip(zipPath, target) {
   return fs.readdirSync(target).filter((name) => /\.xml$/i.test(name)).map((name) => path.join(target, name))
 }
 
-async function send(cnpj, files) {
+async function send(cnpj, files, tipo = "entrada") {
   const form = new FormData()
   form.set("companyCnpj", cnpj)
   if (dryRun) form.set("dryRun", "1")
-  if (accountingOnly) form.set("destino", "contabilidade")
+  if (accountingOnly) { form.set("destino", "contabilidade"); form.set("operacao", tipo) }
   for (const file of files) form.append("files", new File([fs.readFileSync(file)], path.basename(file), { type: "text/xml" }))
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
@@ -104,7 +106,7 @@ async function importFiles(cnpj, tipo, xmls) {
   const worker = async () => {
     while (batches.length) {
       const batch = batches.shift()
-      const body = await send(cnpj, batch)
+      const body = await send(cnpj, batch, tipo)
       results.push(...(body.results || []))
       done += batch.length
       if (done % 50 < BATCH || !batches.length) log(`  ${cnpj} ${tipo}: ${done}/${xmls.length}`)
@@ -138,6 +140,18 @@ try {
   let page
   if (zipDir) {
     companies = [...new Set(fs.readdirSync(zipDir).filter((name) => /^[0-9]{14}-.*[.]zip$/.test(name)).map((name) => name.split("-")[0]))].map((cnpj, index) => ({ index, cnpj, name: cnpj }))
+  } else if (flag("manual")) {
+    const cnpj = onlyDigits(option("empresa"))
+    if (cnpj.length !== 14) throw new Error("Com --manual informe --empresa <CNPJ>.")
+    const portal = await openPortal({ headless: false })
+    browser = portal.browser
+    await portal.page.goto("https://app.nfemail.com.br/", { waitUntil: "domcontentloaded" })
+    log("Portal aberto: entre com o seu login e escolha a empresa na lista (o reCAPTCHA é com você).")
+    const current = await waitForSelectedCompany(portal.context, cnpj, { log })
+    log(`Empresa escolhida: ${current.name} (${current.cnpj}).`)
+    page = await portal.context.newPage()
+    page.setDefaultTimeout(45_000)
+    companies = [{ ...current, manual: true }]
   } else {
     if (!process.env.NFEMAIL_EMAIL || !process.env.NFEMAIL_PASSWORD) throw new Error("NFEMAIL_EMAIL / NFEMAIL_PASSWORD não configurados em .env.local.")
     const portal = await openPortal({ headless: flag("oculto") })
@@ -149,7 +163,7 @@ try {
   }
   for (const company of companies) {
     if (option("empresa") && onlyDigits(option("empresa")) !== company.cnpj) continue
-    if (page) await selectCompany(page, company.index)
+    if (page && !company.manual) await selectCompany(page, company.index)
     const entry = { cnpj: company.cnpj, name: company.name, tipos: {} }
     for (const tipo of tipos) {
       let xmls = []

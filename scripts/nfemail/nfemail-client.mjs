@@ -34,9 +34,31 @@ export async function listCompanies(page) {
     rows.map((row, index) => {
       const text = (row.innerText || "").replace(/\s+/g, " ")
       const match = text.match(/(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2})/)
-      return { index, name: text.replace(/empresa selecionada/i, "").trim().slice(0, 90), cnpj: match ? match[1].replace(/\D/g, "") : "" }
+      return { index, name: text.replace(/empresa selecionada/i, "").trim().slice(0, 90), cnpj: match ? match[1].replace(/\D/g, "") : "", selected: /empresa selecionada/i.test(text) }
     }),
   )
+}
+
+/** Modo manual: a PESSOA entra no portal (reCAPTCHA incluso) e escolhe a empresa; aqui só se espera, em outra aba da mesma sessão, até a empresa corrente ser a do CNPJ pedido. */
+export async function waitForSelectedCompany(context, cnpj, { timeoutMs = 20 * 60_000, log = () => {} } = {}) {
+  const probe = await context.newPage()
+  probe.setDefaultTimeout(30_000)
+  const until = Date.now() + timeoutMs
+  let last = 0
+  try {
+    while (Date.now() < until) {
+      try {
+        if (/\/Logado/i.test((await context.pages().find((p) => p !== probe && /\/Logado/i.test(p.url())))?.url() || "")) {
+          const companies = await listCompanies(probe)
+          const current = companies.find((company) => company.selected)
+          if (current && (!cnpj || current.cnpj === cnpj)) return current
+          if (Date.now() - last > 60_000) { last = Date.now(); log(`Aguardando você escolher a empresa ${cnpj} no portal (hoje: ${current?.name || "nenhuma"}; a conta lista ${companies.map((company) => company.cnpj).join(", ")}).`) }
+        } else if (Date.now() - last > 60_000) { last = Date.now(); log("Aguardando você entrar no portal (login e reCAPTCHA são com você)...") }
+      } catch { /* a página ainda está carregando ou o login não terminou */ }
+      await new Promise((resolve) => setTimeout(resolve, 4000))
+    }
+  } finally { await probe.close().catch(() => {}) }
+  throw new Error("Tempo esgotado esperando a empresa ser escolhida no portal.")
 }
 
 export async function selectCompany(page, index) {
