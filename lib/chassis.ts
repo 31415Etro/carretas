@@ -4,7 +4,7 @@
 export type ChassisRow = {
   chassis: string; model: string; family: string; axles: number; pbt: number; capacity: number; color: string; year: string; productCode: string; description: string
   invoiceId: string; number: string; series: string; issuedAt: string | null; accessKey: string; nature: string
-  clientName: string; clientDocument: string; itemTotal: number; invoiceTotal: number
+  clientName: string; clientDocument: string; quantity: number; unitPrice: number; itemTotal: number; invoiceTotal: number
   companyId: string; companyName: string; intercompany: boolean
 }
 
@@ -51,21 +51,35 @@ export function describeTrailer(description: string) {
 type InvoiceRow = {
   id: string; number: string | null; series: string | null; issued_at: string | null; access_key: string | null; nature: string | null
   recipient_name: string | null; recipient_document: string | null; total_invoice: number | string | null
-  items: Array<{ description?: string; total?: number | string }> | null
+  items: Array<{ description?: string; total?: number | string; quantity?: number | string; unitPrice?: number | string }> | null
 }
 
-/** Uma linha por chassi encontrado nos itens da nota. `companyDocuments` são os CNPJs das empresas do grupo (venda entre empresas não é venda ao cliente). */
+/** Item de carreta da ND (descrição "MARCA MOD R/ND CARRETAS <modelo> ANO ...") mesmo quando a nota não traz o número do chassi (venda em lote). */
+const isTrailerItem = (description: string) => /\bND\s+CARRETAS?\b/i.test(description) && (/\bANO\s+\d{4}/i.test(description) || /COD\s*\(/i.test(description))
+
+/** Carretas que a linha representa: 1 quando tem número de chassi; a quantidade da nota quando é lote sem número. */
+export const rowUnits = (row: Pick<ChassisRow, "chassis" | "quantity">) => (row.chassis ? 1 : Math.max(1, row.quantity))
+
+/** Carretas de um conjunto de linhas: chassis numerados distintos + quantidade dos lotes sem número. */
+export function trailerUnits(rows: ChassisRow[]) {
+  const numbered = new Set<string>()
+  let batch = 0
+  for (const row of rows) { if (row.chassis) numbered.add(row.chassis); else batch += rowUnits(row) }
+  return { units: numbered.size + batch, numbered: numbered.size, batch }
+}
+
+/** Uma linha por chassi (ou por lote sem número) encontrado nos itens da nota. `companyDocuments` são os CNPJs das empresas do grupo (venda entre empresas não é venda ao cliente). */
 export function chassisFromInvoice(invoice: InvoiceRow, company: { id: string; name: string }, companyDocuments: string[] = []): ChassisRow[] {
   const rows: ChassisRow[] = []
   for (const item of invoice.items || []) {
-    const chassis = extractChassis(item.description || "")
-    if (!chassis) continue
+    const chassis = extractChassis(item.description || "") || ""
+    if (!chassis && !isTrailerItem(String(item.description || ""))) continue
     const trailer = describeTrailer(item.description || "")
     const document = digits(invoice.recipient_document || "")
     rows.push({
       chassis, ...trailer, description: String(item.description || ""), invoiceId: invoice.id, number: String(invoice.number || ""), series: String(invoice.series || ""), issuedAt: invoice.issued_at,
       accessKey: String(invoice.access_key || ""), nature: String(invoice.nature || ""), clientName: String(invoice.recipient_name || ""), clientDocument: document,
-      itemTotal: Number(item.total || 0), invoiceTotal: Number(invoice.total_invoice || 0), companyId: company.id, companyName: company.name, intercompany: companyDocuments.includes(document),
+      quantity: Number(item.quantity || 1) || 1, unitPrice: Number(item.unitPrice || 0) || (Number(item.total || 0) / (Number(item.quantity || 1) || 1)), itemTotal: Number(item.total || 0), invoiceTotal: Number(invoice.total_invoice || 0), companyId: company.id, companyName: company.name, intercompany: companyDocuments.includes(document),
     })
   }
   return rows
@@ -91,7 +105,7 @@ const month = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("s
 type Count = { label: string; chassis: number; total: number }
 function bump(map: Map<string, Count>, key: string, row: ChassisRow) {
   const entry = map.get(key) || { label: key, chassis: 0, total: 0 }
-  entry.chassis += 1; entry.total += row.itemTotal
+  entry.chassis += rowUnits(row); entry.total += row.itemTotal
   map.set(key, entry)
 }
 
@@ -107,7 +121,7 @@ export function chassisChart(rows: ChassisRow[]) {
   }
   const sorted = (map: Map<string, Count>, limit = 12) => [...map.values()].map((entry) => ({ ...entry, total: Math.round(entry.total * 100) / 100 })).sort((a, b) => b.chassis - a.chassis || b.total - a.total).slice(0, limit)
   return {
-    totalChassis: sales.length, distinctChassis: new Set(sales.map((row) => row.chassis)).size, intercompany: rows.length - sales.length,
+    totalChassis: sales.reduce((sum, row) => sum + rowUnits(row), 0), distinctChassis: trailerUnits(sales).units, numbered: trailerUnits(sales).numbered, batch: trailerUnits(sales).batch, intercompany: rows.filter((row) => row.intercompany).reduce((sum, row) => sum + rowUnits(row), 0),
     months: [...months.values()].sort((a, b) => a.label.localeCompare(b.label)).map((entry) => ({ ...entry, total: Math.round(entry.total * 100) / 100 })),
     models: sorted(models), clients: sorted(clients, 10), companies: sorted(companies),
   }
@@ -122,12 +136,13 @@ export function chassisByModel(rows: ChassisRow[]) {
   const groups = new Map<string, ChassisRow[]>()
   for (const row of rows) (groups.get(row.model || "Sem modelo") || groups.set(row.model || "Sem modelo", []).get(row.model || "Sem modelo")!).push(row)
   return [...groups.entries()].map(([model, items]) => {
-    const values = items.map((item) => item.itemTotal)
-    const total = values.reduce((sum, value) => sum + value, 0)
+    const values = items.map((item) => item.unitPrice)
+    const total = items.reduce((sum, item) => sum + item.itemTotal, 0)
+    const units = items.reduce((sum, item) => sum + rowUnits(item), 0)
     const dates = items.map((item) => dayOf(item.issuedAt)).filter(Boolean).sort()
     return {
-      model, chassis: new Set(items.map((item) => item.chassis)).size, notes: new Set(items.map((item) => item.invoiceId)).size, items: items.length,
-      total: money(total), average: money(total / items.length), min: money(Math.min(...values)), max: money(Math.max(...values)), first: dates[0] || "", last: dates[dates.length - 1] || "",
+      model, chassis: trailerUnits(items).units, notes: new Set(items.map((item) => item.invoiceId)).size, items: units,
+      total: money(total), average: money(total / Math.max(1, units)), min: money(Math.min(...values)), max: money(Math.max(...values)), first: dates[0] || "", last: dates[dates.length - 1] || "",
     }
   }).sort((a, b) => b.chassis - a.chassis || b.total - a.total)
 }
@@ -140,7 +155,7 @@ export function chassisByModelMonth(rows: ChassisRow[]) {
   for (const row of rows) {
     const key = `${row.model || "Sem modelo"}|${month(row.issuedAt)}`
     const entry = cell.get(key) || { chassis: 0, total: 0 }
-    entry.chassis += 1; entry.total += row.itemTotal
+    entry.chassis += rowUnits(row); entry.total += row.itemTotal
     cell.set(key, entry)
   }
   return {
@@ -155,7 +170,7 @@ export function chassisByModelMonth(rows: ChassisRow[]) {
 /** Uma linha por chassi: quantas notas o citam, valor somado, última nota, último cliente. */
 export function chassisPerChassis(rows: ChassisRow[]) {
   const groups = new Map<string, ChassisRow[]>()
-  for (const row of rows) (groups.get(row.chassis) || groups.set(row.chassis, []).get(row.chassis)!).push(row)
+  for (const row of rows) { if (!row.chassis) continue; (groups.get(row.chassis) || groups.set(row.chassis, []).get(row.chassis)!).push(row) }
   return [...groups.entries()].map(([chassis, items]) => {
     const ordered = [...items].sort((a, b) => String(a.issuedAt || "").localeCompare(String(b.issuedAt || "")))
     const last = ordered[ordered.length - 1]
@@ -189,31 +204,34 @@ const groupName = (row: ChassisRow, by: GroupBy) => (by === "family" ? row.famil
 export function chassisTimeline(rows: ChassisRow[], granularity: Granularity, by: GroupBy) {
   const periods = [...new Set(rows.map((row) => periodKey(row.issuedAt, granularity)))].sort()
   const series = [...new Set(rows.map((row) => groupName(row, by)))]
-  const cells = new Map<string, Set<string>>()
+  const cells = new Map<string, { numbered: Set<string>; batch: number }>()
   for (const row of rows) {
     const key = `${periodKey(row.issuedAt, granularity)}|${groupName(row, by)}`
-    ;(cells.get(key) || cells.set(key, new Set()).get(key)!).add(row.chassis)
+    const cell = cells.get(key) || cells.set(key, { numbered: new Set<string>(), batch: 0 }).get(key)!
+    if (row.chassis) cell.numbered.add(row.chassis); else cell.batch += rowUnits(row)
   }
+  const sizeOf = (key: string) => { const cell = cells.get(key); return cell ? cell.numbered.size + cell.batch : 0 }
   const totals = new Map<string, number>()
-  for (const [key, set] of cells) { const name = key.split("|")[1]; totals.set(name, (totals.get(name) || 0) + set.size) }
+  for (const key of cells.keys()) { const name = key.split("|")[1]; totals.set(name, (totals.get(name) || 0) + sizeOf(key)) }
   const ordered = series.sort((a, b) => (totals.get(b) || 0) - (totals.get(a) || 0))
   return {
     periods, series: ordered,
-    data: periods.map((period) => ({ period, ...Object.fromEntries(ordered.map((name) => [name, cells.get(`${period}|${name}`)?.size || 0])) } as Record<string, string | number>)),
+    data: periods.map((period) => ({ period, ...Object.fromEntries(ordered.map((name) => [name, sizeOf(`${period}|${name}`)])) } as Record<string, string | number>)),
   }
 }
 
 /** Quantidade de chassis por tamanho: capacidade de carga (t), PBT (t) ou número de eixos. */
 export function chassisBySize(rows: ChassisRow[], field: "capacity" | "pbt" | "axles") {
-  const groups = new Map<number, { chassis: Set<string>; total: number }>()
+  const groups = new Map<number, { chassis: Set<string>; batch: number; total: number }>()
   for (const row of rows) {
     const value = Number(row[field] || 0)
-    const entry = groups.get(value) || { chassis: new Set<string>(), total: 0 }
-    entry.chassis.add(row.chassis); entry.total += row.itemTotal
+    const entry = groups.get(value) || { chassis: new Set<string>(), batch: 0, total: 0 }
+    if (row.chassis) entry.chassis.add(row.chassis); else entry.batch += rowUnits(row)
+    entry.total += row.itemTotal
     groups.set(value, entry)
   }
   return [...groups.entries()].sort((a, b) => a[0] - b[0]).map(([value, entry]) => ({
-    value, label: value ? (field === "axles" ? `${value} eixo${value > 1 ? "s" : ""}` : `${String(value).replace(".", ",")} t`) : "Sem informação", chassis: entry.chassis.size, total: money(entry.total),
+    value, label: value ? (field === "axles" ? `${value} eixo${value > 1 ? "s" : ""}` : `${String(value).replace(".", ",")} t`) : "Sem informação", chassis: entry.chassis.size + entry.batch, total: money(entry.total),
   }))
 }
 

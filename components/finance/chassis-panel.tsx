@@ -101,7 +101,7 @@ export function ChassisPanel() {
   function exportCsv() {
     if (!data) return
     const header = ["Chassi", "Modelo", "Cor", "Ano", "Código do produto", "Nota", "Série", "Emissão", "Cliente", "CPF/CNPJ", "Valor do item", "Valor da nota", "Empresa emitente", "Chave de acesso", "Entre empresas do grupo"]
-    const lines = data.rows.map((row) => [row.chassis, row.model, row.color, row.year, row.productCode, row.number, row.series, day(row.issuedAt), row.clientName, formatDocument(row.clientDocument), String(row.itemTotal).replace(".", ","), String(row.invoiceTotal).replace(".", ","), row.companyName, `'${row.accessKey}`, row.intercompany ? "sim" : "não"])
+    const lines = data.rows.map((row) => [row.chassis || `(lote sem nº: ${row.quantity} un.)`, row.model, row.color, row.year, row.productCode, row.number, row.series, day(row.issuedAt), row.clientName, formatDocument(row.clientDocument), String(row.itemTotal).replace(".", ","), String(row.invoiceTotal).replace(".", ","), row.companyName, `'${row.accessKey}`, row.intercompany ? "sim" : "não"])
     const csv = [header, ...lines].map((line) => line.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(";")).join("\n")
     const url = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }))
     const anchor = document.createElement("a"); anchor.href = url; anchor.download = "chassis-notas-de-venda.csv"; anchor.click(); URL.revokeObjectURL(url)
@@ -246,9 +246,9 @@ export function ChassisPanel() {
       {view === "consulta" ? <SectionCard title="Notas com chassi" description={data ? `${data.found.toLocaleString("pt-BR")} chassi(s) encontrado(s)${data.found > 500 ? " (mostrando os 500 mais recentes; refine a busca ou exporte)" : ""}${data.client ? ` · cliente: ${data.client.name}` : ""}` : "Carregando..."}>
         <div className="mb-2"><Button type="button" variant="outline" size="sm" onClick={exportCsv} disabled={!data?.rows.length}><Download className="h-4 w-4" />Planilha dos chassis</Button></div>
         <DataTable headers={["Chassi", "Modelo", "Cor/Ano", "Nota", "Emissão", "Cliente", "CPF/CNPJ", "Valor do item", "Valor da nota", "Empresa emitente"]} empty={!data?.rows.length && !loading} stickyHeader viewportClassName="max-h-[60vh]">
-          {(data?.rows || []).map((row) => (
-            <TableRow key={`${row.invoiceId}-${row.chassis}`}>
-              <TableCell className="whitespace-nowrap font-mono text-xs font-medium">{row.chassis}</TableCell>
+          {(data?.rows || []).map((row, index) => (
+            <TableRow key={`${row.invoiceId}-${row.chassis}-${index}`}>
+              <TableCell className="whitespace-nowrap font-mono text-xs font-medium">{row.chassis || <span className="rounded bg-amber-100 px-1.5 py-0.5 font-sans text-amber-800">lote sem nº ({row.quantity} un.)</span>}</TableCell>
               <TableCell className="whitespace-nowrap">{row.model || "-"}</TableCell>
               <TableCell className="whitespace-nowrap">{[row.color, row.year].filter(Boolean).join(" / ") || "-"}</TableCell>
               <TableCell className="whitespace-nowrap">{row.number}{row.series ? `/${row.series}` : ""}</TableCell>

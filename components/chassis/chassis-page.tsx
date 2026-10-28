@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { DataTable, PageShell, SearchableSelectField, SectionCard } from "@/components/operations/shared"
-import { chassisBySize, chassisTimeline, issuedDay, periodKey, pickChassis, type ChassisPick, type ChassisRow, type Granularity, type GroupBy } from "@/lib/chassis"
+import { chassisBySize, chassisTimeline, issuedDay, periodKey, pickChassis, rowUnits, trailerUnits, type ChassisPick, type ChassisRow, type Granularity, type GroupBy } from "@/lib/chassis"
 
 type Row = Omit<ChassisRow, "description" | "accessKey" | "nature">
 type SizeField = "capacity" | "pbt" | "axles"
@@ -53,9 +53,9 @@ function SummaryTip({ active, payload }: { active?: boolean; payload?: TipEntry[
   return (
     <div className="rounded-md border bg-background p-3 text-sm shadow-md">
       <div className="font-semibold">{item.name}</div>
-      <div className="mt-1 text-muted-foreground">Quantidade: <span className="font-medium text-foreground">{Number(item.chassis || 0).toLocaleString("pt-BR")} chassi(s)</span></div>
+      <div className="mt-1 text-muted-foreground">Quantidade: <span className="font-medium text-foreground">{Number(item.chassis || 0).toLocaleString("pt-BR")} carreta(s)</span></div>
       <div className="text-muted-foreground">Valor total: <span className="font-medium text-foreground">{brl(item.total)}</span></div>
-      <div className="text-muted-foreground">Valor médio: <span className="font-medium text-foreground">{avg(Number(item.total || 0), Number(item.chassis || 0))}</span></div>
+      <div className="text-muted-foreground">Valor médio por carreta: <span className="font-medium text-foreground">{avg(Number(item.total || 0), Number(item.chassis || 0))}</span></div>
     </div>
   )
 }
@@ -80,6 +80,7 @@ export function ChassisPage() {
   const [sizeField, setSizeField] = useState<SizeField>("capacity")
   const [intercompany, setIntercompany] = useState(false)
   const [pick, setPick] = useState<(ChassisPick & { title: string }) | null>(null)
+  const [dialogMode, setDialogMode] = useState<"nota" | "chassi">("nota")
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -126,23 +127,44 @@ export function ChassisPage() {
   const ranking = useMemo(() => timeline.series.map((name) => ({ name, chassis: timeline.data.reduce((sum, row) => sum + Number(row[name] || 0), 0), total: Math.round((valueByGroup.get(name) || 0) * 100) / 100 })).sort((a, b) => b.chassis - a.chassis), [timeline, valueByGroup])
   const bySize = useMemo(() => chassisBySize(rows, sizeField), [rows, sizeField])
   const chartData = timeline.data.map((row) => ({ ...row, label: periodLabel(String(row.period), granularity) }))
-  const distinct = new Set(rows.map((row) => row.chassis)).size
+  const units = useMemo(() => trailerUnits(rows), [rows])
+  const distinct = units.units
   const total = rows.reduce((sum, row) => sum + row.itemTotal, 0)
 
-  const opened = pick ? pickChassis(rows, pick) : []
+  const opened = useMemo(() => (pick ? pickChassis(rows, pick) : []), [pick, rows])
   const open = (next: ChassisPick, title: string) => setPick({ ...next, by, granularity, title })
+  // o que a nota tem no total (todos os chassis dela, mesmo os de outro modelo ou fora do filtro)
+  const noteTotals = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const row of all) map.set(row.invoiceId, (map.get(row.invoiceId) || 0) + rowUnits(row))
+    return map
+  }, [all])
+  const notesOpened = useMemo(() => {
+    const groups = new Map<string, ChassisRow[]>()
+    for (const row of opened) (groups.get(row.invoiceId) || groups.set(row.invoiceId, []).get(row.invoiceId)!).push(row)
+    return [...groups.values()].map((items) => {
+      const prices = items.map((item) => item.unitPrice)
+      return { first: items[0], items, chassisValue: items.reduce((sum, item) => sum + item.itemTotal, 0), minUnit: Math.min(...prices), maxUnit: Math.max(...prices), units: items.reduce((sum, item) => sum + rowUnits(item), 0), inNote: noteTotals.get(items[0].invoiceId) || items.length }
+    })
+  }, [opened, noteTotals])
 
   function exportOpened() {
     if (!pick) return
-    const header = ["Nota", "Série", "Emissão", "Chassi", "Modelo", "PBT (t)", "Capacidade (t)", "Eixos", "Cor", "Ano", "Cliente", "CPF/CNPJ", "Valor do item", "Valor da nota", "Empresa emitente"]
-    const lines = opened.map((row) => [row.number, row.series, day(row.issuedAt), row.chassis, row.model, String(row.pbt).replace(".", ","), String(row.capacity).replace(".", ","), row.axles, row.color, row.year, row.clientName, formatDocument(row.clientDocument), String(row.itemTotal).replace(".", ","), String(row.invoiceTotal).replace(".", ","), row.companyName])
+    const number = (value: number) => String(value).replace(".", ",")
+    const note = (row: ChassisRow) => `${row.number}${row.series ? `/${row.series}` : ""}`
+    const header = dialogMode === "nota"
+      ? ["Nota", "Emissão", "Cliente", "CPF/CNPJ", "Chassis no recorte", "Chassis na nota", "Valor por chassi", "Valor dos chassis", "Valor total da nota", "Empresa emitente", "Chassis"]
+      : ["Nota", "Emissão", "Chassi", "Modelo", "Cor", "Ano", "PBT (t)", "Capacidade (t)", "Eixos", "Quantidade", "Valor unitário", "Valor do chassi", "Chassis na nota", "Valor total da nota", "Cliente", "CPF/CNPJ", "Empresa emitente"]
+    const lines = dialogMode === "nota"
+      ? notesOpened.map((group) => [note(group.first), day(group.first.issuedAt), group.first.clientName, formatDocument(group.first.clientDocument), group.units, group.inNote, group.minUnit === group.maxUnit ? number(group.minUnit) : `${number(group.minUnit)} a ${number(group.maxUnit)}`, number(group.chassisValue), number(group.first.invoiceTotal), group.first.companyName, group.items.map((item) => `${item.chassis || "lote sem nº de chassi"}${item.quantity > 1 ? ` x${item.quantity}` : ""} (${number(item.itemTotal)})`).join(" ; ")])
+      : opened.map((row) => [note(row), day(row.issuedAt), row.chassis || "(lote sem nº de chassi)", row.model, row.color, row.year, number(row.pbt), number(row.capacity), row.axles, row.quantity, number(row.unitPrice), number(row.itemTotal), noteTotals.get(row.invoiceId) || 1, number(row.invoiceTotal), row.clientName, formatDocument(row.clientDocument), row.companyName])
     const csv = [header, ...lines].map((line) => line.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(";")).join("\n")
-    const url = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }))
-    const anchor = document.createElement("a"); anchor.href = url; anchor.download = "chassis-notas-emitidas.csv"; anchor.click(); URL.revokeObjectURL(url)
+    const url = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" }))
+    const anchor = document.createElement("a"); anchor.href = url; anchor.download = `chassis-notas-${dialogMode === "nota" ? "por-nota" : "por-chassi"}.csv`; anchor.click(); URL.revokeObjectURL(url)
   }
 
   return (
-    <PageShell title="Chassis" description="Quantos chassis foram emitidos nas notas de venda, de qual modelo, em qual período e de que tamanho. Clique em uma barra para abrir as notas daquele recorte."
+    <PageShell title="Chassis" description="Quantas carretas foram emitidas nas notas de venda (com número de chassi ou em lote), de qual modelo, em qual período e de que tamanho. Clique em uma barra para abrir as notas daquele recorte."
       actions={<Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />Atualizar</Button>}>
       <SectionCard title="Filtros">
         <div className="flex flex-wrap items-end gap-3">
@@ -175,13 +197,13 @@ export function ChassisPage() {
       </SectionCard>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Card label="Chassis (distintos)" value={distinct.toLocaleString("pt-BR")} hint={`${rows.length.toLocaleString("pt-BR")} emitidos nas notas`} />
-        <Card label="Valor dos chassis" value={brl(total)} hint="soma dos preços dos chassis nas notas" />
+        <Card label="Carretas emitidas" value={distinct.toLocaleString("pt-BR")} hint={`${units.numbered.toLocaleString("pt-BR")} com número de chassi · ${units.batch.toLocaleString("pt-BR")} em lote sem número`} />
+        <Card label="Valor das carretas" value={brl(total)} hint={`valor médio por carreta ${brl(distinct ? total / distinct : 0)}`} />
         <Card label={by === "model" ? "Modelos" : "Linhas"} value={String(timeline.series.length)} hint={ranking[0] ? `mais emitido: ${ranking[0].name} (${ranking[0].chassis})` : ""} />
         <Card label="Notas de venda lidas" value={notes.toLocaleString("pt-BR")} hint="saídas da Contabilidade, todas as empresas" />
       </div>
 
-      <SectionCard title={`Chassis por ${granularity === "mes" ? "mês" : "semana"} e ${by === "model" ? "modelo" : "linha"}`} description="Cada cor é um modelo. Clique em um trecho da barra para ver as notas daquele modelo naquele período.">
+      <SectionCard title={`Carretas por ${granularity === "mes" ? "mês" : "semana"} e ${by === "model" ? "modelo" : "linha"}`} description="Cada cor é um modelo. Clique em um trecho da barra para ver as notas daquele modelo naquele período.">
         <div className="h-80">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={chartData} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
@@ -195,9 +217,9 @@ export function ChassisPage() {
                 const chassisTotal = lines.reduce((sum, line) => sum + line.chassis, 0), valueTotal = lines.reduce((sum, line) => sum + line.total, 0)
                 return (
                   <div className="rounded-md border bg-background p-3 text-sm shadow-md">
-                    <div className="mb-1 font-semibold capitalize">{periodTitle(period, granularity) || String(label)}</div>
+                    <div className="font-semibold capitalize">{periodTitle(period, granularity) || String(label)}</div>
+                    <div className="mb-2 mt-0.5 rounded bg-muted px-2 py-1 font-semibold">Total: {chassisTotal.toLocaleString("pt-BR")} carreta(s) · {brl(valueTotal)}</div>
                     {lines.map((line) => <div key={line.name} className="flex items-center justify-between gap-4"><span><span className="mr-1.5 inline-block h-2.5 w-2.5 rounded-sm" style={{ background: line.color }} />{line.name}</span><span className="whitespace-nowrap font-medium">{line.chassis} · {brl(line.total)}</span></div>)}
-                    <div className="mt-1 flex items-center justify-between gap-4 border-t pt-1 font-semibold"><span>Total</span><span className="whitespace-nowrap">{chassisTotal} · {brl(valueTotal)}</span></div>
                   </div>
                 )
               }} />
@@ -245,7 +267,7 @@ export function ChassisPage() {
       </div>
 
       <SectionCard title="Resumo por modelo" description="Clique em uma linha para abrir as notas.">
-        <DataTable headers={[by === "model" ? "Modelo" : "Linha", "Chassis", "% do total", "Valor total", "Valor médio"]} empty={!ranking.length && !loading}>
+        <DataTable headers={[by === "model" ? "Modelo" : "Linha", "Carretas", "% do total", "Valor total", "Valor médio"]} empty={!ranking.length && !loading}>
           {ranking.map((entry) => {
             const part = rows.filter((row) => (by === "family" ? row.family : row.model) === entry.name || (!(by === "family" ? row.family : row.model) && entry.name === "Sem modelo"))
             const value = part.reduce((sum, row) => sum + row.itemTotal, 0)
@@ -263,29 +285,70 @@ export function ChassisPage() {
       </SectionCard>
 
       <Dialog open={!!pick} onOpenChange={(value) => { if (!value) setPick(null) }}>
-        <DialogContent className="max-h-[92vh] w-[96vw] overflow-hidden sm:max-w-[1200px]">
+        <DialogContent className="max-h-[92vh] w-[96vw] overflow-hidden sm:max-w-[1280px]">
           <DialogHeader>
             <DialogTitle>Notas emitidas · {pick?.title}</DialogTitle>
-            <DialogDescription>{opened.length.toLocaleString("pt-BR")} chassi(s) em {new Set(opened.map((row) => row.invoiceId)).size.toLocaleString("pt-BR")} nota(s) · {brl(opened.reduce((sum, row) => sum + row.itemTotal, 0))} nos itens{de || ate ? ` · filtro ${de ? day(`${de}T12:00:00-03:00`) : "início"} a ${ate ? day(`${ate}T12:00:00-03:00`) : "hoje"}` : ""}</DialogDescription>
+            <DialogDescription>{opened.reduce((sum, row) => sum + rowUnits(row), 0).toLocaleString("pt-BR")} carreta(s) em {notesOpened.length.toLocaleString("pt-BR")} nota(s) · {brl(opened.reduce((sum, row) => sum + row.itemTotal, 0))} nas carretas{de || ate ? ` · filtro ${de ? day(`${de}T12:00:00-03:00`) : "início"} a ${ate ? day(`${ate}T12:00:00-03:00`) : "hoje"}` : ""}</DialogDescription>
           </DialogHeader>
-          <div><Button type="button" variant="outline" size="sm" onClick={exportOpened} disabled={!opened.length}><Download className="h-4 w-4" />Planilha das notas</Button></div>
-          <DataTable headers={["Nota", "Emissão", "Chassi", "Modelo", "Cor", "Tamanho", "Cliente", "CPF/CNPJ", "Valor do item", "Valor da nota", "Empresa"]} empty={!opened.length} stickyHeader viewportClassName="max-h-[55vh]">
-            {opened.map((row) => (
-              <TableRow key={`${row.invoiceId}-${row.chassis}`}>
-                <TableCell className="whitespace-nowrap">{row.number}{row.series ? `/${row.series}` : ""}</TableCell>
-                <TableCell className="whitespace-nowrap">{day(row.issuedAt)}</TableCell>
-                <TableCell className="whitespace-nowrap font-mono text-xs font-medium">{row.chassis}</TableCell>
-                <TableCell className="whitespace-nowrap">{row.model || "-"}</TableCell>
-                <TableCell className="whitespace-nowrap">{row.color || "-"}</TableCell>
-                <TableCell className="whitespace-nowrap text-xs">PBT {tons(row.pbt)} · cap. {tons(row.capacity)} · {row.axles ? `${row.axles} eixo${row.axles > 1 ? "s" : ""}` : "-"}</TableCell>
-                <TableCell className="max-w-[240px] truncate" title={row.clientName}>{row.clientName || "-"}{row.intercompany ? <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-700">entre empresas</span> : null}</TableCell>
-                <TableCell className="whitespace-nowrap">{formatDocument(row.clientDocument) || "-"}</TableCell>
-                <TableCell className="whitespace-nowrap text-right">{brl(row.itemTotal)}</TableCell>
-                <TableCell className="whitespace-nowrap text-right">{brl(row.invoiceTotal)}</TableCell>
-                <TableCell className="whitespace-nowrap">{row.companyName}</TableCell>
-              </TableRow>
-            ))}
-          </DataTable>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex rounded-md border p-0.5 text-sm">
+              {([["nota", "Por nota (vários chassis na mesma linha)"], ["chassi", "Um chassi por linha"]] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setDialogMode(value)} className={`rounded px-3 py-1 ${dialogMode === value ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>{label}</button>)}
+            </div>
+            <Button type="button" variant="outline" size="sm" onClick={exportOpened} disabled={!opened.length}><Download className="h-4 w-4" />Planilha das notas</Button>
+          </div>
+
+          {dialogMode === "nota" ? (
+            <DataTable headers={["Nota", "Emissão", "Cliente", "CPF/CNPJ", "Carretas", "Chassis da nota (separados)", "Valor por carreta", "Valor das carretas", "Valor total da nota", "Empresa"]} empty={!notesOpened.length} stickyHeader viewportClassName="max-h-[58vh]">
+              {notesOpened.map((group) => (
+                <TableRow key={group.first.invoiceId} className="align-top">
+                  <TableCell className="whitespace-nowrap font-medium">{group.first.number}{group.first.series ? `/${group.first.series}` : ""}</TableCell>
+                  <TableCell className="whitespace-nowrap">{day(group.first.issuedAt)}</TableCell>
+                  <TableCell className="max-w-[220px]" title={group.first.clientName}><div className="truncate">{group.first.clientName || "-"}</div>{group.first.intercompany ? <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-700">entre empresas</span> : null}</TableCell>
+                  <TableCell className="whitespace-nowrap">{formatDocument(group.first.clientDocument) || "-"}</TableCell>
+                  <TableCell className="whitespace-nowrap text-right">{group.units}{group.inNote > group.units ? <div className="text-[10px] text-muted-foreground">de {group.inNote} na nota</div> : null}</TableCell>
+                  <TableCell>
+                    <div className="space-y-1">
+                      {group.items.map((item, itemIndex) => (
+                        <div key={`${item.chassis}-${itemIndex}`} className="flex items-center justify-between gap-4 whitespace-nowrap rounded bg-muted/40 px-2 py-1 text-xs">
+                          <span>{item.chassis ? <span className="font-mono font-medium">{item.chassis}</span> : <span className="rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-800">lote sem nº de chassi</span>} · {item.model || "-"} · {item.color || "-"} · {tons(item.capacity)}</span>
+                          <span className="font-medium">{item.quantity > 1 ? `${item.quantity} × ${brl(item.unitPrice)} = ` : ""}{brl(item.itemTotal)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap text-right">{group.minUnit === group.maxUnit ? brl(group.minUnit) : <>{brl(group.minUnit)}<div className="text-[10px] text-muted-foreground">até {brl(group.maxUnit)}</div></>}</TableCell>
+                  <TableCell className="whitespace-nowrap text-right font-medium">{brl(group.chassisValue)}</TableCell>
+                  <TableCell className="whitespace-nowrap text-right font-semibold">{brl(group.first.invoiceTotal)}</TableCell>
+                  <TableCell className="whitespace-nowrap">{group.first.companyName}</TableCell>
+                </TableRow>
+              ))}
+            </DataTable>
+          ) : (
+            <DataTable headers={["Nota", "Emissão", "Chassi", "Modelo", "Cor", "Tamanho", "Qtd.", "Valor unitário", "Valor da linha", "Carretas na nota", "Valor total da nota", "Cliente", "CPF/CNPJ", "Empresa"]} empty={!opened.length} stickyHeader viewportClassName="max-h-[58vh]">
+              {opened.map((row, index) => {
+                const inNote = noteTotals.get(row.invoiceId) || 1
+                const startsGroup = index === 0 || opened[index - 1].invoiceId !== row.invoiceId
+                return (
+                  <TableRow key={`${row.invoiceId}-${row.chassis}-${index}`} className={startsGroup && index > 0 ? "border-t-2" : ""}>
+                    <TableCell className="whitespace-nowrap">{row.number}{row.series ? `/${row.series}` : ""}</TableCell>
+                    <TableCell className="whitespace-nowrap">{day(row.issuedAt)}</TableCell>
+                    <TableCell className="whitespace-nowrap font-mono text-xs font-medium">{row.chassis || <span className="rounded bg-amber-100 px-1.5 py-0.5 font-sans text-amber-800">lote sem nº de chassi</span>}</TableCell>
+                    <TableCell className="whitespace-nowrap">{row.model || "-"}</TableCell>
+                    <TableCell className="whitespace-nowrap">{row.color || "-"}</TableCell>
+                    <TableCell className="whitespace-nowrap text-xs">PBT {tons(row.pbt)} · cap. {tons(row.capacity)} · {row.axles ? `${row.axles} eixo${row.axles > 1 ? "s" : ""}` : "-"}</TableCell>
+                    <TableCell className="text-right">{row.quantity}</TableCell>
+                    <TableCell className="whitespace-nowrap text-right">{brl(row.unitPrice)}</TableCell>
+                    <TableCell className="whitespace-nowrap text-right font-medium">{brl(row.itemTotal)}</TableCell>
+                    <TableCell className="text-right">{inNote > 1 ? <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">{inNote} na nota</span> : "1"}</TableCell>
+                    <TableCell className="whitespace-nowrap text-right font-semibold">{brl(row.invoiceTotal)}</TableCell>
+                    <TableCell className="max-w-[220px] truncate" title={row.clientName}>{row.clientName || "-"}{row.intercompany ? <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-700">entre empresas</span> : null}</TableCell>
+                    <TableCell className="whitespace-nowrap">{formatDocument(row.clientDocument) || "-"}</TableCell>
+                    <TableCell className="whitespace-nowrap">{row.companyName}</TableCell>
+                  </TableRow>
+                )
+              })}
+            </DataTable>
+          )}
         </DialogContent>
       </Dialog>
     </PageShell>

@@ -123,3 +123,19 @@ test("página Chassis: períodos (mês/semana), modelo ou linha, tamanho e a abe
   assert.equal(pickChassis(rows, { name: "FZ", by: "family", period: "2026-03", granularity: "mes" }).length, 0)
   assert.equal(pickChassis(rows, { size: { field: "axles", value: 2 } })[0].number, "103")  // mais recente primeiro
 })
+
+test("lote sem número de chassi: conta pela quantidade da nota, com valor unitário e total, junto com os chassis numerados", async () => {
+  const { chassisByModel, chassisChart, chassisTimeline, chassisFromInvoice: from, trailerUnits } = await import("./chassis.ts")
+  const BATCH = "MARCA MOD R/ND CARRETAS FZ 1E ANO 2026/MOD 2026 PBT 0,75 t CAP 0,55 t COR PRATA COD (600043)"            // sem número de chassi
+  const lote = { id: "9", number: "14554", series: "1", issued_at: "2026-02-15T10:00:00-03:00", access_key: "x", nature: "Venda", recipient_name: "REVENDA", recipient_document: "11122233000144", total_invoice: 48000, items: [{ description: BATCH, quantity: 15, unitPrice: 3200, total: 48000 }, { description: "FRETE", quantity: 1, total: 0 }] }
+  const rows = [...from(lote, company, group), ...from(invoice("1", "100", "JOÃO", "12345678900", "2026-02-10T10:00:00-03:00"), company, group)]
+  assert.equal(rows.length, 2)                                                       // frete não é carreta; o lote entra mesmo sem chassi
+  assert.equal(rows[0].chassis, ""); assert.equal(rows[0].quantity, 15); assert.equal(rows[0].unitPrice, 3200)
+  assert.deepEqual(trailerUnits(rows), { units: 16, numbered: 1, batch: 15 })
+  const byModel = chassisByModel(rows)[0]
+  assert.deepEqual([byModel.chassis, byModel.items, byModel.total, byModel.average], [16, 16, 57000, 3562.5])
+  assert.equal(chassisChart(rows).totalChassis, 16)
+  assert.equal(chassisTimeline(rows, "mes", "model").data[0]["FZ 1E"], 16)
+  assert.equal(filterChassis(rows, { q: "980NDFZ1ETD000233" }).length, 1)             // a busca por chassi não traz o lote
+  assert.equal(filterChassis(rows, { clientName: "revenda" }).length, 1)             // mas o cliente do lote aparece
+})
