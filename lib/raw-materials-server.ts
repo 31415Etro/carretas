@@ -51,7 +51,6 @@ export async function saveRawMaterial(admin: Admin, input: { id?: string; form: 
   const errors = validateRawMaterial(form, { editing, hasHistory, originalSku })
   // em edição, o NCM só precisa de nova confirmação se mudou
   if (editing && errors.ncm && originalNcm.replace(/\D/g, "") === form.ncm.replace(/\D/g, "")) delete errors.ncm
-  if (editing && form.ncm.trim() && form.ncm.replace(/\D/g, "") !== originalNcm.replace(/\D/g, "") && !form.ncmConfirmed) errors.ncm = "Confirme o novo NCM antes de salvar."
   if (Object.keys(errors).length) throw new RawMaterialError("Corrija os campos destacados.", 422, errors)
 
   const body = rawMaterialPayload(form)
@@ -76,7 +75,7 @@ export async function saveRawMaterial(admin: Admin, input: { id?: string; form: 
   }
 
   const skuChanged = form.sku.trim() !== originalSku
-  if (skuChanged && hasHistory) await rpc(admin, "change_item_sku", { p_material_id: input.id, p_new_sku: form.sku.trim(), p_reason: form.skuChangeReason.trim(), p_user: responsible })
+  if (skuChanged && hasHistory) await rpc(admin, "change_item_sku", { p_material_id: input.id, p_new_sku: form.sku.trim(), p_reason: form.skuChangeReason.trim() || "Alteração de SKU", p_user: responsible })
   else if (skuChanged) row.internal_code = form.sku.trim()
   const { error } = await admin.from("materials").update(row).eq("id", input.id!)
   if (error) throw error

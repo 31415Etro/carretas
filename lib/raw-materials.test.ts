@@ -13,54 +13,57 @@ test("formulário mínimo é válido: SKU automático, consumo interno e sem pre
   assert.equal(materialRowFromPayload(body).sale_price, 0)
 })
 
-test("nome, unidade e SKU manual são exigidos; SKU com espaço é recusado", () => {
-  assert.ok(validateRawMaterial(valid({ name: "ab" })).name)
-  assert.ok(validateRawMaterial(valid({ unit: "" })).unit)
-  assert.ok(validateRawMaterial(valid({ autoSku: false, sku: "" })).sku)
-  assert.ok(validateRawMaterial(valid({ autoSku: false, sku: "COM ESPAÇO" })).sku)
+test("só o nome é obrigatório: unidade vazia vira UN, SKU vazio vira automático e SKU livre é aceito", () => {
+  assert.ok(validateRawMaterial(valid({ name: "" })).name)
+  assert.deepEqual(validateRawMaterial(valid({ name: "A" })), {})
+  assert.equal(rawMaterialPayload(valid({ unit: "" })).unit, "UN")
+  assert.equal(rawMaterialPayload(valid({ autoSku: false, sku: "" })).autoSku, true)
+  assert.deepEqual(validateRawMaterial(valid({ autoSku: false, sku: "COM ESPAÇO" })), {})
   assert.deepEqual(validateRawMaterial(valid({ autoSku: false, sku: "MP-000123" })), {})
 })
 
-test("números: vírgula decimal, negativos e inconsistências de estoque", () => {
+test("números: vírgula decimal e negativos; estoque mínimo/máximo/reposição não se travam entre si", () => {
   assert.equal(parseNumber("1.234,56"), 1234.56)
   assert.equal(parseNumber("12,5"), 12.5)
   assert.equal(parseNumber(""), null)
   assert.ok(Number.isNaN(parseNumber("abc") as number))
   assert.ok(validateRawMaterial(valid({ costPrice: "-1" })).costPrice)
-  assert.ok(validateRawMaterial(valid({ minimumStock: "10", maximumStock: "5" })).maximumStock)
-  assert.ok(validateRawMaterial(valid({ maximumStock: "50", reorderPoint: "60" })).reorderPoint)
+  assert.deepEqual(validateRawMaterial(valid({ minimumStock: "10", maximumStock: "5" })), {})
+  assert.deepEqual(validateRawMaterial(valid({ maximumStock: "50", reorderPoint: "60" })), {})
   assert.ok(validateRawMaterial(valid({ leadTimeDays: "2,5" })).leadTimeDays)
   assert.deepEqual(validateRawMaterial(valid({ minimumStock: "10", reorderPoint: "15", maximumStock: "100", costPrice: "12,90", leadTimeDays: "7" })), {})
 })
 
-test("NCM tem 8 dígitos e na criação precisa estar confirmado por uma pessoa", () => {
-  assert.ok(validateRawMaterial(valid({ ncm: "1234", ncmConfirmed: true })).ncm)
-  assert.ok(validateRawMaterial(valid({ ncm: "7216.21.00", ncmConfirmed: false })).ncm) // sugerido, mas não confirmado
+test("NCM é opcional: sem confirmação ou incompleto não bloqueia (NCM incompleto não é enviado)", () => {
+  assert.deepEqual(validateRawMaterial(valid({ ncm: "1234", ncmConfirmed: true })), {})
+  assert.deepEqual(validateRawMaterial(valid({ ncm: "7216.21.00", ncmConfirmed: false })), {})
   assert.deepEqual(validateRawMaterial(valid({ ncm: "7216.21.00", ncmConfirmed: true })), {})
+  assert.equal(rawMaterialPayload(valid({ ncm: "1234" })).ncm, "")
+  assert.equal(rawMaterialPayload(valid({ ncm: "7216.21.00" })).ncm, "72162100")
 })
 
-test("Disponível para venda exige preço e NCM; desligado, o preço vai zerado", () => {
-  const errors = validateRawMaterial(valid({ allowsSale: true }))
-  assert.ok(errors.salePrice)
-  assert.ok(errors.ncm)
+test("Disponível para venda sem preço ou NCM não bloqueia: sem preço o item segue como consumo interno", () => {
+  assert.deepEqual(validateRawMaterial(valid({ allowsSale: true })), {})
+  assert.equal(rawMaterialPayload(valid({ allowsSale: true })).allowsSale, false)
   assert.deepEqual(validateRawMaterial(valid({ allowsSale: true, salePrice: "25,00", ncm: "7216.21.00", ncmConfirmed: true })), {})
+  assert.equal(rawMaterialPayload(valid({ allowsSale: true, salePrice: "25,00" })).allowsSale, true)
   assert.equal(rawMaterialPayload(valid({ allowsSale: false, salePrice: "99" })).salePrice, 0)
 })
 
-test("fornecedores: um principal, sem repetir e sem linha vazia", () => {
+test("fornecedores: linhas vazias e repetidas são ajustadas sozinhas e só um fica como principal", () => {
   const link = (supplierId: string, isPrimary = false) => ({ supplierId, supplierCode: "", isPrimary, lastCost: "", leadTimeDays: "", minPurchaseQty: "", notes: "" })
-  assert.ok(validateRawMaterial(valid({ suppliers: [link("a", true), link("b", true)] })).suppliers)
-  assert.ok(validateRawMaterial(valid({ suppliers: [link("a"), link("a")] })).suppliers)
-  assert.ok(validateRawMaterial(valid({ suppliers: [link("")] })).suppliers)
+  assert.deepEqual(validateRawMaterial(valid({ suppliers: [link("a", true), link("b", true)] })), {})
+  assert.deepEqual(rawMaterialPayload(valid({ suppliers: [link("a", true), link("b", true)] })).suppliers.map((s) => s.is_primary), [true, false])
+  assert.equal(rawMaterialPayload(valid({ suppliers: [link("a"), link("a")] })).suppliers.length, 1)
+  assert.equal(rawMaterialPayload(valid({ suppliers: [link("")] })).suppliers.length, 0)
   assert.deepEqual(validateRawMaterial(valid({ suppliers: [link("a", true), link("b")] })), {})
   assert.equal(rawMaterialPayload(valid({ suppliers: [link("a", true), link("")] })).suppliers.length, 1)
 })
 
-test("troca de SKU em item com histórico exige motivo", () => {
+test("troca de SKU em item com histórico não exige motivo (o servidor registra um padrão)", () => {
   const form = valid({ autoSku: false, sku: "NOVO-1" })
-  assert.ok(validateRawMaterial(form, { editing: true, hasHistory: true, originalSku: "ANTIGO-1" }).skuChangeReason)
+  assert.deepEqual(validateRawMaterial(form, { editing: true, hasHistory: true, originalSku: "ANTIGO-1" }), {})
   assert.deepEqual(validateRawMaterial({ ...form, skuChangeReason: "Padronização" }, { editing: true, hasHistory: true, originalSku: "ANTIGO-1" }), {})
-  assert.deepEqual(validateRawMaterial(form, { editing: true, hasHistory: false, originalSku: "ANTIGO-1" }), {})
 })
 
 test("da linha do banco para o formulário e de volta, sem perder dados", () => {

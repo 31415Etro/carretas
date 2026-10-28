@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url"
 import { createDatabase } from "./harness.mjs"
 
 const REPO = (process.env.RPC_CHECK_REPO || path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..")).replace(/[\/]*$/, "/")
-const db = await createDatabase({ extra: ["217_itens_estrutura.sql", "218_kits_e_estrutura_de_produto.sql", "219_vendas_producao_mrp.sql", "220_materia_prima_consultas.sql", "221_kits_consultas_e_conversao.sql", "222_produtos_finais.sql", "223_pedido_producao_integracao.sql", "224_documentacao_veicular.sql", "225_engenharia_parametrica.sql", "226_fotografias_e_pedido_pdf.sql", "227_chao_de_fabrica.sql", "228_matricula_ordem_e_documentacao_avulsas.sql", "229_esteira_sem_impedimentos.sql", "234_producao_simplificada.sql", "235_vinculos_pedido_ordem_kits.sql", "237_baixa_dos_kits_no_pedido.sql"] })
+const db = await createDatabase({ extra: ["217_itens_estrutura.sql", "218_kits_e_estrutura_de_produto.sql", "219_vendas_producao_mrp.sql", "220_materia_prima_consultas.sql", "221_kits_consultas_e_conversao.sql", "222_produtos_finais.sql", "223_pedido_producao_integracao.sql", "224_documentacao_veicular.sql", "225_engenharia_parametrica.sql", "226_fotografias_e_pedido_pdf.sql", "227_chao_de_fabrica.sql", "228_matricula_ordem_e_documentacao_avulsas.sql", "229_esteira_sem_impedimentos.sql", "234_producao_simplificada.sql", "235_vinculos_pedido_ordem_kits.sql", "237_baixa_dos_kits_no_pedido.sql", "238_cadastros_sem_travas.sql"] })
 const sigs = new Map()
 for (const row of (await db.query(`select p.proname, coalesce(array_agg(a.n order by a.i) filter (where a.n is not null), '{}') args
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace and n.nspname = 'public'

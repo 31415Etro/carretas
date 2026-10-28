@@ -56,9 +56,8 @@ export type KitErrors = Partial<Record<string, string>>
 /** Valida o formulário; a chave "components" é o erro geral da composição e "c:<key>" o erro de uma linha. */
 export function validateKit(form: KitForm, options: { requireComponents?: boolean } = {}): KitErrors {
   const errors: KitErrors = {}
-  if (form.name.trim().length < 3) errors.name = "Informe o nome do kit (mínimo 3 letras)."
-  if (!form.autoSku && !/^[A-Za-z0-9][A-Za-z0-9._/-]{0,39}$/.test(form.sku.trim())) errors.sku = "SKU inválido: use letras, números, ponto, hífen ou barra, sem espaços (até 40 caracteres)."
-  if ((options.requireComponents ?? true) && form.components.length === 0) errors.components = "Adicione ao menos uma matéria-prima à composição."
+  // cadastro sem travas: só o nome identifica o kit; SKU vazio vira automático e a composição pode ser preenchida depois (kit sem matéria-prima fica como rascunho)
+  if (!form.name.trim()) errors.name = "Informe o nome do kit."
   const seen = new Set<string>()
   for (const component of form.components) {
     const quantity = parseNumber(component.quantity)
@@ -76,8 +75,8 @@ export function validateKit(form: KitForm, options: { requireComponents?: boolea
 export function kitPayload(form: KitForm, options: { kitId?: string; versionId?: string; activate?: boolean; withComponents?: boolean } = {}) {
   const withComponents = options.withComponents ?? true
   return {
-    kit_id: options.kitId || null, version_id: options.versionId || null, name: form.name.trim(), sku: form.autoSku ? "" : form.sku.trim(), auto_sku: form.autoSku,
-    category: form.category.trim(), description: form.description.trim(), status: form.status, photo_url: form.photoUrl, notes: form.notes.trim(), activate: Boolean(options.activate),
+    kit_id: options.kitId || null, version_id: options.versionId || null, name: form.name.trim(), sku: form.autoSku ? "" : form.sku.trim(), auto_sku: form.autoSku || !form.sku.trim(),
+    category: form.category.trim(), description: form.description.trim(), status: form.status, photo_url: form.photoUrl, notes: form.notes.trim(), activate: Boolean(options.activate) && form.components.length > 0,
     ...(withComponents ? { components: form.components.map((component) => ({
       component_id: component.componentId, quantity: parseNumber(component.quantity), unit: component.unit.toUpperCase(), loss_percent: parseNumber(component.lossPercent) ?? 0, notes: component.notes.trim() || null,
     })) } : {}),

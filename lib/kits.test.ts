@@ -30,11 +30,12 @@ test("quantidade necessária com perda, na unidade do material", () => {
   assert.equal(requiredWithLoss(withQty(perfil, "2", "BARRA", "10")), 2 * 6 * 1.1)
 })
 
-test("validação: nome, composição, quantidade, perda, conversão e repetição", () => {
+test("validação: só o nome é obrigatório; composição pode ficar vazia e as linhas continuam coerentes", () => {
   assert.deepEqual(validateKit(kit()), {})
-  assert.ok(validateKit(kit({ name: "ab" })).name)
-  assert.ok(validateKit(kit({ components: [] })).components)
-  assert.equal(validateKit(kit({ components: [] }), { requireComponents: false }).components, undefined)
+  assert.ok(validateKit(kit({ name: "" })).name)
+  assert.deepEqual(validateKit(kit({ name: "K", components: [] })), {})                 // sem matéria-prima: salva como rascunho vazio
+  assert.deepEqual(validateKit(kit({ autoSku: false, sku: "" })), {})                  // SKU vazio vira automático
+  assert.deepEqual(validateKit(kit({ autoSku: false, sku: "COM ESPAÇO" })), {})        // sem trava de formato do SKU
   const a = withQty(perfil, "0", "M")
   assert.ok(validateKit(kit({ components: [a] }))[`c:${a.key}`])
   const b = withQty(perfil, "1", "KG") // KG não converte para M
@@ -43,7 +44,9 @@ test("validação: nome, composição, quantidade, perda, conversão e repetiç�
   assert.ok(validateKit(kit({ components: [c] }))[`c:${c.key}`])
   const d1 = withQty(perfil, "1", "M"); const d2 = withQty(perfil, "2", "M")
   assert.match(validateKit(kit({ components: [d1, d2] }))[`c:${d2.key}`] || "", /já está na composição/)
-  assert.ok(validateKit(kit({ autoSku: false, sku: "COM ESPAÇO" })).sku)
+  // kit sem composição não é ativado (não há o que ativar) e o SKU vazio vira automático no corpo enviado
+  assert.equal(kitPayload(kit({ components: [] }), { activate: true }).activate, false)
+  assert.equal(kitPayload(kit({ autoSku: false, sku: "" })).auto_sku, true)
 })
 
 test("payload: IDs reais, unidade em maiúsculas, perda numérica e SKU automático vazio", () => {

@@ -11,26 +11,32 @@ test("perfil de especificações segue a categoria", () => {
   assert.equal(specProfileFor("Serviço de pintura").id, "geral")
   assert.ok(!specProfileFor("Outros").fields.some((field) => field.key === "axle_count"))
 })
-test("validação do cadastro", () => {
+test("validação do cadastro: só o nome é obrigatório; preço, SKU e NCM são opcionais", () => {
   assert.deepEqual(validateProduct(valid()), {})
-  assert.ok(validateProduct(valid({ name: "ab" })).name)
-  assert.ok(validateProduct(valid({ salePrice: "" })).salePrice) // disponível para venda exige preço
+  assert.ok(validateProduct(valid({ name: "" })).name)
+  assert.deepEqual(validateProduct(valid({ name: "P", salePrice: "" })), {})                 // sem preço: salva (só não fica disponível para venda)
   assert.deepEqual(validateProduct(valid({ salePrice: "", allowsSale: false })), {})
-  assert.ok(validateProduct(valid({ autoSku: false, sku: "PRD 1" })).sku)
+  assert.deepEqual(validateProduct(valid({ autoSku: false, sku: "PRD 1" })), {})
   assert.ok(validateProduct(valid({ leadTimeDays: "2,5" })).leadTimeDays)
   assert.ok(validateProduct(valid({ specs: { axle_count: "1,5" } }))["spec:axle_count"])
-  assert.ok(validateProduct(valid({ ncm: "8716" })).ncm)
-  assert.ok(validateProduct(valid({ ncm: "87163900", ncmConfirmed: false })).ncm)
-  assert.deepEqual(validateProduct(valid({ ncm: "8716.39.00", ncmConfirmed: true })), {})
+  assert.deepEqual(validateProduct(valid({ ncm: "8716" })), {})                               // NCM incompleto é ignorado, não bloqueia
+  assert.deepEqual(validateProduct(valid({ ncm: "87163900", ncmConfirmed: false })), {})
+  assert.equal(productPayload(valid({ ncm: "8716" })).ncm, "")
+  assert.equal(productPayload(valid({ ncm: "8716.39.00", ncmConfirmed: false })).ncm, "87163900")
+  assert.equal(productPayload(valid({ salePrice: "", allowsSale: true })).allows_sale, false)
 })
-test("validação da estrutura: kit obrigatório, quantidade e duplicidade", () => {
-  assert.ok(validateProduct(valid(), { requireStructure: true }).kits)
+
+test("estrutura opcional: sem kit não envia estrutura; kit repetido conta uma vez e quantidade vazia vira 1", () => {
+  assert.deepEqual(validateProduct(valid(), { requireStructure: true }), {})
+  assert.equal("structure" in productPayload(valid(), { withStructure: true }), false)
   const zero = withKit(valid(), "0")
-  assert.ok(validateProduct(zero, { requireStructure: true })[`k:${zero.structure.kits[0].key}`])
+  assert.deepEqual(validateProduct(zero, { requireStructure: true }), {})
+  assert.equal((productPayload(zero, { withStructure: true }).structure as any).kits[0].quantity, 1)
   const dup = withKit(valid()); dup.structure.kits = [...dup.structure.kits, { ...dup.structure.kits[0], key: "outra" }]
-  assert.ok(validateProduct(dup, { requireStructure: true })["k:outra"])
-  assert.deepEqual(validateProduct(withKit(valid()), { requireStructure: true }), {})
+  assert.deepEqual(validateProduct(dup, { requireStructure: true }), {})
+  assert.equal((productPayload(dup, { withStructure: true }).structure as any).kits.length, 1)
 })
+
 test("custo da estrutura e margem (preço manual, sem forçar pelo custo)", () => {
   let form = withKit(withKit(valid(), "2", 50), "1", 30)
   form = { ...form, structure: { ...form.structure, laborCost: "20", overheadCost: "5", otherCost: "" } }

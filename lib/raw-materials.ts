@@ -56,16 +56,8 @@ export type FieldErrors = Partial<Record<string, string>>
 /** Valida o formulário. A mesma função roda na tela (feedback) e na API (garantia), então as regras nunca divergem. */
 export function validateRawMaterial(form: RawMaterialForm, options: { editing?: boolean; hasHistory?: boolean; originalSku?: string } = {}): FieldErrors {
   const errors: FieldErrors = {}
-  if (form.name.trim().length < 3) errors.name = "Informe o nome da matéria-prima (mínimo 3 letras)."
-  if (!form.unit.trim()) errors.unit = "Escolha a unidade de medida."
-  if (!form.autoSku || options.editing) {
-    const sku = form.sku.trim()
-    if (!sku) errors.sku = "Informe o SKU ou use o gerador automático."
-    else if (!SKU_PATTERN.test(sku)) errors.sku = "SKU inválido: use letras, números, ponto, hífen, barra ou sublinhado, até 40 caracteres, sem espaços."
-  }
-  if (options.editing && options.hasHistory && form.sku.trim() !== (options.originalSku || "") && !form.skuChangeReason.trim()) {
-    errors.skuChangeReason = "Este item já tem movimentações ou vínculos: informe o motivo da troca de SKU."
-  }
+  // cadastro sem travas: só o nome identifica o item. Unidade vazia vira UN, SKU vazio vira automático, NCM/fiscal/venda/fornecedor são opcionais
+  if (!form.name.trim()) errors.name = "Informe o nome da matéria-prima."
   const numeric: Array<[keyof RawMaterialForm, string]> = [
     ["length", "Comprimento"], ["width", "Largura"], ["height", "Altura"], ["thickness", "Espessura"], ["diameter", "Diâmetro"], ["netWeight", "Peso líquido"], ["grossWeight", "Peso bruto"],
     ["costPrice", "Custo de aquisição"], ["minimumStock", "Estoque mínimo"], ["maximumStock", "Estoque máximo"], ["reorderPoint", "Ponto de reposição"], ["minPurchaseQty", "Compra mínima"],
@@ -76,31 +68,11 @@ export function validateRawMaterial(form: RawMaterialForm, options: { editing?: 
   }
   const lead = parseNumber(form.leadTimeDays)
   if (lead !== null && (Number.isNaN(lead) || lead < 0 || !Number.isInteger(lead))) errors.leadTimeDays = "Prazo de reposição deve ser um número inteiro de dias."
-  const min = parseNumber(form.minimumStock) ?? 0
-  const max = parseNumber(form.maximumStock) ?? 0
-  const reorder = parseNumber(form.reorderPoint) ?? 0
-  if (!errors.maximumStock && max > 0 && min > max) errors.maximumStock = "O estoque máximo não pode ser menor que o mínimo."
-  if (!errors.reorderPoint && max > 0 && reorder > max) errors.reorderPoint = "O ponto de reposição não pode passar do estoque máximo."
-  if (form.ncm.trim() && digitsOnly(form.ncm).length !== 8) errors.ncm = "O NCM tem 8 dígitos (ex.: 7216.21.00)."
-  if (form.ncm.trim() && !form.ncmConfirmed && !options.editing) errors.ncm = "Confirme o NCM sugerido (ou informe manualmente e marque como conferido)."
-  if (form.allowsSale) {
-    const price = parseNumber(form.salePrice)
-    if (price === null || Number.isNaN(price) || price <= 0) errors.salePrice = "Matéria-prima disponível para venda exige preço de venda maior que zero."
-    if (digitsOnly(form.ncm).length !== 8) errors.ncm = "Matéria-prima disponível para venda exige NCM de 8 dígitos."
-  }
-  const primaries = form.suppliers.filter((link) => link.isPrimary).length
-  if (primaries > 1) errors.suppliers = "Escolha apenas um fornecedor principal."
-  const ids = form.suppliers.map((link) => link.supplierId).filter(Boolean)
-  if (new Set(ids).size !== ids.length) errors.suppliers = "O mesmo fornecedor foi adicionado mais de uma vez."
-  if (form.suppliers.some((link) => !link.supplierId)) errors.suppliers = "Escolha o fornecedor em todas as linhas ou remova a linha vazia."
   for (const link of form.suppliers) {
     for (const [key, label] of [["lastCost", "custo"], ["leadTimeDays", "prazo"], ["minPurchaseQty", "compra mínima"]] as const) {
       const value = parseNumber(link[key])
       if (value !== null && (Number.isNaN(value) || value < 0)) errors.suppliers = `Fornecedor: ${label} deve ser um número maior ou igual a zero.`
     }
-  }
-  for (const attribute of form.attributes) {
-    if (attribute.value.trim() && !attribute.key.trim()) errors.attributes = "Informe o nome da característica técnica."
   }
   return errors
 }
@@ -114,20 +86,20 @@ const numOrZero = (value: string) => numOrNull(value) ?? 0
 /** Corpo enviado à API (e, no servidor, convertido na linha de `materials`). */
 export function rawMaterialPayload(form: RawMaterialForm) {
   return {
-    name: form.name.trim(), description: form.description.trim(), sku: form.autoSku ? "" : form.sku.trim(), autoSku: form.autoSku,
-    category: form.category.trim(), subcategory: form.subcategory.trim(), materialKind: form.materialKind, status: form.status, unit: form.unit.trim().toUpperCase(),
+    name: form.name.trim(), description: form.description.trim(), sku: form.autoSku ? "" : form.sku.trim(), autoSku: form.autoSku || !form.sku.trim(),
+    category: form.category.trim(), subcategory: form.subcategory.trim(), materialKind: form.materialKind, status: form.status, unit: form.unit.trim().toUpperCase() || "UN",
     length: numOrZero(form.length), width: numOrZero(form.width), height: numOrZero(form.height), thickness: numOrNull(form.thickness), diameter: numOrNull(form.diameter),
     netWeight: numOrZero(form.netWeight), grossWeight: numOrZero(form.grossWeight),
     attributes: Object.fromEntries(form.attributes.filter((item) => item.key.trim()).map((item) => [item.key.trim(), item.value.trim()])),
-    suppliers: form.suppliers.filter((link) => link.supplierId).map((link) => ({
-      supplier_id: link.supplierId, supplier_code: link.supplierCode.trim(), is_primary: link.isPrimary, last_cost: numOrNull(link.lastCost),
+    suppliers: form.suppliers.filter((link, index, all) => link.supplierId && all.findIndex((other) => other.supplierId === link.supplierId) === index).map((link, index, list) => ({
+      supplier_id: link.supplierId, supplier_code: link.supplierCode.trim(), is_primary: link.isPrimary && list.findIndex((other) => other.isPrimary) === index, last_cost: numOrNull(link.lastCost),
       lead_time_days: numOrNull(link.leadTimeDays), min_purchase_qty: numOrNull(link.minPurchaseQty), notes: link.notes.trim(),
     })),
     costPrice: numOrZero(form.costPrice), minimumStock: numOrZero(form.minimumStock), maximumStock: numOrZero(form.maximumStock), reorderPoint: numOrZero(form.reorderPoint),
     warehouseId: form.warehouseId, leadTimeDays: numOrNull(form.leadTimeDays), minPurchaseQty: numOrNull(form.minPurchaseQty),
     controlsLot: form.controlsLot, controlsSerial: form.controlsSerial, controlsExpiry: form.controlsExpiry,
-    ncm: digitsOnly(form.ncm), ncmDescription: form.ncmDescription, ncmSource: form.ncmSource, ncmValidFrom: form.ncmValidFrom, ncmConfirmed: form.ncmConfirmed,
-    allowsSale: form.allowsSale, salePrice: form.allowsSale ? numOrZero(form.salePrice) : 0,
+    ncm: digitsOnly(form.ncm).length === 8 ? digitsOnly(form.ncm) : "", ncmDescription: form.ncmDescription, ncmSource: form.ncmSource, ncmValidFrom: form.ncmValidFrom, ncmConfirmed: form.ncmConfirmed,
+    allowsSale: form.allowsSale && numOrZero(form.salePrice) > 0, salePrice: form.allowsSale ? numOrZero(form.salePrice) : 0,
     photoUrl: form.photoUrl, technicalSheetUrl: form.technicalSheetUrl, notes: form.notes.trim(), skuChangeReason: form.skuChangeReason.trim(),
   }
 }

@@ -70,11 +70,10 @@ export type ProductErrors = Partial<Record<string, string>>
 
 export function validateProduct(form: ProductForm, options: { requireStructure?: boolean } = {}): ProductErrors {
   const errors: ProductErrors = {}
-  if (form.name.trim().length < 3) errors.name = "Informe o nome comercial (mínimo 3 letras)."
-  if (!form.autoSku && !/^[A-Za-z0-9][A-Za-z0-9._/-]{0,39}$/.test(form.sku.trim())) errors.sku = "SKU inválido: use letras, números, ponto, hífen ou barra, sem espaços (até 40 caracteres)."
+  // cadastro sem travas: só o nome identifica o produto; SKU vazio vira automático; NCM, preço, kits e estrutura são opcionais
+  if (!form.name.trim()) errors.name = "Informe o nome comercial."
   const price = parseNumber(form.salePrice)
   if (price !== null && (Number.isNaN(price) || price < 0)) errors.salePrice = "Preço inválido."
-  else if (form.allowsSale && (price === null || price <= 0)) errors.salePrice = "Produto disponível para venda exige preço maior que zero."
   for (const [field, label] of [["leadTimeDays", "Prazo"], ["warrantyMonths", "Garantia"]] as const) {
     const value = parseNumber(form[field])
     if (value !== null && (Number.isNaN(value) || value < 0 || !Number.isInteger(value))) errors[field] = `${label}: informe um número inteiro (0 ou mais).`
@@ -85,18 +84,7 @@ export function validateProduct(form: ProductForm, options: { requireStructure?:
     const number = parseNumber(value)
     if (number === null || Number.isNaN(number) || number < 0 || (field.kind === "integer" && !Number.isInteger(number))) errors[`spec:${key}`] = `${field.label}: informe um número válido.`
   }
-  const digits = form.ncm.replace(/\D/g, "")
-  if (form.ncm.trim() && digits.length !== 8) errors.ncm = "O NCM deve ter 8 dígitos."
-  else if (digits && !form.ncmConfirmed) errors.ncm = "Confirme o NCM antes de salvar."
   if (options.requireStructure) {
-    const seen = new Set<string>()
-    if (form.structure.kits.length === 0) errors.kits = "Vincule ao menos um kit à estrutura."
-    for (const link of form.structure.kits) {
-      const quantity = parseNumber(link.quantity)
-      if (seen.has(link.kitId)) errors[`k:${link.key}`] = "Este kit já foi adicionado."
-      else if (quantity === null || Number.isNaN(quantity) || quantity <= 0) errors[`k:${link.key}`] = "Informe a quantidade do kit por unidade (maior que zero)."
-      seen.add(link.kitId)
-    }
     for (const [key, label] of [["laborCost", "Mão de obra"], ["overheadCost", "Custos indiretos"], ["otherCost", "Outros custos"]] as const) {
       const value = parseNumber(form.structure[key])
       if (value !== null && (Number.isNaN(value) || value < 0)) errors[key] = `${label}: valor inválido.`
@@ -115,13 +103,13 @@ export function productPayload(form: ProductForm, options: { productId?: string;
   specs.engineering_notes = form.engineeringNotes.trim()
   const structure = form.structure
   return {
-    product_id: options.productId || null, name: form.name.trim(), sku: form.autoSku ? "" : form.sku.trim(), auto_sku: form.autoSku, internal_ref: form.internalRef, model: form.model, category: form.category, product_line: form.productLine,
+    product_id: options.productId || null, name: form.name.trim(), sku: form.autoSku ? "" : form.sku.trim(), auto_sku: form.autoSku || !form.sku.trim(), internal_ref: form.internalRef, model: form.model, category: form.category, product_line: form.productLine,
     description: form.description, status: form.status, photo_url: form.photoUrl, technical_sheet_url: form.technicalSheetUrl, documents: form.documents.filter((document) => document.url.trim()),
     specs, sale_price: parseNumber(form.salePrice) ?? 0, unit: form.unit || "UN", lead_time_days: parseNumber(form.leadTimeDays), warranty_months: parseNumber(form.warrantyMonths) ?? 0,
-    available_for_quote: form.availableForQuote, allows_sale: form.allowsSale, make_to_order: form.makeToOrder,
-    ncm: form.ncm.replace(/\D/g, ""), ncm_confirmed: form.ncmConfirmed, ncm_description: form.ncmDescription, ncm_source: form.ncmSource, user: options.user || undefined,
-    ...(options.withStructure ? { structure: {
-      kits: structure.kits.map((link) => ({ kit_id: link.kitId, quantity: parseNumber(link.quantity), pin_version: link.pinVersion })),
+    available_for_quote: form.availableForQuote, allows_sale: form.allowsSale && (parseNumber(form.salePrice) ?? 0) > 0, make_to_order: form.makeToOrder,
+    ncm: form.ncm.replace(/\D/g, "").length === 8 ? form.ncm.replace(/\D/g, "") : "", ncm_confirmed: true, ncm_description: form.ncmDescription, ncm_source: form.ncmSource, user: options.user || undefined,
+    ...(options.withStructure && structure.kits.some((link) => link.kitId) ? { structure: {
+      kits: structure.kits.filter((link, index, all) => link.kitId && all.findIndex((other) => other.kitId === link.kitId) === index).map((link) => ({ kit_id: link.kitId, quantity: (parseNumber(link.quantity) ?? 0) > 0 ? parseNumber(link.quantity) : 1, pin_version: link.pinVersion })),
       labor_cost: money(structure.laborCost), labor_minutes: parseNumber(structure.laborMinutes) ?? 0, overhead_cost: money(structure.overheadCost), other_cost: money(structure.otherCost),
       estimated_days: parseNumber(structure.estimatedDays) ?? 0, notes: structure.notes.trim(), change_reason: structure.changeReason.trim(), version_id: structure.versionId || undefined, activate: structure.activate,
     } } : {}),
