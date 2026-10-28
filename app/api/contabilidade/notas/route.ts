@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { stockContext } from "@/lib/stock-api"
 import { analyzeInvoices } from "@/lib/accounting-analysis"
 import { ACCOUNTING_MIGRATION_HINT, importAccountingXml } from "@/lib/accounting-server"
+import { fetchAllPages, forgetCache, memoize } from "@/lib/paged-fetch"
+import { getSelectedSystemCompanyId } from "@/lib/supabase/server"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -36,15 +38,13 @@ export async function GET(request: Request) {
       if (isDay(params.get("ate"))) next = next.lte("issued_at", `${params.get("ate")}T23:59:59-03:00`)
       return next
     }
+    const cacheKey = `notas|${await getSelectedSystemCompanyId()}|${params.get("analise") ? "a" : "l"}|${operation || ""}|${term}|${params.get("de") || ""}|${params.get("ate") || ""}`
     if (params.get("analise")) {
-      // indicadores calculados no servidor, em páginas, para não trazer todos os itens ao navegador
-      const rows: any[] = []
-      for (let from = 0; ; from += 200) {
-        const page = await filtered(context.admin.from("accounting_invoices").select("operation,number,issued_at,issuer_name,issuer_document,issuer_state,total_invoice,total_products,total_icms,total_icms_st,total_ipi,total_pis,total_cofins,total_iss,total_freight,total_discount,total_taxes,data").order("issued_at", { ascending: false }).order("id")).range(from, from + 199)
-        if (page.error) throw page.error
-        rows.push(...(page.data || []))
-        if ((page.data || []).length < 200) break
-      }
+      // indicadores calculados no servidor; páginas de 1.000 lidas em paralelo, só com as partes da nota que a análise usa, e guardadas por 45 s
+      const rows = await memoize(cacheKey, 45_000, async () => {
+        const read = await fetchAllPages<any>((from, to) => filtered(context.admin.from("accounting_invoices").select("operation,number,issued_at,issuer_name,issuer_document,issuer_state,total_invoice,total_products,total_icms,total_icms_st,total_ipi,total_pis,total_cofins,total_iss,total_freight,total_discount,total_taxes,items:data->items,issuer:data->issuer,totals:data->totals").order("issued_at", { ascending: false }).order("id")).range(from, to))
+        return read.map(({ items, issuer, totals, ...row }: any) => ({ ...row, data: { items: items || [], issuer: issuer || {}, totals: totals || {} } })) as any[]
+      })
       const analysis = analyzeInvoices(rows)
       if (params.get("itens")) {
         const items = rows.flatMap((row) => (row.data?.items || []).map((item: any) => ({ operation: row.operation, number: row.number, issued_at: row.issued_at, issuer_name: row.issuer_name, issuer_document: row.issuer_document, item })))
@@ -52,13 +52,7 @@ export async function GET(request: Request) {
       }
       return NextResponse.json({ analysis })
     }
-    const invoices: any[] = []
-    for (let from = 0; from < 5000; from += 1000) {
-      const page = await filtered(context.admin.from("accounting_invoices").select("id,operation,kind,access_key,number,series,issued_at,nature,issuer_document,issuer_name,recipient_document,recipient_name,total_products,total_invoice,total_icms_base,total_icms,total_icms_st,total_ipi,total_pis,total_cofins,total_iss,total_freight,total_discount,total_taxes,file_name,created_at").order("issued_at", { ascending: false, nullsFirst: false }).order("id")).range(from, from + 999)
-      if (page.error) throw page.error
-      invoices.push(...(page.data || []))
-      if ((page.data || []).length < 1000) break
-    }
+    const invoices = await memoize(cacheKey, 45_000, async () => (await fetchAllPages<any>((from, to) => filtered(context.admin.from("accounting_invoices").select("id,operation,kind,access_key,number,series,issued_at,nature,issuer_document,issuer_name,recipient_document,recipient_name,total_products,total_invoice,total_icms_base,total_icms,total_icms_st,total_ipi,total_pis,total_cofins,total_iss,total_freight,total_discount,total_taxes,file_name,created_at").order("issued_at", { ascending: false, nullsFirst: false }).order("id")).range(from, to), 1000, 5)).slice(0, 5000))
     return NextResponse.json({ invoices })
   } catch (error) { return fail(error, "Não foi possível carregar as notas.") }
 }
@@ -72,6 +66,7 @@ export async function POST(request: Request) {
     const xml = String(body.xml || "")
     if (!xml.trim()) throw new Error("Arquivo vazio.")
     const result = await importAccountingXml(context.admin, { xml, fileName: String(body.fileName || "nota.xml").slice(0, 200), operation: body.operation === "Saída" ? "Saída" : "Entrada", responsible: context.responsible })
+    forgetCache("notas|"); forgetCache("chassis|")
     return NextResponse.json(result)
   } catch (error) { return fail(error, "Não foi possível importar a nota.") }
 }
@@ -84,6 +79,7 @@ export async function DELETE(request: Request) {
     const id = new URL(request.url).searchParams.get("id") || ""
     const { error } = await context.admin.from("accounting_invoices").delete().eq("id", id)
     if (error) throw error
+    forgetCache("notas|"); forgetCache("chassis|")
     return NextResponse.json({ ok: true })
   } catch (error) { return fail(error, "Não foi possível excluir a nota.") }
 }

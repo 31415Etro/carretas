@@ -26,7 +26,7 @@ export function describeTrailer(description: string) {
   const text = String(description || "")
   const model = text.match(/ND\s+CARRETAS\s+(.+?)\s+ANO\b/i)?.[1] || ""
   return {
-    model: model.replace(/\s+/g, " ").trim().toUpperCase(),
+    model: model.replace(/\s+/g, " ").replace(/[^A-Za-z0-9]+$/, "").trim().toUpperCase(),
     color: (text.match(/\bCOR\s+([A-ZÀ-Úa-zà-ú]+)/i)?.[1] || "").toUpperCase(),
     year: text.match(/\bANO\s+(\d{4})/i)?.[1] || "",
     productCode: text.match(/COD\s*\(\s*(\d+)\s*\)/i)?.[1] || "",
@@ -92,8 +92,61 @@ export function chassisChart(rows: ChassisRow[]) {
   }
   const sorted = (map: Map<string, Count>, limit = 12) => [...map.values()].map((entry) => ({ ...entry, total: Math.round(entry.total * 100) / 100 })).sort((a, b) => b.chassis - a.chassis || b.total - a.total).slice(0, limit)
   return {
-    totalChassis: sales.length, intercompany: rows.length - sales.length,
+    totalChassis: sales.length, distinctChassis: new Set(sales.map((row) => row.chassis)).size, intercompany: rows.length - sales.length,
     months: [...months.values()].sort((a, b) => a.label.localeCompare(b.label)).map((entry) => ({ ...entry, total: Math.round(entry.total * 100) / 100 })),
     models: sorted(models), clients: sorted(clients, 10), companies: sorted(companies),
   }
+}
+
+const money = (value: number) => Math.round(value * 100) / 100
+const dayOf = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }) : "")
+
+/** Quantidade emitida e valor por modelo: chassis distintos, notas, valor total, médio, menor e maior. */
+export function chassisByModel(rows: ChassisRow[]) {
+  const groups = new Map<string, ChassisRow[]>()
+  for (const row of rows) (groups.get(row.model || "Sem modelo") || groups.set(row.model || "Sem modelo", []).get(row.model || "Sem modelo")!).push(row)
+  return [...groups.entries()].map(([model, items]) => {
+    const values = items.map((item) => item.itemTotal)
+    const total = values.reduce((sum, value) => sum + value, 0)
+    const dates = items.map((item) => dayOf(item.issuedAt)).filter(Boolean).sort()
+    return {
+      model, chassis: new Set(items.map((item) => item.chassis)).size, notes: new Set(items.map((item) => item.invoiceId)).size, items: items.length,
+      total: money(total), average: money(total / items.length), min: money(Math.min(...values)), max: money(Math.max(...values)), first: dates[0] || "", last: dates[dates.length - 1] || "",
+    }
+  }).sort((a, b) => b.chassis - a.chassis || b.total - a.total)
+}
+
+/** Quantidade (e valor) por modelo em cada mês: matriz para conferir a produção/emissão mês a mês. */
+export function chassisByModelMonth(rows: ChassisRow[]) {
+  const months = [...new Set(rows.map((row) => month(row.issuedAt)))].sort()
+  const models = [...new Set(rows.map((row) => row.model || "Sem modelo"))]
+  const cell = new Map<string, { chassis: number; total: number }>()
+  for (const row of rows) {
+    const key = `${row.model || "Sem modelo"}|${month(row.issuedAt)}`
+    const entry = cell.get(key) || { chassis: 0, total: 0 }
+    entry.chassis += 1; entry.total += row.itemTotal
+    cell.set(key, entry)
+  }
+  return {
+    months,
+    rows: models.map((model) => {
+      const byMonth = months.map((m) => { const entry = cell.get(`${model}|${m}`); return { month: m, chassis: entry?.chassis || 0, total: money(entry?.total || 0) } })
+      return { model, byMonth, chassis: byMonth.reduce((sum, c) => sum + c.chassis, 0), total: money(byMonth.reduce((sum, c) => sum + c.total, 0)) }
+    }).sort((a, b) => b.chassis - a.chassis),
+  }
+}
+
+/** Uma linha por chassi: quantas notas o citam, valor somado, última nota, último cliente. */
+export function chassisPerChassis(rows: ChassisRow[]) {
+  const groups = new Map<string, ChassisRow[]>()
+  for (const row of rows) (groups.get(row.chassis) || groups.set(row.chassis, []).get(row.chassis)!).push(row)
+  return [...groups.entries()].map(([chassis, items]) => {
+    const ordered = [...items].sort((a, b) => String(a.issuedAt || "").localeCompare(String(b.issuedAt || "")))
+    const last = ordered[ordered.length - 1]
+    return {
+      chassis, model: last.model, color: last.color, year: last.year, notes: new Set(items.map((item) => item.invoiceId)).size, total: money(items.reduce((sum, item) => sum + item.itemTotal, 0)),
+      firstIssuedAt: ordered[0].issuedAt, lastIssuedAt: last.issuedAt, lastNumber: last.number, lastClient: last.clientName, lastCompany: last.companyName, lastValue: money(last.itemTotal),
+      numbers: ordered.map((item) => item.number).join(", "),
+    }
+  }).sort((a, b) => String(b.lastIssuedAt || "").localeCompare(String(a.lastIssuedAt || "")) || a.chassis.localeCompare(b.chassis))
 }

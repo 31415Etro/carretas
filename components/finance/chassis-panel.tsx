@@ -7,11 +7,21 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { DataTable, SearchableSelectField, SectionCard } from "@/components/operations/shared"
-import type { ChassisRow, chassisChart } from "@/lib/chassis"
+import type { ChassisRow, chassisByModel, chassisByModelMonth, chassisChart, chassisPerChassis } from "@/lib/chassis"
 
 type Chart = ReturnType<typeof chassisChart>
 type Payload = { rows: ChassisRow[]; found: number; notes: number; chart: Chart; client: { name: string; document: string } | null }
 type ClientOption = { id: string; name: string; document: string }
+type View = "consulta" | "modelo" | "mes" | "chassi"
+type ModelPayload = { found: number; notes: number; byModel: ReturnType<typeof chassisByModel>; byModelMonth: ReturnType<typeof chassisByModelMonth> }
+type ChassiPayload = { found: number; notes: number; perChassis: ReturnType<typeof chassisPerChassis> }
+const VIEWS: Array<[View, string]> = [["consulta", "Consulta e gráfico"], ["modelo", "Quantidade e valor por modelo"], ["mes", "Modelo por mês"], ["chassi", "Valor por chassi"]]
+const csvNumber = (value: number) => String(Number(value || 0)).replace(".", ",")
+function saveCsv(name: string, header: string[], lines: Array<Array<string | number>>) {
+  const csv = [header, ...lines].map((line) => line.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(";")).join("\n")
+  const url = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" }))
+  const anchor = document.createElement("a"); anchor.href = url; anchor.download = name; anchor.click(); URL.revokeObjectURL(url)
+}
 
 const brl = (value: unknown) => Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
 const day = (value?: string | null) => (value ? new Date(value).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "-")
@@ -59,6 +69,9 @@ export function ChassisPanel() {
   const [intercompany, setIntercompany] = useState(false)
   const [clients, setClients] = useState<ClientOption[]>([])
   const [data, setData] = useState<Payload | null>(null)
+  const [view, setView] = useState<View>("consulta")
+  const [modelData, setModelData] = useState<ModelPayload | null>(null)
+  const [chassiData, setChassiData] = useState<ChassiPayload | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
 
@@ -73,9 +86,12 @@ export function ChassisPanel() {
       if (de) params.set("de", de)
       if (ate) params.set("ate", ate)
       if (intercompany) params.set("interna", "1")
-      setData(await send<Payload>(`/api/contabilidade/chassis?${params}`)); setError("")
+      if (view === "modelo" || view === "mes") { params.set("visao", "modelo"); setModelData(await send<ModelPayload>(`/api/contabilidade/chassis?${params}`)) }
+      else if (view === "chassi") { params.set("visao", "chassi"); setChassiData(await send<ChassiPayload>(`/api/contabilidade/chassis?${params}`)) }
+      else setData(await send<Payload>(`/api/contabilidade/chassis?${params}`))
+      setError("")
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível consultar.") } finally { setLoading(false) }
-  }, [q, clientId, de, ate, intercompany])
+  }, [q, clientId, de, ate, intercompany, view])
   useEffect(() => { const timer = setTimeout(() => void load(), 350); return () => clearTimeout(timer) }, [load])
 
   const options = useMemo(() => [{ value: "", label: "Todos os clientes" }, ...clients.map((client) => ({ value: client.id, label: `${client.name}${client.document ? ` (${client.document})` : ""}` }))], [clients])
@@ -89,6 +105,23 @@ export function ChassisPanel() {
     const csv = [header, ...lines].map((line) => line.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(";")).join("\n")
     const url = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }))
     const anchor = document.createElement("a"); anchor.href = url; anchor.download = "chassis-notas-de-venda.csv"; anchor.click(); URL.revokeObjectURL(url)
+  }
+
+  function exportModel() {
+    if (!modelData) return
+    saveCsv("chassis-por-modelo.csv", ["Modelo", "Chassis distintos", "Emitidos nas notas", "Notas", "Valor total", "Valor médio", "Menor valor", "Maior valor", "Primeira emissão", "Última emissão"],
+      modelData.byModel.map((row) => [row.model, row.chassis, row.items, row.notes, csvNumber(row.total), csvNumber(row.average), csvNumber(row.min), csvNumber(row.max), row.first, row.last]))
+  }
+  function exportMonth() {
+    if (!modelData) return
+    const months = modelData.byModelMonth.months
+    saveCsv("chassis-modelo-por-mes.csv", ["Modelo", ...months.flatMap((month) => [`${monthLabel(month)} qtd`, `${monthLabel(month)} valor`]), "Total qtd", "Total valor"],
+      modelData.byModelMonth.rows.map((row) => [row.model, ...row.byMonth.flatMap((cell) => [cell.chassis, csvNumber(cell.total)]), row.chassis, csvNumber(row.total)]))
+  }
+  function exportChassi() {
+    if (!chassiData) return
+    saveCsv("chassis-valor-por-chassi.csv", ["Chassi", "Modelo", "Cor", "Ano", "Notas", "Valor somado", "Última nota", "Última emissão", "Último cliente", "Empresa emitente", "Valor na última nota", "Notas que citam o chassi"],
+      chassiData.perChassis.map((row) => [row.chassis, row.model, row.color, row.year, row.notes, csvNumber(row.total), row.lastNumber, day(row.lastIssuedAt), row.lastClient, row.lastCompany, csvNumber(row.lastValue), row.numbers]))
   }
 
   return (
@@ -105,10 +138,83 @@ export function ChassisPanel() {
         {error ? <p className="mt-3 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{error}</p> : null}
       </SectionCard>
 
-      {chart ? (
+      <div className="flex flex-wrap gap-1 rounded-md border p-0.5 text-sm">
+        {VIEWS.map(([value, label]) => (
+          <button key={value} type="button" onClick={() => setView(value)} className={`rounded px-3 py-1.5 ${view === value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}>{label}</button>
+        ))}
+      </div>
+
+      {view === "modelo" ? (
+        <SectionCard title="Quantidade emitida e valor por modelo" description={modelData ? `${modelData.found.toLocaleString("pt-BR")} chassi(s) no filtro atual · valor = preço do chassi na nota` : "Carregando..."}>
+          <div className="mb-2"><Button type="button" variant="outline" size="sm" onClick={exportModel} disabled={!modelData?.byModel.length}><Download className="h-4 w-4" />Planilha por modelo</Button></div>
+          <DataTable headers={["Modelo", "Chassis distintos", "Emitidos nas notas", "Valor total", "Valor médio", "Menor", "Maior", "Primeira", "Última"]} empty={!modelData?.byModel.length && !loading}>
+            {(modelData?.byModel || []).map((row) => (
+              <TableRow key={row.model}>
+                <TableCell className="font-medium">{row.model}</TableCell>
+                <TableCell className="text-right">{row.chassis.toLocaleString("pt-BR")}</TableCell>
+                <TableCell className="text-right">{row.items.toLocaleString("pt-BR")}</TableCell>
+                <TableCell className="whitespace-nowrap text-right font-medium">{brl(row.total)}</TableCell>
+                <TableCell className="whitespace-nowrap text-right">{brl(row.average)}</TableCell>
+                <TableCell className="whitespace-nowrap text-right">{brl(row.min)}</TableCell>
+                <TableCell className="whitespace-nowrap text-right">{brl(row.max)}</TableCell>
+                <TableCell className="whitespace-nowrap">{row.first ? day(row.first) : "-"}</TableCell>
+                <TableCell className="whitespace-nowrap">{row.last ? day(row.last) : "-"}</TableCell>
+              </TableRow>
+            ))}
+            {modelData?.byModel.length ? (
+              <TableRow className="bg-muted/40 font-semibold">
+                <TableCell>Total</TableCell>
+                <TableCell className="text-right">{modelData.byModel.reduce((sum, row) => sum + row.chassis, 0).toLocaleString("pt-BR")}</TableCell>
+                <TableCell className="text-right">{modelData.byModel.reduce((sum, row) => sum + row.items, 0).toLocaleString("pt-BR")}</TableCell>
+                <TableCell className="whitespace-nowrap text-right">{brl(modelData.byModel.reduce((sum, row) => sum + row.total, 0))}</TableCell>
+                <TableCell colSpan={5} />
+              </TableRow>
+            ) : null}
+          </DataTable>
+        </SectionCard>
+      ) : null}
+
+      {view === "mes" ? (
+        <SectionCard title="Quantidade e valor por modelo, mês a mês" description={modelData ? `${modelData.found.toLocaleString("pt-BR")} chassi(s) no filtro atual` : "Carregando..."}>
+          <div className="mb-2"><Button type="button" variant="outline" size="sm" onClick={exportMonth} disabled={!modelData?.byModelMonth.rows.length}><Download className="h-4 w-4" />Planilha modelo por mês</Button></div>
+          <DataTable headers={["Modelo", ...(modelData?.byModelMonth.months || []).map(monthLabel), "Total", "Valor total"]} empty={!modelData?.byModelMonth.rows.length && !loading}>
+            {(modelData?.byModelMonth.rows || []).map((row) => (
+              <TableRow key={row.model}>
+                <TableCell className="whitespace-nowrap font-medium">{row.model}</TableCell>
+                {row.byMonth.map((cell) => <TableCell key={cell.month} className="whitespace-nowrap text-right">{cell.chassis ? <>{cell.chassis}<div className="text-[10px] text-muted-foreground">{brl(cell.total)}</div></> : <span className="text-muted-foreground">-</span>}</TableCell>)}
+                <TableCell className="text-right font-semibold">{row.chassis}</TableCell>
+                <TableCell className="whitespace-nowrap text-right font-semibold">{brl(row.total)}</TableCell>
+              </TableRow>
+            ))}
+          </DataTable>
+        </SectionCard>
+      ) : null}
+
+      {view === "chassi" ? (
+        <SectionCard title="Valor por chassi" description={chassiData ? `${chassiData.perChassis.length.toLocaleString("pt-BR")} chassi(s) · quando o mesmo chassi aparece em mais de uma nota, o valor é a soma e a coluna "Notas" mostra quantas` : "Carregando..."}>
+          <div className="mb-2"><Button type="button" variant="outline" size="sm" onClick={exportChassi} disabled={!chassiData?.perChassis.length}><Download className="h-4 w-4" />Planilha por chassi</Button></div>
+          <DataTable headers={["Chassi", "Modelo", "Cor/Ano", "Notas", "Valor somado", "Última nota", "Emissão", "Último cliente", "Empresa emitente"]} empty={!chassiData?.perChassis.length && !loading} stickyHeader viewportClassName="max-h-[65vh]">
+            {(chassiData?.perChassis || []).map((row) => (
+              <TableRow key={row.chassis}>
+                <TableCell className="whitespace-nowrap font-mono text-xs font-medium">{row.chassis}</TableCell>
+                <TableCell className="whitespace-nowrap">{row.model || "-"}</TableCell>
+                <TableCell className="whitespace-nowrap">{[row.color, row.year].filter(Boolean).join(" / ") || "-"}</TableCell>
+                <TableCell className={`text-right ${row.notes > 1 ? "font-semibold text-amber-700" : ""}`} title={row.notes > 1 ? `Notas: ${row.numbers}` : undefined}>{row.notes}</TableCell>
+                <TableCell className="whitespace-nowrap text-right font-medium">{brl(row.total)}</TableCell>
+                <TableCell className="whitespace-nowrap">{row.lastNumber}</TableCell>
+                <TableCell className="whitespace-nowrap">{day(row.lastIssuedAt)}</TableCell>
+                <TableCell className="max-w-[240px] truncate" title={row.lastClient}>{row.lastClient || "-"}</TableCell>
+                <TableCell className="whitespace-nowrap">{row.lastCompany}</TableCell>
+              </TableRow>
+            ))}
+          </DataTable>
+        </SectionCard>
+      ) : null}
+
+      {view === "consulta" && chart ? (
         <>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Card label="Chassis vendidos" value={chart.totalChassis.toLocaleString("pt-BR")} hint="venda ao cliente final, no período" />
+            <Card label="Chassis emitidos em notas" value={chart.totalChassis.toLocaleString("pt-BR")} hint={`${chart.distinctChassis.toLocaleString("pt-BR")} chassis distintos · venda ao cliente final`} />
             <Card label="Valor vendido (itens)" value={brl(chart.models.reduce((sum, model) => sum + model.total, 0))} hint="soma dos valores dos itens com chassi" />
             <Card label="Entre empresas ND" value={chart.intercompany.toLocaleString("pt-BR")} hint="transferências/vendas entre as empresas do grupo (fora do total)" />
             <Card label="Notas de venda lidas" value={(data?.notes || 0).toLocaleString("pt-BR")} hint="saídas da Contabilidade, todas as empresas" />
@@ -137,7 +243,7 @@ export function ChassisPanel() {
         </>
       ) : null}
 
-      <SectionCard title="Notas com chassi" description={data ? `${data.found.toLocaleString("pt-BR")} chassi(s) encontrado(s)${data.found > 500 ? " (mostrando os 500 mais recentes; refine a busca ou exporte)" : ""}${data.client ? ` · cliente: ${data.client.name}` : ""}` : "Carregando..."}>
+      {view === "consulta" ? <SectionCard title="Notas com chassi" description={data ? `${data.found.toLocaleString("pt-BR")} chassi(s) encontrado(s)${data.found > 500 ? " (mostrando os 500 mais recentes; refine a busca ou exporte)" : ""}${data.client ? ` · cliente: ${data.client.name}` : ""}` : "Carregando..."}>
         <div className="mb-2"><Button type="button" variant="outline" size="sm" onClick={exportCsv} disabled={!data?.rows.length}><Download className="h-4 w-4" />Planilha dos chassis</Button></div>
         <DataTable headers={["Chassi", "Modelo", "Cor/Ano", "Nota", "Emissão", "Cliente", "CPF/CNPJ", "Valor do item", "Valor da nota", "Empresa emitente"]} empty={!data?.rows.length && !loading} stickyHeader viewportClassName="max-h-[60vh]">
           {(data?.rows || []).map((row) => (
@@ -155,7 +261,7 @@ export function ChassisPanel() {
             </TableRow>
           ))}
         </DataTable>
-      </SectionCard>
+      </SectionCard> : null}
     </div>
   )
 }

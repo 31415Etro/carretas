@@ -17,6 +17,7 @@ test("chassi vem depois do código do produto; com ou sem espaços e em minúscu
 test("modelo, cor, ano e código do produto da descrição", () => {
   assert.deepEqual(describeTrailer(FZ), { model: "FZ 1E", color: "PRATA", year: "2026", productCode: "600043" })
   assert.equal(describeTrailer(JET).model, "JET 1E")
+  assert.equal(describeTrailer("MARCA MOD R/ND CARRETAS FC 1E, ANO 2026/MOD 2026 COR PRATA COD (600099) 980NDFC1ETD000001").model, "FC 1E")
 })
 
 const invoice = (id: string, number: string, client: string, document: string, issued: string, description = FZ) => ({
@@ -68,4 +69,24 @@ test("gráfico: chassis por mês, modelo, cliente e empresa; sem contar a venda 
   assert.deepEqual(chart.models.map((m) => [m.label, m.chassis]), [["FZ 1E", 2], ["JET 1E", 1]])
   assert.equal(chart.clients[0].label, "JOÃO")
   assert.equal(chart.clients[0].total, 18000)
+})
+
+test("análise: quantidade e valor por modelo, por modelo e mês, e por chassi", async () => {
+  const { chassisByModel, chassisByModelMonth, chassisPerChassis } = await import("./chassis.ts")
+  const rows = [
+    ...chassisFromInvoice(invoice("1", "100", "JOÃO", "12345678900", "2026-02-10T10:00:00-03:00"), company, group),
+    ...chassisFromInvoice(invoice("2", "101", "JOÃO", "12345678900", "2026-02-20T10:00:00-03:00", FZ.replace("000233", "000234")), company, group),
+    ...chassisFromInvoice(invoice("3", "102", "MARIA", "98765432100", "2026-03-05T10:00:00-03:00", JET), company, group),
+    ...chassisFromInvoice(invoice("4", "103", "PEDRO", "11122233344", "2026-03-09T10:00:00-03:00", FZ), company, group),   // o mesmo chassi 000233 vendido de novo
+  ]
+  const byModel = chassisByModel(rows)
+  assert.deepEqual(byModel.map((m) => [m.model, m.chassis, m.notes, m.items, m.total, m.average]), [["FZ 1E", 2, 3, 3, 27000, 9000], ["JET 1E", 1, 1, 1, 9000, 9000]])
+  assert.equal(byModel[0].first, "2026-02-10"); assert.equal(byModel[0].last, "2026-03-09")
+  const matrix = chassisByModelMonth(rows)
+  assert.deepEqual(matrix.months, ["2026-02", "2026-03"])
+  assert.deepEqual(matrix.rows[0].byMonth.map((c) => c.chassis), [2, 1])
+  const per = chassisPerChassis(rows)
+  const repeated = per.find((p) => p.chassis === "980NDFZ1ETD000233")!
+  assert.equal(repeated.notes, 2); assert.equal(repeated.total, 18000); assert.equal(repeated.lastClient, "PEDRO"); assert.equal(repeated.numbers, "100, 103")
+  assert.equal(per.length, 3)
 })
