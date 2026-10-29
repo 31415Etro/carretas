@@ -273,12 +273,24 @@ export async function applyReceiptOcr(admin: Admin, token: string, receiptId: st
   const { advance, receipts } = await getByToken(admin, token)
   if (!canUpload(advance.status, advance.end_date)) return { applied: false }
   const receipt = receipts.find((row) => row.id === receiptId)
-  if (!receipt || receipt.status === "Aprovado" || Number(receipt.amount) > 0 || String(receipt.establishment || "").trim() || !ocrText.trim()) return { applied: false }
+  if (!receipt || receipt.status === "Aprovado" || Number(receipt.amount) > 0 || !ocrText.trim()) return { applied: false }
   const parsed = parseReceiptText(ocrText)
   if (!(parsed.amount > 0) && !parsed.establishment) return { applied: false }
   const { error } = await admin.from("travel_advance_receipts").update({ amount: parsed.amount, establishment: parsed.establishment, category: parsed.category, occurred_at: parsed.occurredAt }).eq("id", receiptId)
   if (error) throw error
   return { applied: true, ...parsed }
+}
+
+/** Reserva: o celular não conseguiu ler a notinha; o servidor lê a foto já enviada e aplica o valor, o estabelecimento e a data. */
+export async function readReceiptOnServer(admin: Admin, token: string, receiptId: string) {
+  const { receipts } = await getByToken(admin, token)
+  const receipt = receipts.find((row) => row.id === receiptId)
+  if (!receipt?.photo_url) return { applied: false }
+  const response = await fetch(receipt.photo_url)
+  if (!response.ok) return { applied: false }
+  const { ocrReceiptBuffer } = await import("@/lib/ocr-server")
+  const text = await ocrReceiptBuffer(Buffer.from(await response.arrayBuffer()))
+  return applyReceiptOcr(admin, token, receiptId, text)
 }
 
 export async function deleteReceipt(admin: Admin, token: string, receiptId: string) {

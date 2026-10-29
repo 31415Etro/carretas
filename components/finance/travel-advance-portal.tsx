@@ -117,12 +117,12 @@ export function TravelAdvancePortal({ token }: { token: string }) {
         // reduz a foto (celular: 5 a 12 MB -> ~0,5 MB) e envia JÁ, sem esperar a leitura
         setStage(`Preparando a foto${label}...`)
         let photo: File = original
-        try { photo = await compressPhoto(original) } catch { if (original.size > 4 * 1024 * 1024) throw new Error("Não consegui preparar esta foto. Escolha outra em JPG ou reduza a resolução.") }
+        try { photo = await compressPhoto(original, { maxSide: 2400, quality: 0.82 }) } catch { if (original.size > 4 * 1024 * 1024) throw new Error("Não consegui preparar esta foto. Escolha outra em JPG ou reduza a resolução.") }
         setStage(`Enviando a foto${label}...`)
         const form = new FormData()
         form.set("file", photo)
         const uploaded = await send<{ receipt: { id: string } }>(`/api/viagem/portal/${token}/recibos`, { method: "POST", body: form })
-        sent.push({ id: uploaded.receipt.id, photo })
+        sent.push({ id: uploaded.receipt.id, photo: original }) // a leitura usa a foto ORIGINAL: a reduzida perde o texto pequeno do cupom
         await load()
       } catch (reason) {
         problems.push(`${original.name || "foto"}: ${reason instanceof Error ? reason.message : "erro ao enviar"}`)
@@ -138,7 +138,7 @@ export function TravelAdvancePortal({ token }: { token: string }) {
       for (const item of sent) {
         let applied = false
         try {
-          const text = await withTimeout(ocrReceiptImage(item.photo, () => undefined), 45000)
+          const text = await withTimeout(ocrReceiptImage(item.photo, () => undefined), 120000)
           if (text && text.trim()) {
             const result = await send<{ applied?: boolean }>(`/api/viagem/portal/${token}/recibos/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ocrText: text }) }, 30000)
             applied = Boolean(result.applied)
@@ -147,6 +147,9 @@ export function TravelAdvancePortal({ token }: { token: string }) {
         } catch {
           applied = false
         }
+        // reserva: o servidor lê a foto já enviada quando o celular não conseguiu
+        if (!applied) applied = await send<{ applied?: boolean }>(`/api/viagem/portal/${token}/recibos/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ serverOcr: true }) }, 60000).then((result) => Boolean(result.applied)).catch(() => false)
+        if (applied) await load()
         if (!applied) failed += 1
       }
     } finally {

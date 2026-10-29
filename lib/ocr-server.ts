@@ -3,6 +3,7 @@ import path from "node:path"
 import sharp from "sharp"
 import { createWorker, type Worker } from "tesseract.js"
 import { isReliableReading } from "@/lib/nfe-parser"
+import { pickReceiptText } from "@/lib/receipt-ocr"
 
 // OCR local (tesseract.js) com o idioma português em public/tessdata. Um único worker é reaproveitado entre as requisições
 // e as leituras são feitas uma por vez (o worker guarda parâmetros de leitura).
@@ -24,7 +25,7 @@ export async function warmOcr() {
   await getWorker()
 }
 
-async function recognize(image: Buffer, pageMode: "3" | "4" | "6") {
+async function recognize(image: Buffer, pageMode: "3" | "4" | "6" | "11") {
   const run = async () => {
     const worker = await getWorker()
     await worker.setParameters({ tessedit_pageseg_mode: pageMode as never })
@@ -62,4 +63,24 @@ export async function ocrInvoiceImage(image: Buffer) {
   if (good(quick)) return quick
   const full = await recognize(await prepare(image, 1), "3")
   return good(full) ? full : `${quick}\n${full}`
+}
+
+const RECEIPT_BUDGET_MS = 18_000
+
+/** Notinha (cupom/DANFE simplificado) lida no servidor, como reserva quando a leitura no celular não fechou: amplia, tons de cinza, contraste e duas segmentações. */
+export async function ocrReceiptBuffer(image: Buffer) {
+  const started = Date.now()
+  const base = () => sharp(image, { failOn: "none" }).rotate()
+  // duas preparações diferentes da mesma foto: o valor só é dado como certo quando fecha pela conta do cupom ou quando duas leituras concordam
+  const sharpened = await base().resize({ width: 2000, fit: "inside" }).grayscale().normalize().sharpen().png().toBuffer()
+  const soft = await base().resize({ width: 1600, fit: "inside" }).grayscale().normalize().gamma(1.2).median(1).png().toBuffer()
+  const texts: string[] = []
+  // a Vercel corta a função em 60 s: cada tentativa só começa se ainda couber no orçamento de tempo
+  for (const [buffer, mode] of [[sharpened, "6"], [soft, "6"], [sharpened, "4"], [soft, "11"]] as const) {
+    if (texts.length && Date.now() - started > RECEIPT_BUDGET_MS) break
+    texts.push(await recognize(buffer, mode))
+    const picked = pickReceiptText(texts)
+    if (picked.sure) return picked.text
+  }
+  return pickReceiptText(texts).text
 }

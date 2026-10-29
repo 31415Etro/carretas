@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
-import { advanceError, applyReceiptOcr, companyScopedByToken, deleteReceipt, editReceipt } from "@/lib/travel-advance-server"
+import { advanceError, applyReceiptOcr, companyScopedByToken, deleteReceipt, editReceipt, readReceiptOnServer } from "@/lib/travel-advance-server"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
+export const maxDuration = 60
 
 /** Corrige um campo lido errado pelo OCR, antes de finalizar. */
 export async function PATCH(request: Request, { params }: { params: Promise<{ token: string; reciboId: string }> }) {
@@ -11,6 +12,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ to
     const { token, reciboId } = await params
     const admin = await companyScopedByToken(createAdminClient, token)
     const body = await request.json()
+    if (body.serverOcr) return NextResponse.json({ ok: true, ...(await readReceiptOnServer(admin, token, reciboId)) })
     if (typeof body.ocrText === "string") return NextResponse.json({ ok: true, ...(await applyReceiptOcr(admin, token, reciboId, body.ocrText)) })
     await editReceipt(admin, token, reciboId, {
       amount: body.amount !== undefined ? Number(body.amount) : undefined,
