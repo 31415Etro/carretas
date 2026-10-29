@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { stockContext } from "@/lib/stock-api"
 import { ACCOUNTING_MIGRATION_HINT } from "@/lib/accounting-server"
 import { chassisByModel, chassisByModelMonth, chassisChart, chassisFromInvoice, chassisPerChassis, digits, filterChassis, isSaleNature, otherNoteFromInvoice, type ChassisRow, type OtherNote } from "@/lib/chassis"
-import { registrySummary, viewRegistry, kgToTons, type RegistryRow } from "@/lib/chassis-registry"
+import { FORT_COMPANY_ID, ND_COMPANY_ID, registrySummary, viewRegistry, kgToTons, type RegistryRow } from "@/lib/chassis-registry"
 import { fetchAllPages, memoize } from "@/lib/paged-fetch"
 import { createAdminClient } from "@/lib/supabase/server"
 
@@ -138,11 +138,22 @@ export async function GET(request: Request) {
     }
     if (view === "todos") {
       // descrição/tamanho do cadastro nos chassis das notas; PBT e capacidade só entram quando a nota não trouxe
-      const registry = new Map((await loadRegistry()).rows.map((row) => [row.vin, row]))
-      return NextResponse.json({ notes: loaded.notes, others: loaded.others, excluded: loaded.excluded, rows: loaded.rows.map(({ description, accessKey, nature, ...slim }) => {
+      const registryRows = (await loadRegistry()).rows
+      const registry = new Map(registryRows.map((row) => [row.vin, row]))
+      const withNote = new Set(loaded.rows.map((row) => row.chassis).filter(Boolean))
+      const companyNames = new Map(loaded.rows.map((row) => [row.companyId, row.companyName]))
+      companyNames.set(FORT_COMPANY_ID, companyNames.get(FORT_COMPANY_ID) || "Fort Com de Ferro e Aço")
+      companyNames.set(ND_COMPANY_ID, companyNames.get(ND_COMPANY_ID) || "ND Carretas")
+      // chassis do cadastro sem nota de venda também entram (a página é de chassis): datados pela primeira menção na conversa, sem valor
+      const withoutNote = registryRows.filter((row) => !withNote.has(row.vin) && (row.firstMention || row.lastMention)).map((row) => ({
+        chassis: row.vin, model: row.model, family: row.family, axles: row.axles, pbt: kgToTons(row.pbtKg), capacity: kgToTons(row.capacityKg), color: row.color, year: row.yearModel || row.yearManufacture, productCode: "",
+        invoiceId: `cadastro:${row.vin}`, number: "", series: "", issuedAt: row.firstMention || row.lastMention, clientName: "", clientDocument: "", quantity: 1, unitPrice: 0, itemTotal: 0, invoiceTotal: 0,
+        companyId: row.companyId, companyName: companyNames.get(row.companyId) || "ND Carretas", intercompany: false, sizeNote: row.description, semNota: true,
+      }))
+      return NextResponse.json({ notes: loaded.notes, others: loaded.others, excluded: loaded.excluded, rows: [...loaded.rows.map(({ description, accessKey, nature, ...slim }) => {
         const known = slim.chassis ? registry.get(slim.chassis) : undefined
         return known ? { ...slim, sizeNote: known.description, pbt: slim.pbt || kgToTons(known.pbtKg), capacity: slim.capacity || kgToTons(known.capacityKg), color: slim.color || known.color } : slim
-      }) }) // página Chassis: gráficos e filtros são feitos no navegador
+      }), ...withoutNote] }) // página Chassis: gráficos e filtros são feitos no navegador
     }
     if (view === "chassi") return NextResponse.json({ found: rows.length, notes: loaded.notes, client, perChassis: chassisPerChassis(rows) })
     rows.sort((a, b) => String(b.issuedAt || "").localeCompare(String(a.issuedAt || "")) || b.number.localeCompare(a.number))

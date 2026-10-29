@@ -13,7 +13,7 @@ import { RegistrySection } from "@/components/chassis/registry-section"
 import type { OtherNote } from "@/lib/chassis"
 import { chassisBySize, chassisTimeline, issuedDay, periodKey, pickChassis, rowUnits, trailerUnits, type ChassisPick, type ChassisRow, type Granularity, type GroupBy } from "@/lib/chassis"
 
-type Row = Omit<ChassisRow, "description" | "accessKey" | "nature"> & { sizeNote?: string }
+type Row = Omit<ChassisRow, "description" | "accessKey" | "nature"> & { sizeNote?: string; semNota?: boolean }
 type SizeField = "capacity" | "pbt" | "axles"
 
 const COLORS = ["#1e3a8a", "#0f766e", "#b45309", "#7c3aed", "#be123c", "#0369a1", "#4d7c0f", "#a16207", "#475569", "#c026d3"]
@@ -73,13 +73,14 @@ export function ChassisPage() {
   const [error, setError] = useState("")
   const [de, setDe] = useState("")
   const [ate, setAte] = useState("")
+  const [ano, setAno] = useState("")
+  const [mes, setMes] = useState("")
   const [company, setCompany] = useState("")
   const [model, setModel] = useState("")
   const [color, setColor] = useState("")
   const [capacity, setCapacity] = useState("")
   const [clients, setClients] = useState<string[]>([])
   const [others, setOthers] = useState<OtherNote[]>([])
-  const [excluded, setExcluded] = useState<Array<{ label: string; notes: number; carretas: number; value: number }>>([])
   const [granularity, setGranularity] = useState<Granularity>("mes")
   const [by, setBy] = useState<GroupBy>("model")
   const [sizeField, setSizeField] = useState<SizeField>("capacity")
@@ -91,8 +92,8 @@ export function ChassisPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const result = await send<{ rows: Row[]; others: OtherNote[]; excluded: Array<{ label: string; notes: number; carretas: number; value: number }>; notes: number }>("/api/contabilidade/chassis?visao=todos")
-      setAll(result.rows); setOthers(result.others || []); setExcluded(result.excluded || []); setNotes(result.notes); setError("")
+      const result = await send<{ rows: Row[]; others: OtherNote[]; notes: number }>("/api/contabilidade/chassis?visao=todos")
+      setAll(result.rows); setOthers(result.others || []); setNotes(result.notes); setError("")
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível carregar.") } finally { setLoading(false) }
   }, [])
   useEffect(() => { void load() }, [load])
@@ -105,7 +106,7 @@ export function ChassisPage() {
   const clientOptions = useMemo(() => {
     const byKey = new Map<string, { name: string; document: string; units: number }>()
     for (const row of all) {
-      if (!intercompany && row.intercompany) continue
+      if (row.semNota || (!intercompany && row.intercompany)) continue
       const entry = byKey.get(clientKey(row)) || { name: row.clientName || "Sem nome", document: row.clientDocument, units: 0 }
       entry.units += rowUnits(row)
       byKey.set(clientKey(row), entry)
@@ -116,6 +117,14 @@ export function ChassisPage() {
     }
     return [...byKey.entries()].sort((a, b) => a[1].name.localeCompare(b[1].name, "pt-BR")).map(([value, entry]) => ({ value, label: `${entry.name}${entry.document ? ` (${formatDocument(entry.document)})` : ""}${entry.units ? ` · ${entry.units}` : ""}` }))
   }, [all, others, intercompany])
+  const years = useMemo(() => [...new Set(all.map((row) => issuedDay(row.issuedAt).slice(0, 4)).filter(Boolean))].sort().reverse(), [all])
+  const pickMonth = (year: string, month: string) => {
+    setAno(year); setMes(year ? month : "")
+    if (!year) { setDe(""); setAte(""); return }
+    if (!month) { setDe(`${year}-01-01`); setAte(`${year}-12-31`); return }
+    const last = new Date(Number(year), Number(month), 0).getDate()
+    setDe(`${year}-${month}-01`); setAte(`${year}-${month}-${String(last).padStart(2, "0")}`)
+  }
   const models = useMemo(() => [...new Set(all.map((row) => row.model || "Sem modelo"))].sort(), [all])
   const rows = useMemo(() => all.filter((row) => {
     const issued = issuedDay(row.issuedAt)
@@ -142,7 +151,7 @@ export function ChassisPage() {
   }).sort((a, b) => String(b.issuedAt || "").localeCompare(String(a.issuedAt || ""))), [others, de, ate, company, model, color, capacity, clients, intercompany])
   const othersValue = othersShown.reduce((sum, note) => sum + note.total, 0)
   const othersQuantity = othersShown.reduce((sum, note) => sum + note.quantity, 0)
-  const notesWithTrailer = useMemo(() => { const map = new Map<string, number>(); for (const row of rows) map.set(row.invoiceId, row.invoiceTotal); return map }, [rows])
+  const notesWithTrailer = useMemo(() => { const map = new Map<string, number>(); for (const row of rows) if (!(row as Row).semNota) map.set(row.invoiceId, row.invoiceTotal); return map }, [rows])
   const allNotesValue = [...notesWithTrailer.values()].reduce((sum, value) => sum + value, 0) + othersValue
 
   const timeline = useMemo(() => chassisTimeline(rows, granularity, by), [rows, granularity, by])
@@ -156,6 +165,8 @@ export function ChassisPage() {
   const units = useMemo(() => trailerUnits(rows), [rows])
   const distinct = units.units
   const total = rows.reduce((sum, row) => sum + row.itemTotal, 0)
+  const withoutNoteUnits = useMemo(() => new Set(rows.filter((row) => (row as Row).semNota).map((row) => row.chassis)).size, [rows])
+  const pricedUnits = Math.max(0, distinct - withoutNoteUnits)
 
   // ao abrir pela coluna do mês entram TODAS as notas e carretas do período; o modelo se escolhe dentro da lista
   const openedAll = useMemo(() => (pick ? pickChassis(rows, { ...pick, name: undefined }) : []), [pick, rows])
@@ -201,8 +212,14 @@ export function ChassisPage() {
       actions={<Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />Atualizar</Button>}>
       <SectionCard title="Filtros">
         <div className="flex flex-wrap items-end gap-3">
-          <label className="text-xs text-muted-foreground">De<Input type="date" value={de} onChange={(event) => setDe(event.target.value)} className="mt-1 w-40" /></label>
-          <label className="text-xs text-muted-foreground">Até<Input type="date" value={ate} onChange={(event) => setAte(event.target.value)} className="mt-1 w-40" /></label>
+          <label className="text-xs text-muted-foreground">Ano
+            <select value={ano} onChange={(event) => pickMonth(event.target.value, mes)} className="mt-1 block h-9 rounded-md border bg-background px-2 text-sm text-foreground"><option value="">Todos</option>{years.map((year) => <option key={year} value={year}>{year}</option>)}</select>
+          </label>
+          <label className="text-xs text-muted-foreground">Mês
+            <select value={mes} disabled={!ano} onChange={(event) => pickMonth(ano, event.target.value)} className="mt-1 block h-9 rounded-md border bg-background px-2 text-sm text-foreground disabled:opacity-50"><option value="">Todos</option>{["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"].map((name, index) => <option key={name} value={String(index + 1).padStart(2, "0")}>{name}</option>)}</select>
+          </label>
+          <label className="text-xs text-muted-foreground">De<Input type="date" value={de} onChange={(event) => { setDe(event.target.value); setAno(""); setMes("") }} className="mt-1 w-40" /></label>
+          <label className="text-xs text-muted-foreground">Até<Input type="date" value={ate} onChange={(event) => { setAte(event.target.value); setAno(""); setMes("") }} className="mt-1 w-40" /></label>
           <label className="text-xs text-muted-foreground">Empresa
             <select value={company} onChange={(event) => setCompany(event.target.value)} className="mt-1 block h-9 rounded-md border bg-background px-2 text-sm text-foreground"><option value="">Todas</option>{companies.map((name) => <option key={name} value={name}>{name}</option>)}</select>
           </label>
@@ -223,24 +240,20 @@ export function ChassisPage() {
             <div className="mt-1 flex rounded-md border p-0.5 text-sm">{([["model", "Modelo (FZ 1E)"], ["family", "Linha (FZ)"]] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setBy(value)} className={`rounded px-3 py-1 ${by === value ? "bg-primary text-primary-foreground" : "text-foreground"}`}>{label}</button>)}</div>
           </div>
           <label className="flex items-center gap-2 pb-2 text-sm"><input type="checkbox" checked={intercompany} onChange={(event) => setIntercompany(event.target.checked)} />Incluir vendas entre as empresas ND</label>
-          {(de || ate || company || model || color || capacity || clients.length) ? <Button variant="ghost" size="sm" onClick={() => { setDe(""); setAte(""); setCompany(""); setModel(""); setColor(""); setCapacity(""); setClients([]) }}>Limpar filtros</Button> : null}
+          {(de || ate || company || model || color || capacity || clients.length) ? <Button variant="ghost" size="sm" onClick={() => { setDe(""); setAte(""); setAno(""); setMes(""); setCompany(""); setModel(""); setColor(""); setCapacity(""); setClients([]) }}>Limpar filtros</Button> : null}
           {loading ? <Loader2 className="mb-2 h-4 w-4 animate-spin text-muted-foreground" /> : null}
         </div>
         {error ? <p className="mt-3 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{error}</p> : null}
-        <p className="mt-3 text-xs text-muted-foreground">
-          Só entram notas de <strong>saída</strong> com natureza de <strong>venda</strong>. Notas de entrada não são usadas.
-          {excluded.length ? <> Ficam de fora, por não serem venda: {excluded.slice(0, 4).map((entry) => `${entry.label} (${entry.notes.toLocaleString("pt-BR")} nota(s)${entry.carretas ? `, ${entry.carretas.toLocaleString("pt-BR")} carreta(s)` : ""}, ${brl(entry.value)})`).join("; ")}{excluded.length > 4 ? `; e mais ${excluded.length - 4} tipo(s)` : ""}.</> : null}
-        </p>
       </SectionCard>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Card label="Carretas emitidas" value={distinct.toLocaleString("pt-BR")} hint={`${units.numbered.toLocaleString("pt-BR")} com número de chassi · ${units.batch.toLocaleString("pt-BR")} em lote sem número`} />
-        <Card label="Valor das carretas" value={brl(total)} hint={`valor médio por carreta ${brl(distinct ? total / distinct : 0)}`} />
+        <Card label="Carretas emitidas" value={distinct.toLocaleString("pt-BR")} hint={`${units.numbered.toLocaleString("pt-BR")} com número de chassi · ${units.batch.toLocaleString("pt-BR")} em lote sem número${withoutNoteUnits ? ` · ${withoutNoteUnits.toLocaleString("pt-BR")} sem nota (cadastro)` : ""}`} />
+        <Card label="Valor das carretas" value={brl(total)} hint={`valor médio por carreta ${brl(pricedUnits ? total / pricedUnits : 0)}${withoutNoteUnits ? " (só as com nota)" : ""}`} />
         <Card label="Notas sem carreta" value={othersShown.length.toLocaleString("pt-BR")} hint={`${brl(othersValue)} · ${othersQuantity.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} itens (peças, madeira e outros)`} />
         <Card label="Total das notas de venda" value={brl(allNotesValue)} hint={`${(notesWithTrailer.size + othersShown.length).toLocaleString("pt-BR")} nota(s): ${notesWithTrailer.size.toLocaleString("pt-BR")} com carreta + ${othersShown.length.toLocaleString("pt-BR")} sem`} />
       </div>
 
-      <SectionCard title={`Carretas por ${granularity === "mes" ? "mês" : "semana"} e ${by === "model" ? "modelo" : "linha"}`} description="Cada cor é um modelo. Clique na barra para ver todas as notas e carretas do período; dentro da lista você filtra por modelo.">
+      <SectionCard title={`Carretas por ${granularity === "mes" ? "mês" : "semana"} e ${by === "model" ? "modelo" : "linha"}`} description="Cada cor é um modelo. Clique na barra para ver todas as notas e carretas do período; dentro da lista você filtra por modelo. Chassis do cadastro sem nota entram pela data da primeira menção na conversa.">
         <div className="h-80">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={chartData} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
@@ -363,7 +376,7 @@ export function ChassisPage() {
             <DataTable headers={["Nota", "Emissão", "Cliente", "CPF/CNPJ", "Carretas", "Chassis da nota (separados)", "Valor por carreta", "Valor das carretas", "Valor total da nota", "Empresa"]} empty={!notesOpened.length} stickyHeader viewportClassName="max-h-[58vh]">
               {notesOpened.map((group) => (
                 <TableRow key={group.first.invoiceId} className="align-top">
-                  <TableCell className="whitespace-nowrap font-medium">{group.first.number}{group.first.series ? `/${group.first.series}` : ""}</TableCell>
+                  <TableCell className="whitespace-nowrap font-medium">{(group.first as Row).semNota ? "sem nota" : `${group.first.number}${group.first.series ? `/${group.first.series}` : ""}`}</TableCell>
                   <TableCell className="whitespace-nowrap">{day(group.first.issuedAt)}</TableCell>
                   <TableCell className="max-w-[220px]" title={group.first.clientName}><div className="truncate">{group.first.clientName || "-"}</div>{group.first.intercompany ? <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-700">entre empresas</span> : null}</TableCell>
                   <TableCell className="whitespace-nowrap">{formatDocument(group.first.clientDocument) || "-"}</TableCell>
