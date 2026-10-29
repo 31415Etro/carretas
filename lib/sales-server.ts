@@ -35,7 +35,18 @@ const page = (filters: { page?: number; pageSize?: number }) => {
 export async function listSalesOrders(admin: Admin, filters: { q?: string; status?: string; page?: number; pageSize?: number }) {
   const { pageSize, current, offset } = page(filters)
   const rows = await rpc<Array<Record<string, any>>>(admin, "sales_order_list", { p_search: filters.q || null, p_status: filters.status || null, p_limit: pageSize, p_offset: offset })
-  return { items: rows, total: rows.length ? Number(rows[0].total_count) : 0, page: current, pageSize }
+  // oportunidade de origem (OP-...) pelo orçamento do pedido; sem ela a lista só mostra o orçamento
+  const quoteNumbers = [...new Set(rows.map((row) => row.quote_number).filter(Boolean))]
+  const opportunityByQuote = new Map<string, { id: string; code: string }>()
+  if (quoteNumbers.length) {
+    const { data: quotes } = await admin.from("quotes").select("quote_number,opportunity_id").in("quote_number", quoteNumbers).not("opportunity_id", "is", null)
+    const ids = [...new Set((quotes || []).map((quote) => quote.opportunity_id))]
+    const { data: opportunities } = ids.length ? await admin.from("opportunities").select("id,code").in("id", ids) : { data: [] }
+    const byId = new Map((opportunities || []).map((opportunity) => [opportunity.id, opportunity]))
+    for (const quote of quotes || []) { const found = byId.get(quote.opportunity_id); if (found) opportunityByQuote.set(quote.quote_number, { id: found.id, code: found.code }) }
+  }
+  const items = rows.map((row) => ({ ...row, opportunity_id: opportunityByQuote.get(row.quote_number)?.id || null, opportunity_code: opportunityByQuote.get(row.quote_number)?.code || null }))
+  return { items, total: rows.length ? Number(rows[0].total_count) : 0, page: current, pageSize }
 }
 export const salesOrderDetail = (admin: Admin, id: string) => rpc<Record<string, any>>(admin, "sales_order_detail", { p_sales_order_id: id })
 export const confirmSalesOrder = (admin: Admin, id: string, user: string) => rpc<Record<string, any>>(admin, "confirm_sales_order", { p_sales_order_id: id, p_user: user })
