@@ -69,7 +69,28 @@ export async function managerAction(admin: Admin, action: string, body: Record<s
   }
 }
 
+/**
+ * Toda ordem de produção aberta precisa ter as tarefas da esteira (passo a passo de cada carreta). Elas nascem por gatilho quando a ordem é criada,
+ * mas se as etapas da empresa ainda não existiam ou a geração falhou, a Central fica vazia: aqui as etapas oficiais são criadas (se faltam) e
+ * as tarefas das ordens sem tarefa são geradas. Idempotente: o que já existe não é duplicado.
+ */
+export async function ensureShopTasks(admin: Admin) {
+  const { data: open } = await admin.from("production_orders").select("id").not("status", "in", "(Concluida,Cancelada)")
+  const ids = (open || []).map((row) => row.id as string)
+  if (!ids.length) return 0
+  const { data: withTasks } = await admin.from("shop_tasks").select("production_order_id").in("production_order_id", ids)
+  const have = new Set((withTasks || []).map((row) => row.production_order_id as string))
+  const missing = ids.filter((id) => !have.has(id))
+  if (!missing.length) return 0
+  const { count } = await admin.from("shop_steps").select("id", { count: "exact", head: true }).eq("active", true)
+  if (!count) await rpc(admin, "shop_steps_seed", { p_user: "automático" })
+  let created = 0
+  for (const id of missing) created += Number(await rpc<number>(admin, "shop_tasks_generate", { p_order: id, p_user: "automático" }).catch(() => 0)) || 0
+  return created
+}
+
 export async function managerOverview(admin: Admin) {
+  await ensureShopTasks(admin).catch(() => 0)
   const [board, workers, steps, productivity] = await Promise.all([
     rpc(admin, "shop_board"), rpc(admin, "shop_workers_list"), rpc(admin, "shop_steps_list"), rpc(admin, "shop_productivity"),
   ])

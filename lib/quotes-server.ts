@@ -8,6 +8,7 @@ import { readAllPages } from "@/lib/supabase-pagination"
 import { stageProbability } from "@/lib/commercial"
 import { quoteStructureProblems } from "@/lib/production-links-server"
 import { structureMessage } from "@/lib/production-links"
+import { ensureShopTasks } from "@/lib/shop-floor-server"
 
 type Admin = ReturnType<typeof createAdminClient>
 
@@ -429,7 +430,10 @@ export async function convertQuoteToSalesOrder(admin: Admin, id: string, respons
   if (!data.duplicate) {
     const confirm = await admin.rpc("confirm_sales_order", { p_sales_order_id: data.sales_order_id, p_user: responsible })
     if (confirm.error) confirmNote = confirm.error.message
-    else confirmed = true
+    else {
+      confirmed = true
+      await ensureShopTasks(admin).catch(() => 0) // a ordem já nasce na Central de Produção com o passo a passo de cada carreta
+    }
   }
   if (quote!.client_id) await admin.from("clients").update({ status: "Ativo" }).eq("id", quote!.client_id).eq("status", "Prospect") // venda feita: o lead vira cliente
   return { ...(await getQuote(admin, id)), salesOrder: { id: data.sales_order_id as string, number: data.order_number as string, duplicate: Boolean(data.duplicate), confirmed, confirmNote } }

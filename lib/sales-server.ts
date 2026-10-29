@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 import type { createAdminClient } from "@/lib/supabase/server"
 import { isSalesStructureMissing, SALES_MIGRATION_HINT } from "@/lib/sales"
+import { ensureShopTasks } from "@/lib/shop-floor-server"
 
 type Admin = ReturnType<typeof createAdminClient>
 export class SalesError extends Error {
@@ -49,7 +50,11 @@ export async function listSalesOrders(admin: Admin, filters: { q?: string; statu
   return { items, total: rows.length ? Number(rows[0].total_count) : 0, page: current, pageSize }
 }
 export const salesOrderDetail = (admin: Admin, id: string) => rpc<Record<string, any>>(admin, "sales_order_detail", { p_sales_order_id: id })
-export const confirmSalesOrder = (admin: Admin, id: string, user: string) => rpc<Record<string, any>>(admin, "confirm_sales_order", { p_sales_order_id: id, p_user: user })
+export async function confirmSalesOrder(admin: Admin, id: string, user: string) {
+  const result = await rpc<Record<string, any>>(admin, "confirm_sales_order", { p_sales_order_id: id, p_user: user })
+  await ensureShopTasks(admin).catch(() => 0) // a ordem já nasce na Central de Produção com o passo a passo de cada carreta
+  return result
+}
 export const confirmSalesPayment = (admin: Admin, id: string, user: string, note?: string) => rpc<Record<string, any>>(admin, "confirm_sales_payment", { p_sales_order_id: id, p_user: user, p_note: note || null })
 export const cancelSalesOrder = (admin: Admin, id: string, reason: string, user: string) => rpc(admin, "cancel_sales_order", { p_sales_order_id: id, p_reason: reason, p_user: user })
 /** A chave de idempotência vem da tela (uma por clique); sem ela, uma nova por chamada. */
