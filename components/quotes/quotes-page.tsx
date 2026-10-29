@@ -435,11 +435,10 @@ export function QuotesPage({ opportunityId, onChanged, onOrderCreated }: { oppor
                   <Button type="button" variant="outline" onClick={addLine} disabled={!adding.id}><Plus className="h-4 w-4" />Adicionar</Button>
                 </div>
               )}
-              <DataTable headers={["Item", "Qtd.", "Preço unit.", "Desc. %", "Total", "Custo / disponib.", ""]} empty={!lines.length}>
+              <DataTable headers={["Item", "Qtd.", "Preço unit.", "Desc. %", "Total", ""]} empty={!lines.length}>
                 {lines.map((line) => {
                   const now = catalogNow(line)
                   const priceDiffers = now && Math.abs(now.price - num(line.unitPrice)) > 0.005
-                  const stockInfo = line.lineType === "Produto" && now && "controlsStock" in now && now.controlsStock ? now.stock - now.reserved : null
                   const lineTotal = Math.round(num(line.quantity) * num(line.unitPrice) * (1 - num(line.discountPercent) / 100) * 100) / 100
                   return (
                     <TableRow key={line.key}>
@@ -460,10 +459,6 @@ export function QuotesPage({ opportunityId, onChanged, onOrderCreated }: { oppor
                       </TableCell>
                       <TableCell><input className="w-16 rounded border bg-background px-2 py-1 text-sm" type="number" value={line.discountPercent} readOnly={readOnly} onChange={(event) => patchLine(line.key, { discountPercent: event.target.value })} /></TableCell>
                       <TableCell>{brl(lineTotal)}</TableCell>
-                      <TableCell className="text-xs">
-                        <div>Custo {brl(line.unitCost)}</div>
-                        {stockInfo != null && <div className={num(line.quantity) > stockInfo ? "font-medium text-destructive" : "text-muted-foreground"}>Disponível {stockInfo.toLocaleString("pt-BR")}{num(line.quantity) > stockInfo ? ` (faltam ${(num(line.quantity) - stockInfo).toLocaleString("pt-BR")})` : ""}</div>}
-                      </TableCell>
                       <TableCell>{!readOnly && <Button type="button" size="icon" variant="ghost" onClick={() => setLines((current) => current.filter((item) => item.key !== line.key))}><Trash2 className="h-4 w-4" /></Button>}</TableCell>
                     </TableRow>
                   )
@@ -495,7 +490,6 @@ export function QuotesPage({ opportunityId, onChanged, onOrderCreated }: { oppor
               {detail && status === "Rascunho" && <Button variant="outline" onClick={async () => { const saved = await save(); if (saved) setAction({ kind: "email", to: client?.email || "", message: shareMessage({ companyName: options!.company.name, clientName: saved.quote.clientName, quoteNumber: saved.quote.number, version: saved.quote.version, total: saved.quote.totalAmount, validUntil: saved.quote.validUntil }) }) }} disabled={saving}>Salvar e enviar</Button>}
               {detail && <Button variant="outline" onClick={() => void downloadPdf()}>Baixar PDF</Button>}
               {canEmail && options?.emailConfigured && <Button variant="outline" onClick={() => setAction({ kind: "email", to: client?.email || detail!.quote.clientEmail || "", message: shareMessage({ companyName: options.company.name, clientName: detail!.quote.clientName, quoteNumber: detail!.quote.number, version: detail!.quote.version, total: detail!.quote.totalAmount, validUntil: detail!.quote.validUntil }) })}>Enviar por e-mail</Button>}
-              {canEmail && <Button variant="outline" onClick={() => setAction({ kind: "whatsapp", phone: client?.phone || detail!.quote.clientPhone || "", message: shareMessage({ companyName: options!.company.name, clientName: detail!.quote.clientName, quoteNumber: detail!.quote.number, version: detail!.quote.version, total: detail!.quote.totalAmount, validUntil: detail!.quote.validUntil }) })}>Enviar por WhatsApp</Button>}
               {detail && status === "Enviado" && <Button variant="outline" onClick={() => void run({ action: "status", to: "Em negociação" }, "Orçamento em negociação")} disabled={saving}>Em negociação</Button>}
               {detail && ["Enviado", "Em negociação"].includes(status) && <Button variant="outline" onClick={() => setAction({ kind: "approve", acceptedBy: "", acceptNotes: "" })}>Registrar aprovação</Button>}
               {detail && ["Enviado", "Em negociação"].includes(status) && <Button variant="outline" onClick={() => setAction({ kind: "refuse", reason: "" })}>Registrar recusa</Button>}

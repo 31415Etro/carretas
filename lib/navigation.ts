@@ -14,9 +14,9 @@ export const navGroups: NavGroup[] = [
     { label: "Dashboard", href: "/dashboard", permission: "dashboard", icon: "dashboard" },
   ] },
   { title: "Comercial", items: [
-    { label: "Comercial / CRM", href: "/comercial", permission: "comercial", icon: "crm" },
+    // A venda nasce na Jornada (Comercial / CRM); o orçamento abre por dentro dela. Pedidos de venda é a lista de consulta com todos os pedidos e o histórico.
+    { label: "Comercial / CRM", href: "/comercial", permission: "comercial", icon: "crm", alsoPrefixes: ["/orcamento"] },
     { label: "Clientes & Fornecedores", href: "/clientes", permission: "comercial", icon: "clients" },
-    { label: "Orçamentos", href: "/orcamento", permission: "orcamento", icon: "quotes" },
     { label: "Pedidos de venda", href: "/vendas", permission: "orcamento", icon: "sales" },
     { label: "Documentação veicular", href: "/documentacao", permission: "orcamento", icon: "documents" },
     { label: "Contratos", href: "/contratos", permission: "contratos", icon: "contracts" },
@@ -38,7 +38,7 @@ export const navGroups: NavGroup[] = [
 ]
 
 /** Rotas que saíram do menu mas continuam acessíveis (links antigos, históricos e operações de estoque acessadas por contexto). */
-export const legacyRoutes = ["/estoque", "/servicos", "/ordens-servico"] as const
+export const legacyRoutes = ["/estoque", "/servicos", "/ordens-servico", "/orcamento"] as const
 
 export type NavUser = { role?: string; permissions?: readonly string[] } | null | undefined
 

@@ -24,7 +24,7 @@ export function SalesPage() {
   const [rows, setRows] = useState<Row[]>([])
   const [total, setTotal] = useState(0)
   const [query, setQuery] = useState("")
-  const [status, setStatus] = useState("abertos")
+  const [status, setStatus] = useState("")
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -56,7 +56,7 @@ export function SalesPage() {
 
   return (
     <PageShell title="Pedidos de venda" description="Orçamento aprovado → pedido de venda → confirmação → estoque de acabados e produção. O pedido nasce da conversão do orçamento aprovado."
-      actions={<Button variant="outline" asChild><Link href="/orcamento"><Receipt className="h-4 w-4" />Ir para Orçamentos</Link></Button>}>
+      actions={<Button variant="outline" asChild><Link href="/comercial"><Receipt className="h-4 w-4" />Ir para o Comercial / CRM</Link></Button>}>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard title="Pedidos" value={total} note="no filtro" icon={Receipt} />
         <MetricCard title="Aguardando confirmação" value={awaiting} note="nesta página" icon={ClipboardCheck} />
