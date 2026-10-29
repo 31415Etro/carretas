@@ -15,10 +15,8 @@ export const navGroups: NavGroup[] = [
   ] },
   { title: "Comercial", items: [
     // A venda é um fluxo só (Jornada da venda: oportunidade, proposta, fechamento, pedido, acompanhamento); orçamento e pedido abrem por dentro dela e não ficam soltos no menu.
-    { label: "Comercial / CRM", href: "/comercial", permission: "comercial", icon: "crm", alsoPrefixes: ["/orcamento", "/vendas"] },
+    { label: "Comercial / CRM", href: "/comercial", permission: "comercial", icon: "crm", alsoPrefixes: ["/orcamento", "/vendas", "/documentacao", "/contratos"] },
     { label: "Clientes & Fornecedores", href: "/clientes", permission: "comercial", icon: "clients" },
-    { label: "Documentação veicular", href: "/documentacao", permission: "orcamento", icon: "documents" },
-    { label: "Contratos", href: "/contratos", permission: "contratos", icon: "contracts" },
   ] },
   { title: "Operação", items: [
     { label: "Financeiro", href: "/financeiro", permission: "financeiro", icon: "finance" },
@@ -37,7 +35,7 @@ export const navGroups: NavGroup[] = [
 ]
 
 /** Rotas que saíram do menu mas continuam acessíveis (links antigos, históricos e operações de estoque acessadas por contexto). */
-export const legacyRoutes = ["/estoque", "/servicos", "/ordens-servico", "/orcamento", "/vendas"] as const
+export const legacyRoutes = ["/estoque", "/servicos", "/ordens-servico", "/orcamento", "/vendas", "/documentacao", "/contratos"] as const
 
 export type NavUser = { role?: string; permissions?: readonly string[] } | null | undefined
 

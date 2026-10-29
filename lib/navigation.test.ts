@@ -14,7 +14,7 @@ test("administrador vê Estoque e Produção (cada uma uma página com abas), se
   assert.equal(items.some((entry) => entry.label === "Estoque interno"), false)
   const all = allLeaves().map((leaf) => leaf.label)
   for (const removed of ["Serviços", "Ordens de Serviço", "Matérias-primas", "Kits e composições", "Produtos finais", "Produção e MRP", "Esteira da fábrica", "Tablet da fábrica"]) assert.equal(all.includes(removed), false, removed)
-  for (const kept of ["Dashboard", "Comercial / CRM", "Financeiro", "Compras", "Documentação veicular", "Frota", "Máquinas e Equipamentos"]) assert.ok(all.includes(kept), kept)
+  for (const kept of ["Dashboard", "Comercial / CRM", "Financeiro", "Compras", "Frota", "Máquinas e Equipamentos"]) assert.ok(all.includes(kept), kept)
 })
 
 test("toda entrada do menu aponta para uma página que existe, sem rotas repetidas, e as rotas antigas continuam existindo", () => {

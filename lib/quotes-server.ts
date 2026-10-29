@@ -439,6 +439,11 @@ export async function convertQuoteToSalesOrder(admin: Admin, id: string, respons
 export async function markQuoteAsContract(admin: Admin, quoteId: string, contractNumber: string, responsible: string) {
   const { data: quote } = await admin.from("quotes").select("*").eq("id", quoteId).maybeSingle()
   if (!quote) fail("Orçamento não encontrado.")
+  if (quote!.status === "Convertido") {
+    // venda já fechada na Jornada (orçamento virou pedido): o contrato só fica registrado no histórico da proposta
+    await event(admin, quoteId, "Contrato", `Contrato ${contractNumber} criado a partir desta proposta.`, responsible)
+    return
+  }
   if (quote!.status !== "Aprovado") fail("Só é possível gerar contrato de um orçamento aprovado.")
   await admin.from("quotes").update({ status: "Convertido", converted_to: "Contrato", converted_at: new Date().toISOString() }).eq("id", quoteId)
   await event(admin, quoteId, "Convertido", `Convertido no contrato ${contractNumber}. Os lançamentos financeiros seguem as condições do contrato.`, responsible)

@@ -51,7 +51,10 @@ function Opts({ label, value, onChange, items, placeholder = "Selecione", disabl
   return <div className={disabled ? "pointer-events-none opacity-70" : ""}><SelectField label={label} value={value || none} onChange={(next) => onChange(next === none ? "" : next)} options={[{ value: none, label: placeholder }, ...items]} /></div>
 }
 
-export function ContractsPage() {
+/** Dentro da Jornada da venda a página vira só o bloco do contrato daquela proposta (o resto do módulo fica fora do menu). */
+function EmbeddedShell({ children }: { children: React.ReactNode }) { return <div className="space-y-4">{children}</div> }
+
+export function ContractsPage({ embeddedQuoteId }: { embeddedQuoteId?: string } = {}) {
   const { toast } = useCrudFeedback()
   const [contracts, setContracts] = useState<Row[]>([])
   const [alerts, setAlerts] = useState<ContractAlert[]>([])
@@ -93,7 +96,7 @@ export function ContractsPage() {
     await load()
   }, [load, toast])
 
-  useEffect(() => { void runAutomation(true) }, [runAutomation])
+  useEffect(() => { if (embeddedQuoteId) void load(); else void runAutomation(true) }, [runAutomation, load, embeddedQuoteId])
 
   function hydrate(data: Detail) {
     const c = data.contract
@@ -124,18 +127,22 @@ export function ContractsPage() {
     }
   }
 
-  // chegada pelo orçamento aprovado: /contratos?quoteId=...
-  useEffect(() => {
-    if (!options) return
-    const quoteId = new URLSearchParams(window.location.search).get("quoteId")
-    if (!quoteId) return
-    window.history.replaceState(null, "", "/contratos")
-    api<{ quote: Row; items: Row[] }>(`/api/orcamentos/${quoteId}`).then(({ quote, items }) => {
+  function startFromQuote(quoteId: string) {
+    return api<{ quote: Row; items: Row[] }>(`/api/orcamentos/${quoteId}`).then(({ quote, items }) => {
       startNew({
         quoteId, clientId: quote.clientId, title: `Contrato referente ao orçamento ${quote.number}`, totalValue: String(quote.totalAmount), contractType: quote.quoteType === "Produto" ? "Comercial / venda" : "Prestação de serviços",
         scope: items.map((item) => `${item.quantity} ${item.unit} — ${item.description}`).join("\n"), paymentMethod: "Boleto",
       })
     }).catch((reason) => toast({ title: "Orçamento não carregado", description: reason instanceof Error ? reason.message : "", variant: "destructive" }))
+  }
+
+  // chegada pelo orçamento aprovado: /contratos?quoteId=...
+  useEffect(() => {
+    if (!options || embeddedQuoteId) return
+    const quoteId = new URLSearchParams(window.location.search).get("quoteId")
+    if (!quoteId) return
+    window.history.replaceState(null, "", "/contratos")
+    void startFromQuote(quoteId)
   }, [options]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const status = detail?.contract.status as string | undefined
@@ -211,13 +218,33 @@ export function ContractsPage() {
   const transitions: Record<string, string[]> = { Rascunho: ["Aguardando assinatura", "Vigente", "Cancelado"], "Aguardando assinatura": ["Vigente", "Rascunho", "Cancelado"], Vigente: ["Suspenso", "Encerrado", "Rescindido"], Suspenso: ["Vigente", "Encerrado", "Rescindido"] }
   const transitionLabel = (from: string, to: string) => (to === "Vigente" ? (from === "Suspenso" ? "Retomar contrato" : "Tornar vigente") : to === "Aguardando assinatura" ? "Enviar para assinatura" : to === "Rascunho" ? "Voltar para rascunho" : to === "Suspenso" ? "Suspender" : to === "Encerrado" ? "Encerrar" : to === "Rescindido" ? "Rescindir" : "Cancelar")
 
+  const Shell: any = embeddedQuoteId ? EmbeddedShell : PageShell
+  const ofQuote = contracts.filter((row) => row.quoteId === embeddedQuoteId)
   return (
-    <PageShell
+    <Shell
       title="Contratos"
       description="Contratos de serviço, fornecimento e manutenção recorrente: cobrança automática, OS periódicas, aditivos e vencimentos."
       actions={<><Button onClick={() => startNew()} disabled={!options}><Plus className="h-4 w-4" />Novo contrato</Button><Button variant="outline" onClick={() => void runAutomation(false)} disabled={loading}><Repeat className="h-4 w-4" />Rodar automação</Button><Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className="h-4 w-4" />Atualizar</Button></>}
     >
       {error && <div className="mb-4 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{error}</div>}
+      {embeddedQuoteId ? (
+        <SectionCard title="Contrato" description="Crie o contrato desta venda já com cliente, valor e escopo da proposta. Mais modelos de contrato virão aqui.">
+          <div className="flex flex-wrap items-center gap-3">
+            <Button onClick={() => void startFromQuote(embeddedQuoteId)} disabled={!options}><Plus className="h-4 w-4" />Criar contrato</Button>
+            {!ofQuote.length ? <span className="text-sm text-muted-foreground">{loading ? "Carregando..." : "Nenhum contrato criado para esta venda."}</span> : null}
+          </div>
+          {ofQuote.length ? (
+            <DataTable headers={["Número", "Tipo", "Título", "Valor total", "Situação", "Ações"]}>
+              {ofQuote.map((row) => (
+                <TableRow key={row.id}>
+                  <TableCell>{row.number}</TableCell><TableCell>{row.contractType}</TableCell><TableCell className="max-w-[16rem] truncate" title={row.title}>{row.title}</TableCell><TableCell>{brl(row.totalValue)}</TableCell>
+                  <TableCell><StatusBadge status={row.status} /></TableCell><TableCell><Button size="sm" variant="outline" onClick={() => void openContract(row.id)}>Abrir</Button></TableCell>
+                </TableRow>
+              ))}
+            </DataTable>
+          ) : null}
+        </SectionCard>
+      ) : <>
       <div className="mb-4 grid gap-3 md:grid-cols-4">
         <MetricCard title="Contratos vigentes" value={vigentes.length} note={`${contracts.filter((row) => row.status === "Aguardando assinatura").length} aguardando assinatura`} icon={FileSignature} />
         <MetricCard title="Receita recorrente / mês" value={brl(monthlyIncome)} note="Contratos de receita vigentes" icon={Repeat} />
@@ -260,6 +287,7 @@ export function ContractsPage() {
           </SectionCard>
         </TabsContent>
       </Tabs>
+      </>}
 
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent className="w-full overflow-y-auto sm:max-w-5xl">
@@ -482,6 +510,6 @@ export function ContractsPage() {
           </div>
         </SheetContent>
       </Sheet>
-    </PageShell>
+    </Shell>
   )
 }

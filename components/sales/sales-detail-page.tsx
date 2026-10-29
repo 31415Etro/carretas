@@ -89,6 +89,7 @@ export function SalesDetailPage({ id, embedded = false, onChanged }: { id: strin
     <PageShell title={`Pedido ${order.order_number}`} description={`${order.client_name}${order.quote_number ? ` · orçamento ${order.quote_number} v${order.quote_version}` : ""} · ${order.payment_condition_name || "sem condição de pagamento"}`}
       actions={<>
         {embedded ? null : <Button variant="outline" asChild><Link href="/vendas"><ArrowLeft className="h-4 w-4" />Voltar</Link></Button>}
+        {release ? <Button variant="outline" asChild><a href="#documentacao-veicular">Documentação veicular</a></Button> : null}
         <Button variant="outline" asChild><a href="#pedido-pdf">Pedido em PDF</a></Button>
         <Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />Atualizar</Button>
         {actions.confirm ? <Button onClick={() => void act("confirm")} disabled={Boolean(busy)}>{busy === "confirm" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Confirmar pedido</Button> : null}
@@ -130,6 +131,7 @@ export function SalesDetailPage({ id, embedded = false, onChanged }: { id: strin
       ) : null}
 
       {release ? (
+        <div id="documentacao-veicular" className="scroll-mt-4">
         <SectionCard title="Documentação veicular e liberação da produção" description="A fabricação física só começa quando todas as condições abaixo estão atendidas. A liberação é calculada pelo sistema, não é um campo editável.">
           <p className={`mb-3 flex items-start gap-2 rounded-md border p-3 text-sm ${release.eligible ? "border-emerald-300 bg-emerald-50" : "border-amber-300 bg-amber-50"}`}>{releaseLabel(release)}</p>
           {detail.documentation && detail.documentation.items.length ? (
@@ -151,6 +153,7 @@ export function SalesDetailPage({ id, embedded = false, onChanged }: { id: strin
           <p className="mt-2 text-xs text-muted-foreground">Documentação veicular é requisito legal e não pode ser dispensada. Só a exigência comercial (sinal) admite exceção, e apenas se a empresa tiver a regra formal ligada, com justificativa e auditoria.</p>
           <DocumentationSheet id={docId} onClose={() => setDocId(null)} onChanged={() => void load()} />
         </SectionCard>
+        </div>
       ) : null}
 
       {Object.keys(detail.configurations || {}).length ? (

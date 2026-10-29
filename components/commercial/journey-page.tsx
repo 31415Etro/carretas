@@ -14,6 +14,7 @@ import { IdDocumentCapture } from "@/components/registry/id-capture"
 import { QuotesPage } from "@/components/quotes/quotes-page"
 import { SalesDetailPage } from "@/components/sales/sales-detail-page"
 import { EmbeddedPageContext } from "@/lib/embedded-page"
+import { ContractsPage } from "@/components/contracts/contracts-page"
 import { idDocumentNotes, type ParsedIdDocument } from "@/lib/id-document"
 import { cleanDocument, interactionKinds, isValidDocument, leadOrigins } from "@/lib/commercial"
 import { closingChecks, defaultStep, isJourneyStep, journeyLabels, journeySteps, orderConfirmed, stepAvailability, type JourneyStep } from "@/lib/journey"
@@ -343,12 +344,13 @@ function ClosingStep({ journey, onClosed, toast }: { journey: Journey; onClosed:
         {!checks.length && !failure ? <li className="text-sm text-muted-foreground">Conferindo a proposta...</li> : null}
       </ul>
       {failure ? <p className="mb-3 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive" role="alert">{failure}</p> : null}
-      {won ? <p className="rounded-md border bg-muted/40 p-3 text-sm">Venda fechada. Siga para o Pedido.</p> : (
+      {won ? <p className="rounded-md border bg-muted/40 p-3 text-sm">Venda fechada. Siga para o Pedido ou crie o contrato abaixo.</p> : (
         <div className="flex flex-wrap items-center gap-3">
           <Button className="bg-emerald-600 hover:bg-emerald-700" disabled={!ready || busy} onClick={() => void close()}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}FECHAR VENDA</Button>
           <span className="text-xs text-muted-foreground">Registra o aceite (com a aprovação e o limite de desconto de sempre), marca a oportunidade como GANHA e prepara o pedido de venda.</span>
         </div>
       )}
+      {won ? <div className="mt-4"><ContractsPage embeddedQuoteId={quote.id} /></div> : null}
     </SectionCard>
   )
 }

@@ -135,7 +135,7 @@ export async function saveContract(admin: Admin, input: ContractSaveInput, respo
   if (quoteId && !previous) {
     const { data: quote } = await admin.from("quotes").select("status,client_id").eq("id", quoteId).maybeSingle()
     if (!quote) fail("Orçamento de origem não encontrado.")
-    if (quote!.status !== "Aprovado") fail("O orçamento de origem precisa estar aprovado.")
+    if (!["Aprovado", "Convertido"].includes(String(quote!.status))) fail("O orçamento de origem precisa estar aprovado.")
     if (data.direction === "Receita" && quote!.client_id !== data.clientId) fail("O cliente do contrato é diferente do cliente do orçamento.")
   }
   const recurring = isRecurring(data)
