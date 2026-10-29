@@ -9,10 +9,11 @@ import { Input } from "@/components/ui/input"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { DataTable, PageShell, SectionCard } from "@/components/operations/shared"
 import { MultiSelectSearch } from "@/components/chassis/client-multi-select"
+import { RegistrySection } from "@/components/chassis/registry-section"
 import type { OtherNote } from "@/lib/chassis"
 import { chassisBySize, chassisTimeline, issuedDay, periodKey, pickChassis, rowUnits, trailerUnits, type ChassisPick, type ChassisRow, type Granularity, type GroupBy } from "@/lib/chassis"
 
-type Row = Omit<ChassisRow, "description" | "accessKey" | "nature">
+type Row = Omit<ChassisRow, "description" | "accessKey" | "nature"> & { sizeNote?: string }
 type SizeField = "capacity" | "pbt" | "axles"
 
 const COLORS = ["#1e3a8a", "#0f766e", "#b45309", "#7c3aed", "#be123c", "#0369a1", "#4d7c0f", "#a16207", "#475569", "#c026d3"]
@@ -186,10 +187,10 @@ export function ChassisPage() {
     const note = (row: ChassisRow) => `${row.number}${row.series ? `/${row.series}` : ""}`
     const header = dialogMode === "nota"
       ? ["Nota", "Emissão", "Cliente", "CPF/CNPJ", "Chassis no recorte", "Chassis na nota", "Valor por chassi", "Valor dos chassis", "Valor total da nota", "Empresa emitente", "Chassis"]
-      : ["Nota", "Emissão", "Chassi", "Modelo", "Cor", "Ano", "PBT (t)", "Capacidade (t)", "Eixos", "Quantidade", "Valor unitário", "Valor do chassi", "Chassis na nota", "Valor total da nota", "Cliente", "CPF/CNPJ", "Empresa emitente"]
+      : ["Nota", "Emissão", "Chassi", "Modelo", "Descrição / tamanho", "Cor", "Ano", "PBT (t)", "Capacidade (t)", "Eixos", "Quantidade", "Valor unitário", "Valor do chassi", "Chassis na nota", "Valor total da nota", "Cliente", "CPF/CNPJ", "Empresa emitente"]
     const lines = dialogMode === "nota"
       ? notesOpened.map((group) => [note(group.first), day(group.first.issuedAt), group.first.clientName, formatDocument(group.first.clientDocument), group.units, group.inNote, group.minUnit === group.maxUnit ? number(group.minUnit) : `${number(group.minUnit)} a ${number(group.maxUnit)}`, number(group.chassisValue), number(group.first.invoiceTotal), group.first.companyName, group.items.map((item) => `${item.chassis || "lote sem nº de chassi"}${item.quantity > 1 ? ` x${item.quantity}` : ""} (${number(item.itemTotal)})`).join(" ; ")])
-      : opened.map((row) => [note(row), day(row.issuedAt), row.chassis || "(lote sem nº de chassi)", row.model, row.color, row.year, number(row.pbt), number(row.capacity), row.axles, row.quantity, number(row.unitPrice), number(row.itemTotal), noteTotals.get(row.invoiceId) || 1, number(row.invoiceTotal), row.clientName, formatDocument(row.clientDocument), row.companyName])
+      : opened.map((row) => [note(row), day(row.issuedAt), row.chassis || "(lote sem nº de chassi)", row.model, (row as Row).sizeNote || "", row.color, row.year, number(row.pbt), number(row.capacity), row.axles, row.quantity, number(row.unitPrice), number(row.itemTotal), noteTotals.get(row.invoiceId) || 1, number(row.invoiceTotal), row.clientName, formatDocument(row.clientDocument), row.companyName])
     const csv = [header, ...lines].map((line) => line.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(";")).join("\n")
     const url = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" }))
     const anchor = document.createElement("a"); anchor.href = url; anchor.download = `chassis-notas-${dialogMode === "nota" ? "por-nota" : "por-chassi"}.csv`; anchor.click(); URL.revokeObjectURL(url)
@@ -284,7 +285,7 @@ export function ChassisPage() {
           </div>
         </SectionCard>
 
-        <SectionCard title="Chassis por tamanho" description="O tamanho vem da descrição da nota: capacidade de carga e PBT em toneladas e número de eixos. A nota não traz comprimento nem largura.">
+        <SectionCard title="Chassis por tamanho" description="O tamanho vem da descrição da nota: capacidade de carga e PBT em toneladas e número de eixos. A nota não traz comprimento nem largura: a descrição/tamanho vem do cadastro de chassis (abaixo).">
           <div className="mb-2 flex rounded-md border p-0.5 text-sm">
             {(["capacity", "pbt", "axles"] as SizeField[]).map((field) => <button key={field} type="button" onClick={() => setSizeField(field)} className={`rounded px-3 py-1 ${sizeField === field ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>{sizeName[field]}</button>)}
           </div>
@@ -337,6 +338,8 @@ export function ChassisPage() {
         </DataTable>
       </SectionCard>
 
+      <RegistrySection />
+
       <Dialog open={!!pick} onOpenChange={(value) => { if (!value) setPick(null) }}>
         <DialogContent className="max-h-[92vh] w-[96vw] overflow-hidden sm:max-w-[1280px]">
           <DialogHeader>
@@ -369,7 +372,7 @@ export function ChassisPage() {
                     <div className="space-y-1">
                       {group.items.map((item, itemIndex) => (
                         <div key={`${item.chassis}-${itemIndex}`} className="flex items-center justify-between gap-4 whitespace-nowrap rounded bg-muted/40 px-2 py-1 text-xs">
-                          <span>{item.chassis ? <span className="font-mono font-medium">{item.chassis}</span> : <span className="rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-800">lote sem nº de chassi</span>} · {item.model || "-"} · {item.color || "-"} · {tons(item.capacity)}</span>
+                          <span>{item.chassis ? <span className="font-mono font-medium">{item.chassis}</span> : <span className="rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-800">lote sem nº de chassi</span>} · {item.model || "-"} · {item.color || "-"} · {tons(item.capacity)}{(item as Row).sizeNote ? ` · ${(item as Row).sizeNote}` : ""}</span>
                           <span className="font-medium">{item.quantity > 1 ? `${item.quantity} × ${brl(item.unitPrice)} = ` : ""}{brl(item.itemTotal)}</span>
                         </div>
                       ))}
@@ -394,7 +397,7 @@ export function ChassisPage() {
                     <TableCell className="whitespace-nowrap font-mono text-xs font-medium">{row.chassis || <span className="rounded bg-amber-100 px-1.5 py-0.5 font-sans text-amber-800">lote sem nº de chassi</span>}</TableCell>
                     <TableCell className="whitespace-nowrap">{row.model || "-"}</TableCell>
                     <TableCell className="whitespace-nowrap">{row.color || "-"}</TableCell>
-                    <TableCell className="whitespace-nowrap text-xs">PBT {tons(row.pbt)} · cap. {tons(row.capacity)} · {row.axles ? `${row.axles} eixo${row.axles > 1 ? "s" : ""}` : "-"}</TableCell>
+                    <TableCell className="whitespace-nowrap text-xs">PBT {tons(row.pbt)} · cap. {tons(row.capacity)} · {row.axles ? `${row.axles} eixo${row.axles > 1 ? "s" : ""}` : "-"}{(row as Row).sizeNote ? <div className="text-muted-foreground">{(row as Row).sizeNote}</div> : null}</TableCell>
                     <TableCell className="text-right">{row.quantity}</TableCell>
                     <TableCell className="whitespace-nowrap text-right">{brl(row.unitPrice)}</TableCell>
                     <TableCell className="whitespace-nowrap text-right font-medium">{brl(row.itemTotal)}</TableCell>

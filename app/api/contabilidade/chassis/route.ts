@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { stockContext } from "@/lib/stock-api"
 import { ACCOUNTING_MIGRATION_HINT } from "@/lib/accounting-server"
 import { chassisByModel, chassisByModelMonth, chassisChart, chassisFromInvoice, chassisPerChassis, digits, filterChassis, isSaleNature, otherNoteFromInvoice, type ChassisRow, type OtherNote } from "@/lib/chassis"
+import { registrySummary, viewRegistry, kgToTons, type RegistryRow } from "@/lib/chassis-registry"
 import { fetchAllPages, memoize } from "@/lib/paged-fetch"
 import { createAdminClient } from "@/lib/supabase/server"
 
@@ -51,10 +52,45 @@ function loadChassis(de: string, ate: string) {
   })
 }
 
+const REGISTRY_COLUMNS = "vin,group_name,model,family,axles,description,year_manufacture,year_model,pbt_kg,capacity_kg,tare_kg,axle_capacity_kg,color,client_hint,first_mention,last_mention,mentions,alerts,system_company_id"
+const REGISTRY_HINT = "O cadastro de chassis ainda não está instalado no banco. Rode o script 242 no SQL Editor do Supabase."
+const num = (value: unknown) => Number(value || 0) || 0
+
+/** Cadastro de chassis (planilha do WhatsApp), de todas as empresas. Se o script 242 ainda não foi rodado, devolve vazio e avisa (a página segue funcionando só com as notas). */
+function loadRegistry() {
+  return memoize("chassis|cadastro", CACHE_MS, async (): Promise<{ rows: RegistryRow[]; missing: boolean }> => {
+    const admin = createAdminClient({ bypassCompanyScope: true })
+    try {
+      const data = await fetchAllPages<Record<string, unknown>>((from, to) => admin.from("chassis_registry").select(REGISTRY_COLUMNS).order("vin").range(from, to) as unknown as PromiseLike<{ data: Record<string, unknown>[] | null; error: { message: string } | null }>)
+      return { missing: false, rows: data.map((row) => ({
+        vin: String(row.vin), groupName: String(row.group_name || ""), model: String(row.model || ""), family: String(row.family || ""), axles: num(row.axles), description: String(row.description || ""),
+        yearManufacture: String(row.year_manufacture || ""), yearModel: String(row.year_model || ""), pbtKg: num(row.pbt_kg), capacityKg: num(row.capacity_kg), tareKg: num(row.tare_kg), axleCapacityKg: num(row.axle_capacity_kg),
+        color: String(row.color || ""), clientHint: String(row.client_hint || ""), firstMention: (row.first_mention as string) || null, lastMention: (row.last_mention as string) || null, mentions: num(row.mentions), alerts: String(row.alerts || ""), companyId: String(row.system_company_id || ""),
+      })) }
+    } catch (error) {
+      const message = (error as { message?: string })?.message || ""
+      if (/chassis_registry/.test(message) && /does not exist|Could not find|schema cache/i.test(message)) return { missing: true, rows: [] }
+      throw error
+    }
+  })
+}
+
+/** VIN -> última nota de venda que o cita. */
+function notesByVin(rows: ChassisRow[]) {
+  const map = new Map<string, { number: string; clientName: string; issuedAt: string | null }>()
+  for (const row of rows) {
+    if (!row.chassis) continue
+    const current = map.get(row.chassis)
+    if (!current || String(row.issuedAt || "") > String(current.issuedAt || "")) map.set(row.chassis, { number: row.number, clientName: row.clientName, issuedAt: row.issuedAt })
+  }
+  return map
+}
+
 /**
  * Chassis das notas de venda (saída) da Contabilidade, de todas as empresas.
  *   ?opcoes=clientes                      clientes do sistema para o seletor
  *   ?q=&clienteId=&de=&ate=&interna=1     consulta (chassi inteiro ou parte, número da nota, cliente) + números do gráfico do período
+ *   ?visao=cadastro&q=&modelo=&nota=com|sem&pagina=   chassis cadastrados (planilha) cruzados com as notas: quais já têm nota e quais não
  *   &visao=modelo | chassi                análise: quantidade e valor por modelo (e por mês) ou por chassi, com os mesmos filtros
  */
 export async function GET(request: Request) {
@@ -91,7 +127,23 @@ export async function GET(request: Request) {
     const client = clientId ? { name: clientName, document: clientDocument } : null
     const view = params.get("visao")
     if (view === "modelo") return NextResponse.json({ found: rows.length, notes: loaded.notes, client, byModel: chassisByModel(rows), byModelMonth: chassisByModelMonth(rows) })
-    if (view === "todos") return NextResponse.json({ notes: loaded.notes, others: loaded.others, excluded: loaded.excluded, rows: loaded.rows.map(({ description, accessKey, nature, ...slim }) => slim) }) // página Chassis: gráficos e filtros são feitos no navegador
+    if (view === "cadastro") {
+      const registry = await loadRegistry()
+      const all = viewRegistry(registry.rows, notesByVin(loaded.rows), {})
+      const filtered = viewRegistry(registry.rows, notesByVin(loaded.rows), { q: params.get("q") || "", model: params.get("modelo") || "", note: params.get("nota") === "com" ? "com" : params.get("nota") === "sem" ? "sem" : "" })
+      const pageSize = 100, page = Math.max(1, Number(params.get("pagina")) || 1)
+      const inRegistry = new Set(registry.rows.map((row) => row.vin))
+      const noteChassis = new Set(loaded.rows.filter((row) => row.chassis).map((row) => row.chassis))
+      return NextResponse.json({ missing: registry.missing, hint: registry.missing ? REGISTRY_HINT : "", summary: registrySummary(all), noteChassisNotRegistered: [...noteChassis].filter((vin) => !inRegistry.has(vin)).length, found: filtered.length, page, pageSize, items: filtered.slice((page - 1) * pageSize, page * pageSize) })
+    }
+    if (view === "todos") {
+      // descrição/tamanho do cadastro nos chassis das notas; PBT e capacidade só entram quando a nota não trouxe
+      const registry = new Map((await loadRegistry()).rows.map((row) => [row.vin, row]))
+      return NextResponse.json({ notes: loaded.notes, others: loaded.others, excluded: loaded.excluded, rows: loaded.rows.map(({ description, accessKey, nature, ...slim }) => {
+        const known = slim.chassis ? registry.get(slim.chassis) : undefined
+        return known ? { ...slim, sizeNote: known.description, pbt: slim.pbt || kgToTons(known.pbtKg), capacity: slim.capacity || kgToTons(known.capacityKg), color: slim.color || known.color } : slim
+      }) }) // página Chassis: gráficos e filtros são feitos no navegador
+    }
     if (view === "chassi") return NextResponse.json({ found: rows.length, notes: loaded.notes, client, perChassis: chassisPerChassis(rows) })
     rows.sort((a, b) => String(b.issuedAt || "").localeCompare(String(a.issuedAt || "")) || b.number.localeCompare(a.number))
     return NextResponse.json({ rows: rows.slice(0, 500), found: rows.length, notes: loaded.notes, chart: chassisChart(loaded.rows), client })
