@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { companyForGroup, FORT_COMPANY_ID, kgToTons, modelFromGroup, parseMention, registrySummary, viewRegistry, type RegistryRow } from "./chassis-registry.ts"
+import { clientKeyOf, companyForGroup, FORT_COMPANY_ID, kgToTons, modelFromGroup, parseMention, registrySummary, viewRegistry, type RegistryNote, type RegistryRow } from "./chassis-registry.ts"
 
 test("modelo, linha e eixos a partir do nome do grupo da planilha", () => {
   assert.deepEqual(modelFromGroup("CHASSI  BC 1E (1)"), { model: "BC 1E", family: "BC", axles: 1 })
@@ -40,4 +40,23 @@ test("cadastro cruzado com as notas: com nota, sem nota e busca", () => {
   assert.equal(viewRegistry(rows, notes, { model: "BC 1E" }).length, 1)
   const summary = registrySummary(all)
   assert.deepEqual([summary.total, summary.withNote, summary.withoutNote, summary.withDescription], [3, 1, 2, 3])
+})
+
+test("mesmos filtros da página: período, cor, capacidade, cliente e venda entre empresas", () => {
+  const notes = new Map<string, RegistryNote>([
+    ["V1", { number: "1", clientName: "CLIENTE A", clientDocument: "11111111000191", issuedAt: "2026-03-10T15:00:00Z", color: "PRATA", capacity: 0.55 }],
+    ["V2", { number: "2", clientName: "ND CARRETAS", clientDocument: "31690385000190", issuedAt: "2026-03-12T15:00:00Z", intercompany: true }],
+  ])
+  const rows = [row("V1"), row("V2"), row("V3", { saleDate: "2026-04-02", color: "PRETA", capacityKg: 750, seller: "Thiago" }), row("V4", { firstMention: "2026-05-20T15:00:00-03:00" })]
+  const only = (filters: Parameters<typeof viewRegistry>[2]) => viewRegistry(rows, notes, filters).map((item) => item.vin).sort()
+  assert.deepEqual(only({}), ["V1", "V3", "V4"]) // venda entre as empresas ND some por padrão
+  assert.deepEqual(only({ intercompany: true }), ["V1", "V2", "V3", "V4"])
+  assert.deepEqual(only({ from: "2026-03-01", to: "2026-03-31" }), ["V1"]) // data da nota
+  assert.deepEqual(only({ from: "2026-04-01", to: "2026-04-30" }), ["V3"]) // data da venda da planilha
+  assert.deepEqual(only({ from: "2026-05-01" }), ["V4"]) // sem venda: primeira menção na conversa
+  assert.deepEqual(only({ color: "PRATA" }), ["V1"]) // cor vinda da nota
+  assert.deepEqual(only({ capacity: "0.75" }), ["V3"])
+  assert.deepEqual(only({ capacity: "0.55" }), ["V1"]) // capacidade vinda da nota
+  assert.deepEqual(only({ clients: [clientKeyOf("11111111000191", "CLIENTE A")] }), ["V1"])
+  assert.deepEqual(only({ seller: "Thiago" }), ["V3"])
 })

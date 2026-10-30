@@ -8,14 +8,20 @@ import { TableCell, TableRow } from "@/components/ui/table"
 import { DataTable, SectionCard } from "@/components/operations/shared"
 import type { RegistryView } from "@/lib/chassis-registry"
 
+import { MultiSelectSearch, type MultiOption } from "@/components/chassis/client-multi-select"
+
+type Options = { companies: string[]; models: string[]; colors: string[]; capacities: number[]; years: string[]; clients: MultiOption[] }
 type Payload = {
-  missing: boolean; hint: string; sellers: string[]; found: number; page: number; pageSize: number; items: RegistryView[]; noteChassisNotRegistered: number
+  missing: boolean; hint: string; options: Options; sellers: string[]; found: number; page: number; pageSize: number; items: RegistryView[]; noteChassisNotRegistered: number
   summary: { total: number; withNote: number; withoutNote: number; withDescription: number; byModel: Array<{ model: string; total: number; withNote: number }> }
 }
 
+const MONTHS = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"]
 const day = (value?: string | null) => (value ? new Date(value).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "-")
 const brl = (value: number) => (value ? value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "-")
 const kg = (value: number) => (value ? `${value.toLocaleString("pt-BR")} kg` : "-")
+const tons = (value: number) => (value ? `${String(value).replace(".", ",")} t` : "-")
+const selectClass = "mt-1 block h-9 rounded-md border bg-background px-2 text-sm text-foreground"
 
 function Card({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
@@ -27,34 +33,54 @@ function Card({ label, value, hint }: { label: string; value: string; hint?: str
   )
 }
 
-/** Cadastro de chassis (planilha de controle): todos os números de chassi conhecidos, com descrição/tamanho, e se já têm nota de venda no sistema. */
+/** Cadastro de chassis (planilha de controle): todos os números de chassi conhecidos, com descrição/tamanho, e se já têm nota de venda no sistema. Tem os mesmos filtros da parte de cima da página. */
 export function RegistrySection() {
   const [data, setData] = useState<Payload | null>(null)
+  const [options, setOptions] = useState<Options | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [q, setQ] = useState("")
   const [term, setTerm] = useState("")
+  const [ano, setAno] = useState("")
+  const [mes, setMes] = useState("")
+  const [de, setDe] = useState("")
+  const [ate, setAte] = useState("")
+  const [company, setCompany] = useState("")
   const [model, setModel] = useState("")
+  const [color, setColor] = useState("")
+  const [capacity, setCapacity] = useState("")
   const [seller, setSeller] = useState("")
+  const [clients, setClients] = useState<string[]>([])
+  const [intercompany, setIntercompany] = useState(false)
   const [note, setNote] = useState<"" | "com" | "sem">("sem")
   const [page, setPage] = useState(1)
   const [order, setOrder] = useState<"" | "chassi-asc" | "chassi-desc">("")
 
   useEffect(() => { const timer = setTimeout(() => { setTerm(q); setPage(1) }, 350); return () => clearTimeout(timer) }, [q])
 
+  function pickMonth(year: string, month: string) {
+    setAno(year); setMes(year ? month : ""); setPage(1)
+    if (!year) { setDe(""); setAte(""); return }
+    if (!month) { setDe(`${year}-01-01`); setAte(`${year}-12-31`); return }
+    setDe(`${year}-${month}-01`); setAte(`${year}-${month}-${String(new Date(Number(year), Number(month), 0).getDate()).padStart(2, "0")}`)
+  }
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const query = new URLSearchParams({ visao: "cadastro", q: term, modelo: model, nota: note, pagina: String(page), ordem: order, vendedor: seller })
+      const query = new URLSearchParams({ visao: "cadastro", q: term, modelo: model, nota: note, pagina: String(page), ordem: order, vendedor: seller, inicio: de, fim: ate, empresa: company, cor: color, capacidade: capacity })
+      for (const key of clients) query.append("cliente", key)
+      if (intercompany) query.set("interna", "1")
       const response = await fetch(`/api/contabilidade/chassis?${query}`, { cache: "no-store" })
       const payload = await response.json().catch(() => null)
       if (!response.ok) throw new Error(payload?.error || `Erro ${response.status}`)
-      setData(payload as Payload); setError("")
+      setData(payload as Payload); if ((payload as Payload).options) setOptions((payload as Payload).options); setError("")
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível carregar o cadastro.") } finally { setLoading(false) }
-  }, [term, model, note, page, order, seller])
+  }, [term, model, note, page, order, seller, de, ate, company, color, capacity, clients, intercompany])
   useEffect(() => { void load() }, [load])
 
   const pages = data ? Math.max(1, Math.ceil(data.found / data.pageSize)) : 1
+  const filtering = Boolean(de || ate || company || model || color || capacity || seller || clients.length || term || intercompany)
 
   return (
     <SectionCard title="Cadastro de chassis" description="Todos os números de chassi conhecidos (planilha de controle do WhatsApp), com a descrição/tamanho. Os que ainda não têm nota de venda no sistema aparecem como “sem nota”.">
@@ -69,20 +95,38 @@ export function RegistrySection() {
             <Card label="Na nota, fora do cadastro" value={data.noteChassisNotRegistered.toLocaleString("pt-BR")} hint="número da nota difere da planilha (provável erro de digitação)" />
           </div>
           <div className="mt-4 flex flex-wrap items-end gap-3">
-            <label className="text-xs text-muted-foreground">Buscar<Input value={q} onChange={(event) => setQ(event.target.value)} placeholder="chassi, descrição, cliente..." className="mt-1 w-72" /></label>
+            <label className="text-xs text-muted-foreground">Ano
+              <select value={ano} onChange={(event) => pickMonth(event.target.value, mes)} className={selectClass}><option value="">Todos</option>{(options?.years || []).map((year) => <option key={year} value={year}>{year}</option>)}</select>
+            </label>
+            <label className="text-xs text-muted-foreground">Mês
+              <select value={mes} disabled={!ano} onChange={(event) => pickMonth(ano, event.target.value)} className={`${selectClass} disabled:opacity-50`}><option value="">Todos</option>{MONTHS.map((name, index) => <option key={name} value={String(index + 1).padStart(2, "0")}>{name}</option>)}</select>
+            </label>
+            <label className="text-xs text-muted-foreground">De<Input type="date" value={de} onChange={(event) => { setDe(event.target.value); setAno(""); setMes(""); setPage(1) }} className="mt-1 w-40" /></label>
+            <label className="text-xs text-muted-foreground">Até<Input type="date" value={ate} onChange={(event) => { setAte(event.target.value); setAno(""); setMes(""); setPage(1) }} className="mt-1 w-40" /></label>
+            <label className="text-xs text-muted-foreground">Empresa
+              <select value={company} onChange={(event) => { setCompany(event.target.value); setPage(1) }} className={selectClass}><option value="">Todas</option>{(options?.companies || []).map((name) => <option key={name} value={name}>{name}</option>)}</select>
+            </label>
             <label className="text-xs text-muted-foreground">Modelo
-              <select value={model} onChange={(event) => { setModel(event.target.value); setPage(1) }} className="mt-1 block h-9 rounded-md border bg-background px-2 text-sm text-foreground">
-                <option value="">Todos</option>{data.summary.byModel.map((entry) => <option key={entry.model} value={entry.model}>{entry.model} ({entry.total.toLocaleString("pt-BR")})</option>)}
-              </select>
+              <select value={model} onChange={(event) => { setModel(event.target.value); setPage(1) }} className={selectClass}><option value="">Todos</option>{(options?.models || []).map((name) => <option key={name} value={name}>{name}</option>)}</select>
+            </label>
+            <label className="text-xs text-muted-foreground">Cor
+              <select value={color} onChange={(event) => { setColor(event.target.value); setPage(1) }} className={selectClass}><option value="">Todas</option>{(options?.colors || []).map((name) => <option key={name} value={name}>{name}</option>)}</select>
+            </label>
+            <label className="text-xs text-muted-foreground">Capacidade de carga
+              <select value={capacity} onChange={(event) => { setCapacity(event.target.value); setPage(1) }} className={selectClass}><option value="">Todas</option>{(options?.capacities || []).map((value) => <option key={value} value={String(value)}>{value ? tons(value) : "Sem informação"}</option>)}</select>
             </label>
             <label className="text-xs text-muted-foreground">Vendedor
-              <select value={seller} onChange={(event) => { setSeller(event.target.value); setPage(1) }} className="mt-1 block h-9 rounded-md border bg-background px-2 text-sm text-foreground">
-                <option value="">Todos</option>{data.sellers.map((name) => <option key={name} value={name}>{name}</option>)}
-              </select>
+              <select value={seller} onChange={(event) => { setSeller(event.target.value); setPage(1) }} className={selectClass}><option value="">Todos</option>{data.sellers.map((name) => <option key={name} value={name}>{name}</option>)}</select>
             </label>
+            <MultiSelectSearch label="Clientes (marque quantos quiser)" options={options?.clients || []} value={clients} onChange={(value) => { setClients(value); setPage(1) }} placeholder="Todos os clientes" searchPlaceholder="Pesquisar cliente por nome ou CNPJ/CPF..." />
+            <label className="flex items-center gap-2 pb-2 text-sm"><input type="checkbox" checked={intercompany} onChange={(event) => { setIntercompany(event.target.checked); setPage(1) }} />Incluir vendas entre as empresas ND</label>
+          </div>
+          <div className="mt-3 flex flex-wrap items-end gap-3">
+            <label className="text-xs text-muted-foreground">Buscar<Input value={q} onChange={(event) => setQ(event.target.value)} placeholder="chassi, descrição, cliente..." className="mt-1 w-72" /></label>
             <div className="text-xs text-muted-foreground">Nota de venda
               <div className="mt-1 flex rounded-md border p-0.5 text-sm">{([["sem", "Sem nota"], ["com", "Com nota"], ["", "Todos"]] as const).map(([value, label]) => <button key={label} type="button" onClick={() => { setNote(value); setPage(1) }} className={`rounded px-3 py-1 ${note === value ? "bg-primary text-primary-foreground" : "text-foreground"}`}>{label}</button>)}</div>
             </div>
+            {filtering ? <Button variant="ghost" size="sm" onClick={() => { setQ(""); setTerm(""); setAno(""); setMes(""); setDe(""); setAte(""); setCompany(""); setModel(""); setColor(""); setCapacity(""); setSeller(""); setClients([]); setIntercompany(false); setPage(1) }}>Limpar filtros</Button> : null}
             {loading ? <Loader2 className="mb-2 h-4 w-4 animate-spin text-muted-foreground" /> : null}
           </div>
           <div className="mt-3">

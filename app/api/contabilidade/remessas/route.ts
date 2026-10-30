@@ -3,7 +3,7 @@ import { stockContext } from "@/lib/stock-api"
 import { ACCOUNTING_MIGRATION_HINT } from "@/lib/accounting-server"
 import { chassisFromInvoice, digits } from "@/lib/chassis"
 import { fetchAllPages, memoize } from "@/lib/paged-fetch"
-import { onlyRemessas, remessaCfop } from "@/lib/remessas"
+import { onlyRemessas, remessaCfop, withoutCancelled } from "@/lib/remessas"
 import { createAdminClient } from "@/lib/supabase/server"
 
 export const runtime = "nodejs"
@@ -33,7 +33,7 @@ export async function GET(request: Request) {
       const perCompany = await Promise.all((companies.data || []).map(async (company) => {
         const admin = createAdminClient({ companyId: company.id })
         const invoices = await fetchAllPages<Record<string, unknown>>((from, to) => {
-          let query = onlyRemessas(admin.from("accounting_invoices").select(COLUMNS) as never) as any
+          let query = withoutCancelled(onlyRemessas(admin.from("accounting_invoices").select(COLUMNS) as never) as any) as any // remessa cancelada não conta
           if (de) query = query.gte("issued_at", `${de}T00:00:00-03:00`)
           if (ate) query = query.lte("issued_at", `${ate}T23:59:59-03:00`)
           return query.order("issued_at", { ascending: false }).order("id").range(from, to) as PromiseLike<{ data: Record<string, unknown>[] | null; error: { message: string } | null }>

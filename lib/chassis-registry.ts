@@ -37,18 +37,42 @@ export const FORT_COMPANY_ID = "8a52a1db-00b1-4d4d-bdf4-731dcecc2057"
 export const ND_COMPANY_ID = "00000000-0000-4000-8000-000000000001"
 export const companyForGroup = (group: string) => (/^\s*fort/i.test(group) ? FORT_COMPANY_ID : ND_COMPANY_ID)
 
-export type RegistryFilters = { q?: string; model?: string; note?: "" | "com" | "sem"; company?: string; seller?: string; sort?: "" | "chassi-asc" | "chassi-desc" }
-export type RegistryView = RegistryRow & { hasNote: boolean; noteNumber: string; noteClient: string; noteIssuedAt: string | null }
+/** O que o cadastro sabe da última nota de venda do chassi (para cruzar e filtrar). */
+export type RegistryNote = { number: string; clientName: string; clientDocument?: string; issuedAt: string | null; intercompany?: boolean; color?: string; capacity?: number }
+
+export type RegistryFilters = {
+  q?: string; model?: string; note?: "" | "com" | "sem"; company?: string; seller?: string; sort?: "" | "chassi-asc" | "chassi-desc"
+  from?: string; to?: string; color?: string; capacity?: string; clients?: string[]; intercompany?: boolean // mesmos filtros da parte de cima da página de Chassis
+}
+export type RegistryView = RegistryRow & {
+  hasNote: boolean; noteNumber: string; noteClient: string; noteIssuedAt: string | null
+  date: string; effectiveColor: string; effectiveCapacity: number; clientKey: string; noteIntercompany: boolean // data (aaaa-mm-dd), cor e capacidade (t) valendo, chave do cliente da nota
+}
+
+const saoPauloDay = (value?: string | null) => (value ? new Date(value).toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }) : "")
+/** Chave do cliente como na parte de cima da página: documento, ou "nome:NOME" sem documento. */
+export const clientKeyOf = (document: string | undefined, name: string) => document || `nome:${name}`
 
 const normalize = (value: string) => String(value || "").toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
 
 /** Une o cadastro com os chassis das notas (VIN -> última nota) e aplica os filtros da tela. */
-export function viewRegistry(rows: RegistryRow[], notes: Map<string, { number: string; clientName: string; issuedAt: string | null }>, filters: RegistryFilters): RegistryView[] {
+export function viewRegistry(rows: RegistryRow[], notes: Map<string, RegistryNote>, filters: RegistryFilters): RegistryView[] {
   const term = normalize(filters.q || "").trim()
   return rows.map((row) => {
     const note = notes.get(row.vin)
-    return { ...row, hasNote: Boolean(note), noteNumber: note?.number || "", noteClient: note?.clientName || "", noteIssuedAt: note?.issuedAt || null }
+    const date = note ? saoPauloDay(note.issuedAt) : row.saleDate || saoPauloDay(row.firstMention || row.lastMention) // a mesma data que o gráfico usa
+    return {
+      ...row, hasNote: Boolean(note), noteNumber: note?.number || "", noteClient: note?.clientName || "", noteIssuedAt: note?.issuedAt || null,
+      date, effectiveColor: row.color || note?.color || "", effectiveCapacity: row.capacityKg ? Math.round(row.capacityKg) / 1000 : note?.capacity || 0,
+      clientKey: note ? clientKeyOf(note.clientDocument, note.clientName) : "", noteIntercompany: Boolean(note?.intercompany),
+    }
   }).filter((row) => {
+    if (row.noteIntercompany && !filters.intercompany) return false // venda entre as empresas ND só com o filtro ligado
+    if (filters.from && (!row.date || row.date < filters.from)) return false
+    if (filters.to && (!row.date || row.date > filters.to)) return false
+    if (filters.color && (row.effectiveColor || "Sem cor") !== filters.color) return false
+    if (filters.capacity && String(row.effectiveCapacity || 0) !== filters.capacity) return false
+    if (filters.clients?.length && !filters.clients.includes(row.clientKey)) return false
     if (filters.model && row.model !== filters.model) return false
     if (filters.company && row.companyId !== filters.company) return false
     if (filters.seller && row.seller !== filters.seller && row.externalSeller !== filters.seller) return false

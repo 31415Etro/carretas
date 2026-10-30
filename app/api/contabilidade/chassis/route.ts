@@ -2,9 +2,9 @@ import { NextResponse } from "next/server"
 import { stockContext } from "@/lib/stock-api"
 import { ACCOUNTING_MIGRATION_HINT } from "@/lib/accounting-server"
 import { chassisByModel, chassisByModelMonth, chassisChart, chassisFromInvoice, chassisPerChassis, digits, filterChassis, isSaleNature, otherNoteFromInvoice, type ChassisRow, type OtherNote } from "@/lib/chassis"
-import { FORT_COMPANY_ID, ND_COMPANY_ID, registrySummary, viewRegistry, kgToTons, type RegistryRow } from "@/lib/chassis-registry"
+import { FORT_COMPANY_ID, ND_COMPANY_ID, clientKeyOf, registrySummary, viewRegistry, kgToTons, type RegistryNote, type RegistryRow } from "@/lib/chassis-registry"
 import { fetchAllPages, memoize } from "@/lib/paged-fetch"
-import { withoutRemessas } from "@/lib/remessas"
+import { withoutCancelled, withoutRemessas } from "@/lib/remessas"
 import { createAdminClient } from "@/lib/supabase/server"
 
 export const runtime = "nodejs"
@@ -23,7 +23,7 @@ function loadChassis(de: string, ate: string) {
     const perCompany = await Promise.all((companies.data || []).map(async (company) => {
       const admin = createAdminClient({ companyId: company.id })
       const invoices = await fetchAllPages<Record<string, unknown>>((from, to) => {
-        let query = withoutRemessas(admin.from("accounting_invoices").select(COLUMNS)).eq("operation", "Saída") // remessas (CFOP 5912/6912) não são venda: ficam na visão "Remessas"
+        let query = withoutCancelled(withoutRemessas(admin.from("accounting_invoices").select(COLUMNS))).eq("operation", "Saída") // remessas ficam na visão "Remessas"; nota cancelada não é venda
         if (de) query = query.gte("issued_at", `${de}T00:00:00-03:00`)
         if (ate) query = query.lte("issued_at", `${ate}T23:59:59-03:00`)
         return query.order("issued_at", { ascending: false }).order("id").range(from, to) as unknown as PromiseLike<{ data: Record<string, unknown>[] | null; error: { message: string } | null }>
@@ -85,11 +85,11 @@ function loadRegistry() {
 
 /** VIN -> última nota de venda que o cita. */
 function notesByVin(rows: ChassisRow[]) {
-  const map = new Map<string, { number: string; clientName: string; issuedAt: string | null }>()
+  const map = new Map<string, RegistryNote>()
   for (const row of rows) {
     if (!row.chassis) continue
     const current = map.get(row.chassis)
-    if (!current || String(row.issuedAt || "") > String(current.issuedAt || "")) map.set(row.chassis, { number: row.number, clientName: row.clientName, issuedAt: row.issuedAt })
+    if (!current || String(row.issuedAt || "") > String(current.issuedAt || "")) map.set(row.chassis, { number: row.number, clientName: row.clientName, clientDocument: row.clientDocument, issuedAt: row.issuedAt, intercompany: row.intercompany, color: row.color, capacity: row.capacity })
   }
   return map
 }
@@ -137,12 +137,29 @@ export async function GET(request: Request) {
     if (view === "modelo") return NextResponse.json({ found: rows.length, notes: loaded.notes, client, byModel: chassisByModel(rows), byModelMonth: chassisByModelMonth(rows) })
     if (view === "cadastro") {
       const registry = await loadRegistry()
-      const all = viewRegistry(registry.rows, notesByVin(loaded.rows), {})
-      const filtered = viewRegistry(registry.rows, notesByVin(loaded.rows), { q: params.get("q") || "", model: params.get("modelo") || "", note: params.get("nota") === "com" ? "com" : params.get("nota") === "sem" ? "sem" : "", seller: params.get("vendedor") || "", sort: params.get("ordem") === "chassi-asc" ? "chassi-asc" : params.get("ordem") === "chassi-desc" ? "chassi-desc" : "" })
+      const notes = notesByVin(loaded.rows)
+      const all = viewRegistry(registry.rows, notes, { intercompany: true })
+      const companyNames = new Map(loaded.rows.map((row) => [row.companyId, row.companyName]))
+      companyNames.set(FORT_COMPANY_ID, companyNames.get(FORT_COMPANY_ID) || "Fort Com de Ferro e Aço")
+      companyNames.set(ND_COMPANY_ID, companyNames.get(ND_COMPANY_ID) || "ND Carretas")
+      const companyName = params.get("empresa") || ""
+      const companyId = companyName ? [...companyNames.entries()].find(([, name]) => name === companyName)?.[0] || "__nenhuma__" : ""
+      const filtered = viewRegistry(registry.rows, notes, { company: companyId, from: isDay(params.get("inicio")) ? String(params.get("inicio")) : "", to: isDay(params.get("fim")) ? String(params.get("fim")) : "", color: params.get("cor") || "", capacity: params.get("capacidade") || "", clients: params.getAll("cliente"), intercompany: params.get("interna") === "1", q: params.get("q") || "", model: params.get("modelo") || "", note: params.get("nota") === "com" ? "com" : params.get("nota") === "sem" ? "sem" : "", seller: params.get("vendedor") || "", sort: params.get("ordem") === "chassi-asc" ? "chassi-asc" : params.get("ordem") === "chassi-desc" ? "chassi-desc" : "" })
       const pageSize = 100, page = Math.max(1, Number(params.get("pagina")) || 1)
       const inRegistry = new Set(registry.rows.map((row) => row.vin))
       const noteChassis = new Set(loaded.rows.filter((row) => row.chassis).map((row) => row.chassis))
-      return NextResponse.json({ missing: registry.missing, hint: registry.missing ? REGISTRY_HINT : "", summary: registrySummary(all), sellers: [...new Set(registry.rows.flatMap((row) => [row.seller, row.externalSeller]).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR")), noteChassisNotRegistered: [...noteChassis].filter((vin) => !inRegistry.has(vin)).length, found: filtered.length, page, pageSize, items: filtered.slice((page - 1) * pageSize, page * pageSize) })
+      // opções dos filtros, as mesmas da parte de cima da página
+      const clientUnits = new Map<string, { name: string; document: string; units: number }>()
+      for (const row of loaded.rows) { const key = clientKeyOf(row.clientDocument, row.clientName); const entry = clientUnits.get(key) || { name: row.clientName || "Sem nome", document: row.clientDocument, units: 0 }; entry.units += row.chassis ? 1 : row.quantity; clientUnits.set(key, entry) }
+      const options = {
+        companies: [...new Set(registry.rows.map((row) => companyNames.get(row.companyId) || "ND Carretas"))].sort(),
+        models: [...new Set(all.map((row) => row.model || "Sem modelo"))].sort(),
+        colors: [...new Set(all.map((row) => row.effectiveColor || "Sem cor"))].sort(),
+        capacities: [...new Set(all.map((row) => row.effectiveCapacity || 0))].sort((a, b) => a - b),
+        years: [...new Set(all.map((row) => row.date.slice(0, 4)).filter(Boolean))].sort().reverse(),
+        clients: [...clientUnits.entries()].sort((a, b) => a[1].name.localeCompare(b[1].name, "pt-BR")).map(([value, entry]) => ({ value, label: `${entry.name}${entry.document ? ` (${entry.document})` : ""} · ${entry.units}` })),
+      }
+      return NextResponse.json({ missing: registry.missing, hint: registry.missing ? REGISTRY_HINT : "", options, summary: registrySummary(all), sellers: [...new Set(registry.rows.flatMap((row) => [row.seller, row.externalSeller]).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR")), noteChassisNotRegistered: [...noteChassis].filter((vin) => !inRegistry.has(vin)).length, found: filtered.length, page, pageSize, items: filtered.slice((page - 1) * pageSize, page * pageSize) })
     }
     if (view === "todos") {
       // descrição/tamanho do cadastro nos chassis das notas; PBT e capacidade só entram quando a nota não trouxe
