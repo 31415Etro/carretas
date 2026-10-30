@@ -2,6 +2,7 @@
 // depende do tempo limite da hospedagem (erro 504) e não gasta processamento do servidor. O idioma português fica em /tessdata.
 import { isReliableReading, parseInvoicePdfText } from "./nfe-parser"
 import { pickReceiptText } from "./receipt-ocr"
+import { adaptive, paperBox, stretch } from "./receipt-image"
 import { extractJpegImages, looksScanned } from "./pdf-images"
 
 type Progress = (message: string) => void
@@ -136,69 +137,14 @@ function grayPixels(image: ImageData) {
   return gray
 }
 
-/** Limiar de Otsu (separa o papel claro do fundo). */
-function otsu(gray: Uint8ClampedArray) {
-  const histogram = new Uint32Array(256)
-  for (const value of gray) histogram[value]++
-  const total = gray.length
-  let sumAll = 0
-  for (let level = 0; level < 256; level++) sumAll += level * histogram[level]
-  let sumBack = 0, weightBack = 0, best = 0, threshold = 128
-  for (let level = 0; level < 256; level++) {
-    weightBack += histogram[level]
-    if (!weightBack) continue
-    const weightFront = total - weightBack
-    if (!weightFront) break
-    sumBack += level * histogram[level]
-    const between = weightBack * weightFront * (sumBack / weightBack - (sumAll - sumBack) / weightFront) ** 2
-    if (between > best) { best = between; threshold = level }
-  }
-  return threshold
-}
-
-/** Acha o papel (região clara) na foto: o cupom costuma ocupar 20 a 40% do quadro, com mesa, mão ou painel em volta. Devolve a caixa em fração da foto. */
+/** Acha o papel na foto (miniatura em tons de cinza; a lógica fica em receipt-image.ts, testada com as notinhas reais). */
 function findPaper(bitmap: ImageBitmap) {
   const width = 240, height = Math.max(1, Math.round((bitmap.height * width) / bitmap.width))
   const canvas = document.createElement("canvas")
   canvas.width = width; canvas.height = height
   const context = canvas.getContext("2d", { willReadFrequently: true })!
   context.drawImage(bitmap, 0, 0, width, height)
-  const gray = grayPixels(context.getImageData(0, 0, width, height))
-  const threshold = Math.max(110, otsu(gray))
-  const columns = new Uint16Array(width), rows = new Uint16Array(height)
-  let bright = 0
-  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) if (gray[y * width + x] >= threshold) { columns[x]++; rows[y]++; bright++ }
-  // sem papel claro identificável (foto já recortada ou muito escura): usa a foto inteira
-  if (bright < width * height * 0.08 || bright > width * height * 0.9) return { left: 0, top: 0, right: 1, bottom: 1 }
-  const span = (counts: Uint16Array, margin: number) => {
-    const cut = Math.max(...counts) * 0.3
-    const first = counts.findIndex((value) => value >= cut)
-    let last = counts.length - 1
-    while (last > first && counts[last] < cut) last--
-    return [Math.max(0, first / counts.length - margin), Math.min(1, (last + 1) / counts.length + margin)]
-  }
-  const [left, right] = span(columns, 0.03), [top, bottom] = span(rows, 0.02)
-  return { left, top, right, bottom }
-}
-
-/** Binarização adaptativa (limiar local por média de bloco): segura sombra, reflexo e iluminação desigual do celular. */
-function adaptive(gray: Uint8ClampedArray, width: number, height: number) {
-  const stride = width + 1
-  const integral = new Float64Array(stride * (height + 1))
-  for (let y = 1; y <= height; y++) {
-    let rowSum = 0
-    for (let x = 1; x <= width; x++) { rowSum += gray[(y - 1) * width + (x - 1)]; integral[y * stride + x] = integral[(y - 1) * stride + x] + rowSum }
-  }
-  const radius = Math.max(12, Math.round(width / 28)), out = new Uint8ClampedArray(gray.length)
-  for (let y = 0; y < height; y++) {
-    const y0 = Math.max(0, y - radius), y1 = Math.min(height, y + radius + 1)
-    for (let x = 0; x < width; x++) {
-      const x0 = Math.max(0, x - radius), x1 = Math.min(width, x + radius + 1)
-      const sum = integral[y1 * stride + x1] - integral[y0 * stride + x1] - integral[y1 * stride + x0] + integral[y0 * stride + x0]
-      out[y * width + x] = gray[y * width + x] * (x1 - x0) * (y1 - y0) < sum * 0.88 ? 0 : 255
-    }
-  }
-  return out
+  return paperBox(grayPixels(context.getImageData(0, 0, width, height)), width, height)
 }
 
 /** Prepara a notinha: recorta o papel, amplia para o texto ficar legível (~2200 px de largura) e entrega em tons de cinza ou binarizada. */
@@ -215,13 +161,7 @@ async function prepareReceipt(bitmap: ImageBitmap, mode: "gray" | "binary", crop
   context.drawImage(bitmap, sx, sy, sw, sh, 0, 0, width, height)
   const image = context.getImageData(0, 0, width, height)
   let gray = grayPixels(image)
-  const histogram = new Uint32Array(256)
-  for (const value of gray) histogram[value]++
-  let low = 0, high = 255
-  for (let sum = 0; low < 255 && (sum += histogram[low]) < gray.length * 0.01;) low++
-  for (let sum = 0; high > 0 && (sum += histogram[high]) < gray.length * 0.01;) high--
-  const range = Math.max(1, high - low)
-  gray = gray.map((value) => ((value - low) * 255) / range)
+  gray = stretch(gray)
   if (mode === "binary") gray = adaptive(gray, width, height)
   for (let at = 0, index = 0; at < gray.length; at++, index += 4) image.data[index] = image.data[index + 1] = image.data[index + 2] = gray[at]
   context.putImageData(image, 0, 0)

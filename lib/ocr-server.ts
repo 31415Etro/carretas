@@ -4,6 +4,7 @@ import sharp from "sharp"
 import { createWorker, type Worker } from "tesseract.js"
 import { isReliableReading } from "@/lib/nfe-parser"
 import { pickReceiptText } from "@/lib/receipt-ocr"
+import { adaptive, paperBox, stretch, WHOLE } from "@/lib/receipt-image"
 
 // OCR local (tesseract.js) com o idioma português em public/tessdata. Um único worker é reaproveitado entre as requisições
 // e as leituras são feitas uma por vez (o worker guarda parâmetros de leitura).
@@ -67,18 +68,37 @@ export async function ocrInvoiceImage(image: Buffer) {
 
 const RECEIPT_BUDGET_MS = 18_000
 
-/** Notinha (cupom/DANFE simplificado) lida no servidor, como reserva quando a leitura no celular não fechou: amplia, tons de cinza, contraste e duas segmentações. */
+const grayOf = (rgb: Buffer, channels: number) => { const gray = new Uint8ClampedArray(rgb.length / channels); for (let at = 0, index = 0; index < rgb.length; index += channels, at++) gray[at] = (rgb[index] * 299 + rgb[index + 1] * 587 + rgb[index + 2] * 114) / 1000; return gray }
+
+/**
+ * Prepara a notinha como no celular (lib/ocr-client.ts): acha o papel na foto e recorta, amplia para ~2200 px de largura, estica o contraste e,
+ * se pedido, binariza com limiar local. A leitura testada com as notinhas reais é exatamente esta.
+ */
+async function prepareReceipt(image: Buffer, mode: "gray" | "binary", crop: boolean) {
+  const base = sharp(image, { failOn: "none" }).rotate()
+  const { info: meta } = await base.clone().toBuffer({ resolveWithObject: true })
+  let box = WHOLE
+  if (crop) {
+    const thumb = await base.clone().resize({ width: 240 }).removeAlpha().raw().toBuffer({ resolveWithObject: true })
+    box = paperBox(grayOf(thumb.data, thumb.info.channels), thumb.info.width, thumb.info.height)
+  }
+  const left = Math.round(box.left * meta.width), top = Math.round(box.top * meta.height)
+  const sw = Math.max(1, Math.min(meta.width - left, Math.round((box.right - box.left) * meta.width))), sh = Math.max(1, Math.min(meta.height - top, Math.round((box.bottom - box.top) * meta.height)))
+  const scale = Math.min(2200 / sw, Math.sqrt(9_000_000 / (sw * sh)), 3)
+  const raw = await base.clone().extract({ left, top, width: sw, height: sh }).resize({ width: Math.max(1, Math.round(sw * scale)), height: Math.max(1, Math.round(sh * scale)), fit: "fill" }).removeAlpha().raw().toBuffer({ resolveWithObject: true })
+  let gray = stretch(grayOf(raw.data, raw.info.channels))
+  if (mode === "binary") gray = adaptive(gray, raw.info.width, raw.info.height)
+  return sharp(Buffer.from(gray), { raw: { width: raw.info.width, height: raw.info.height, channels: 1 } }).png().toBuffer()
+}
+
+/** Notinha (cupom/DANFE simplificado) lida no servidor, como reserva quando a leitura no celular não fechou: mesmas preparações e votação do celular. */
 export async function ocrReceiptBuffer(image: Buffer) {
   const started = Date.now()
-  const base = () => sharp(image, { failOn: "none" }).rotate()
-  // duas preparações diferentes da mesma foto: o valor só é dado como certo quando fecha pela conta do cupom ou quando duas leituras concordam
-  const sharpened = await base().resize({ width: 2000, fit: "inside" }).grayscale().normalize().sharpen().png().toBuffer()
-  const soft = await base().resize({ width: 1600, fit: "inside" }).grayscale().normalize().gamma(1.2).median(1).png().toBuffer()
   const texts: string[] = []
   // a Vercel corta a função em 60 s: cada tentativa só começa se ainda couber no orçamento de tempo
-  for (const [buffer, mode] of [[sharpened, "6"], [soft, "6"], [sharpened, "4"], [soft, "11"]] as const) {
+  for (const attempt of [{ mode: "gray", crop: true, psm: "6" }, { mode: "binary", crop: true, psm: "6" }, { mode: "gray", crop: true, psm: "4" }, { mode: "gray", crop: false, psm: "11" }] as const) {
     if (texts.length && Date.now() - started > RECEIPT_BUDGET_MS) break
-    texts.push(await recognize(buffer, mode))
+    texts.push(await recognize(await prepareReceipt(image, attempt.mode, attempt.crop), attempt.psm))
     const picked = pickReceiptText(texts)
     if (picked.sure) return picked.text
   }

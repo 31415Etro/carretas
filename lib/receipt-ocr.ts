@@ -98,7 +98,10 @@ function guessEstablishment(lines: string[]): string {
 /** Lê uma notinha a partir do texto do OCR: valor, estabelecimento, data e categoria sugerida. */
 export function parseReceiptText(rawText: string): ParsedReceipt {
   const warnings: string[] = []
-  const lines = rawText.split(/\r?\n/).map((line) => line.replace(/\s+/g, " ").trim()).filter(Boolean)
+  // marcadores acrescentados por pickReceiptText (valor e nome decididos por consenso entre as leituras do OCR)
+  const decided = rawText.match(/^__VALOR__=(\d+(?:\.\d{1,2})?)(;seguro)?$/m)
+  const decidedName = rawText.match(/^__ESTAB__=(.+)$/m)?.[1]?.trim() || ""
+  const lines = rawText.split(/\r?\n/).map((line) => line.replace(/\s+/g, " ").trim()).filter((line) => line && !/^__(VALOR|ESTAB)__=/.test(line))
   const flat = lines.join("\n")
 
   let amount = 0
@@ -148,6 +151,7 @@ export function parseReceiptText(rawText: string): ParsedReceipt {
     amount = values.reduce((max, value) => Math.max(max, value), 0)
     if (amount) warnings.push("Não achei o rótulo \"total\": usei o maior valor do cupom. Confira.")
   }
+  if (decided) { amount = Number(decided[1]); verified = Boolean(decided[2]); for (let at = warnings.length - 1; at >= 0; at--) if (/r[óo]tulo/i.test(warnings[at])) warnings.splice(at, 1) }
   if (!amount) warnings.push("Não consegui ler o valor. Preencha manualmente.")
 
   const dates = [
@@ -158,26 +162,101 @@ export function parseReceiptText(rawText: string): ParsedReceipt {
   const occurredAt = dates.find((iso) => iso <= today) || dates[0] || today
   if (!dates.length) warnings.push("Não consegui ler a data: usei a data de hoje. Confira.")
 
-  const establishment = guessEstablishment(lines)
+  const establishment = decidedName || guessEstablishment(lines)
   if (!establishment) warnings.push("Não consegui identificar o estabelecimento.")
 
   return { amount, establishment, occurredAt, category: categorizeReceipt(rawText), warnings, verified }
 }
 
+/** Quão parecido com um nome de verdade é o estabelecimento lido (0 a 1): palavras de 3+ letras com vogal e sem lixo de símbolos. */
+const nameQuality = (name: string) => {
+  const words = name.split(/\s+/).filter(Boolean)
+  if (!words.length) return 0
+  const good = words.filter((word) => word.length >= 3 && /[AEIOUÁÉÍÓÚÃÕÂÊÔ]/i.test(word) && /^[A-Za-zÀ-ÿ0-9&.\-/']+$/.test(word)).length
+  return (good / words.length) * Math.min(1, name.length / 8)
+}
+
 /**
- * Escolhe a melhor leitura entre várias tentativas de OCR da mesma foto. "Segura" quando o valor fecha numa conta do cupom (pago - troco)
- * ou quando duas tentativas diferentes chegam ao mesmo valor. Sem isso, devolve a leitura com o valor mais votado (e sure = false).
+ * Escolhe a melhor leitura entre várias tentativas de OCR da mesma foto. O valor sai do consenso entre as leituras (veja consensusAmount); o texto
+ * devolvido leva o valor decidido (e o melhor nome de estabelecimento entre as leituras) em linhas de marcação que parseReceiptText respeita.
+ * "Segura" quando o consenso fecha (3 pontos e folga) ou, na falta dele, quando o valor fecha em pago - troco ou duas tentativas concordam.
  */
 export function pickReceiptText(texts: string[]): { text: string; sure: boolean } {
   const parsed = texts.map((text) => ({ text, ...parseReceiptText(text) }))
+  const consensus = consensusAmount(texts)
+  const names = parsed.filter((item) => item.establishment).map((item) => ({ name: item.establishment, quality: nameQuality(item.establishment) })).sort((a, b) => b.quality - a.quality)
   const labeled = parsed.filter((item) => item.amount > 0 && !item.warnings.some((warning) => /r[óo]tulo/i.test(warning)))
-  const verified = labeled.find((item) => item.verified && item.establishment) || labeled.find((item) => item.verified)
-  if (verified) return { text: verified.text, sure: true }
-  const votes = new Map<number, number>()
-  for (const item of labeled) votes.set(item.amount, (votes.get(item.amount) || 0) + 1)
-  const [best, count] = [...votes.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0] || [0, 0]
-  const chosen = labeled.find((item) => item.amount === best && item.establishment) || labeled.find((item) => item.amount === best)
-  if (chosen) return { text: chosen.text, sure: count >= 2 }
-  const any = parsed.find((item) => item.amount > 0)
-  return { text: any ? any.text : texts.join("\n"), sure: false }
+  let result: { text: string; sure: boolean }
+  if (consensus.amount > 0) {
+    const base = parsed.find((item) => item.amount === consensus.amount && item.establishment) || parsed.find((item) => item.amount === consensus.amount) || parsed[0]
+    result = { text: `${base.text}\n__VALOR__=${consensus.amount.toFixed(2)}${consensus.sure ? ";seguro" : ""}`, sure: consensus.sure }
+  } else {
+    const verified = labeled.find((item) => item.verified && item.establishment) || labeled.find((item) => item.verified)
+    if (verified) result = { text: verified.text, sure: true }
+    else {
+      const votes = new Map<number, number>()
+      for (const item of labeled) votes.set(item.amount, (votes.get(item.amount) || 0) + 1)
+      const [best, count] = [...votes.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0] || [0, 0]
+      const chosen = labeled.find((item) => item.amount === best && item.establishment) || labeled.find((item) => item.amount === best)
+      if (chosen) result = { text: chosen.text, sure: count >= 2 }
+      else { const any = parsed.find((item) => item.amount > 0); result = { text: any ? any.text : texts.join("\n"), sure: false } }
+    }
+  }
+  const own = parseReceiptText(result.text).establishment
+  if (names.length && names[0].quality >= 0.6 && nameQuality(own) < names[0].quality) result.text += `\n__ESTAB__=${names[0].name}`
+  return result
+}
+
+/** Valores lidos por rótulo numa leitura: total, pago, troco, subtotal e desconto (o valor vem na mesma linha ou nas 2 seguintes, layout em coluna). */
+function labeledValues(rawText: string) {
+  const lines = rawText.split(/\r?\n/).map((line) => line.replace(/\s+/g, " ").trim()).filter(Boolean)
+  const first = (index: number) => { for (const candidate of lines.slice(index, index + 3)) { if (candidate !== lines[index] && /[A-Za-zÀ-ÿ]{4,}/.test(candidate) && !/R\$/.test(candidate)) break; const values = moneyIn(candidate); if (values.length) return values[values.length - 1] } return 0 }
+  const out = { totals: [] as number[], paid: [] as number[], change: [] as number[], subtotal: [] as number[], discount: [] as number[], payments: [] as number[] }
+  lines.forEach((line, index) => {
+    const flat = stripAccents(line).toUpperCase()
+    const value = first(index)
+    if (!value) return
+    if (/TROCO/.test(flat)) out.change.push(value)
+    else if (/SUB\s*-?\s*TOTAL/.test(flat)) out.subtotal.push(value)
+    else if (/DESCONTO/.test(flat)) out.discount.push(value)
+    else if (TOTAL_LABELS.test(line) && !NOT_TOTAL.test(line)) out.totals.push(value)
+    else if (/VALOR\s*PAGO|^PAGO/.test(flat)) out.paid.push(value)
+    else if (/DINHEIRO|CARTAO|CREDITO|DEBITO|PIX/.test(flat)) { out.payments.push(value); out.paid.push(value) }
+  })
+  return out
+}
+
+/**
+ * Valor da notinha por consenso entre várias leituras de OCR da mesma foto. Cada leitura dá provas para um valor: ele aparece no rótulo de total (1),
+ * é pago - troco (2), é subtotal - desconto (2) ou é o valor pago sem troco (1); as provas somam entre as leituras. "Segura" com 3 ou mais pontos e
+ * folga sobre o segundo colocado: um valor só confirmado por uma linha (que o OCR pode ter errado em um dígito) não basta.
+ */
+export function consensusAmount(texts: string[]): { amount: number; score: number; sure: boolean } {
+  const score = new Map<number, number>()
+  const add = (value: number, points: number) => { if (value > 0 && value < 1_000_000) { const key = Math.round(value * 100) / 100; score.set(key, (score.get(key) || 0) + points) } }
+  for (const text of texts) {
+    const seen = labeledValues(text)
+    const found = new Map<number, number>()
+    const note = (value: number, points: number) => { const key = Math.round(value * 100) / 100; found.set(key, Math.max(found.get(key) || 0, 0) + points) }
+    for (const total of seen.totals) note(total, 1)
+    const tendered = Math.max(0, ...seen.paid), change = Math.max(0, ...seen.change) // o maior "pago" é o dinheiro entregue; os menores são o pagamento líquido
+    if (tendered > change && change > 0) note(tendered - change, 2)
+    for (const sub of seen.subtotal) for (const discount of seen.discount) if (sub > discount) note(sub - discount, 2)
+    const hasChangeLabel = /TROCO/i.test(text) // "Troco" escrito sem valor ao lado (coluna deslocada) também mostra que o valor pago foi maior que a compra
+    if (!change && !hasChangeLabel) { if (tendered) note(tendered, 2) } else for (const net of seen.payments) if (net !== tendered) note(net, 1)
+    // contas entre quaisquer valores do cupom: alguns cupons imprimem a coluna de valores deslocada em relação aos rótulos (o rótulo "Valor Total"
+    // fica ao lado do valor pago), então o rótulo engana; o valor que é resultado de mais contas certas (subtotal - desconto, pago - troco) é o total
+    const values = [...new Set(text.split(/\r?\n/).flatMap(moneyIn))]
+    for (const result of values) {
+      let pairs = 0
+      for (const paid of values) for (const taken of values) if (paid > taken && paid !== result && taken !== result && Math.abs(paid - taken - result) < 0.005) pairs++
+      if (pairs) note(result, pairs * 2)
+    }
+    for (const [value, points] of found) add(value, Math.min(points, 4)) // uma leitura sozinha vale no máximo 4
+  }
+  const ranked = [...score.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])
+  if (!ranked.length) return { amount: 0, score: 0, sure: false }
+  const [amount, best] = ranked[0]
+  const second = ranked[1]?.[1] || 0
+  return { amount, score: best, sure: best >= 3 && best - second >= 2 }
 }

@@ -69,12 +69,35 @@ test("OCR trocou um dígito do total (593,91 em vez de 593,51): pago - troco cor
   assert.equal(result.verified, true)
 })
 
-test("sem troco (cartão): só é segura quando duas leituras concordam", () => {
+test("sem troco (cartão): é segura quando o total e o pagamento concordam; se discordam, só com mais leituras", () => {
   const a = "POSTO SOL\nTOTAL R$ 120,40\nCARTAO 120,40\n12/10/2026"
   const b = "POSTO SOL\nTOTAL R$ 120,90\nCARTAO 120,40\n12/10/2026"
-  assert.equal(pickReceiptText([a]).sure, false)
-  assert.equal(pickReceiptText([a, b]).sure, false)
-  const both = pickReceiptText([a, b, a])
+  assert.equal(pickReceiptText([a]).sure, true) // duas linhas independentes com o mesmo valor
+  assert.equal(pickReceiptText([b]).sure, false) // o total e o pagamento discordam: não dá para saber qual está certo
+  const both = pickReceiptText([b, a, b])
   assert.equal(both.sure, true)
   assert.equal(parseReceiptText(both.text).amount, 120.4)
+})
+
+test("consenso: o OCR errou o dígito do total, mas pago - troco fecha o valor certo", () => {
+  const read = "VIA MAIS REDE DE POSTOS\nVALOR TOTAL R$ 43,91\nVALOR PAGO R$\nDinheiro 600,00\nTroco 6,49\n29/10/2026"
+  const picked = pickReceiptText([read])
+  assert.equal(parseReceiptText(picked.text).amount, 593.51)
+  assert.equal(picked.sure, false) // um único rótulo discorda da conta: pede conferência
+  const twice = pickReceiptText([read, "VALOR TOTAL R$ 593,51\nDinheiro 600,00\nTroco 6,49"])
+  assert.equal(twice.sure, true)
+  assert.equal(parseReceiptText(twice.text).amount, 593.51)
+})
+
+test("consenso: cupom com a coluna de valores deslocada em relação aos rótulos (rótulo ao lado do valor errado)", () => {
+  // impresso assim: 31,45 / Subtotal 2,49 / Desconto 28,96 / Valor Total 100,00 / Forma de Pagamento DINHEIRO 71,04 / Troco
+  const read = "GOMA DE MASCAR 3,99\nAGUA FONT 9,99\n31,45\nSubtotal R$ 2,49\nDesconto R$ 28,96\nValor Total R$ 100,00\nForma de Pagamento: DINHEIRO 71,04\nTroco R$"
+  const picked = pickReceiptText([read])
+  assert.equal(parseReceiptText(picked.text).amount, 28.96) // 31,45 - 2,49 e 100,00 - 71,04 dão o mesmo resultado
+})
+
+test("consenso: a conta não pega o troco como se fosse o total", () => {
+  const read = "VALOR TOTAL R$ 28,96\nDinheiro 100,00\nTroco 71,04"
+  const picked = pickReceiptText([read, "Valor Total R$ 3,99\nDinheiro 100,00\nTroco 71,04"])
+  assert.equal(parseReceiptText(picked.text).amount, 28.96)
 })
