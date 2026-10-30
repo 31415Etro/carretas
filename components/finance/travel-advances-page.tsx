@@ -83,6 +83,12 @@ export function TravelAdvancesPage() {
     }
   }, [])
   useEffect(() => { void load() }, [load])
+  useEffect(() => { // vindo de um lançamento em Entradas e Saídas (?abrir=<id>): abre a janela da antecipação
+    const wanted = new URLSearchParams(window.location.search).get("abrir")
+    if (!wanted || !advances.length) return
+    const found = advances.find((advance) => advance.id === wanted)
+    if (found) { setDetail(found); window.history.replaceState(null, "", window.location.pathname) }
+  }, [advances])
   useEffect(() => { setDetail((current) => (current ? advances.find((advance) => advance.id === current.id) || current : current)) }, [advances]) // a janela aberta acompanha a lista recarregada
 
   function pickEmployee(id: string) {
