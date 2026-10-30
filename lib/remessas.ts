@@ -1,6 +1,18 @@
-// Notas de remessa (demonstração etc.): CFOP 5912 (dentro do estado) e 6912 (outro estado). Não são venda: ficam fora de TODAS as análises de vendas
-// da Contabilidade (análise, consolidado, notas, chassis) e aparecem só na visão "Remessas". Para incluir outro CFOP de remessa, acrescente aqui.
-export const REMESSA_CFOPS = ["5912", "6912"]
+// Notas de remessa e de retorno de remessa: demonstração, industrialização por encomenda, conserto e brinde. Não são venda nem compra: ficam fora de
+// TODAS as análises da Contabilidade (análise, consolidado, notas, chassis) e aparecem só na visão "Remessas". Cada tipo existe com 5 (dentro do estado)
+// e com 6 (outro estado). Para incluir outro CFOP de remessa, acrescente em REMESSA_TYPES.
+export const REMESSA_TYPES: Record<string, string> = {
+  "901": "Remessa para industrialização por encomenda",
+  "902": "Retorno de mercadoria utilizada na industrialização",
+  "903": "Retorno de mercadoria não aplicada na industrialização",
+  "910": "Remessa em bonificação, doação ou brinde",
+  "912": "Remessa para demonstração",
+  "913": "Retorno de mercadoria recebida para demonstração",
+  "915": "Remessa para conserto ou reparo",
+  "916": "Retorno de conserto ou reparo",
+  "925": "Retorno de mercadoria recebida para industrialização",
+}
+export const REMESSA_CFOPS = Object.keys(REMESSA_TYPES).flatMap((suffix) => [`5${suffix}`, `6${suffix}`])
 
 const onlyDigits = (value: unknown) => String(value ?? "").replace(/\D/g, "")
 
@@ -18,5 +30,8 @@ export const onlyRemessas = <Q extends { or: (filters: string) => Q }>(query: Q)
 /** CFOP da remessa da nota (o primeiro que for de remessa). */
 export const remessaCfop = (items: Array<{ cfop?: string }> | null | undefined) => onlyDigits((items || []).find((item) => REMESSA_CFOPS.includes(onlyDigits(item.cfop)))?.cfop)
 
-/** 5912 = remessa dentro do estado; 6912 = para outro estado. */
-export const cfopLabel = (cfop: string) => (cfop === "5912" ? "5912 · dentro do estado" : cfop === "6912" ? "6912 · outro estado" : cfop || "sem CFOP")
+/** "6912 · Remessa para demonstração (outro estado)". */
+export const cfopLabel = (cfop: string) => {
+  const type = REMESSA_TYPES[cfop.slice(1)]
+  return type ? `${cfop} · ${type} (${cfop.startsWith("5") ? "dentro do estado" : "outro estado"})` : cfop || "sem CFOP"
+}

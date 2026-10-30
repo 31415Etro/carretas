@@ -93,7 +93,7 @@ export function RemessasPanel() {
 
   const totals = useMemo(() => {
     const recipients = new Set(shown.map((note) => note.recipientDocument || note.recipientName))
-    return { notes: shown.length, value: shown.reduce((sum, note) => sum + note.total, 0), carretas: shown.reduce((sum, note) => sum + note.carretas, 0), recipients: recipients.size, byCfop: ["5912", "6912"].map((code) => ({ code, notes: shown.filter((note) => note.cfop === code).length, value: shown.filter((note) => note.cfop === code).reduce((sum, note) => sum + note.total, 0) })) }
+    return { notes: shown.length, value: shown.reduce((sum, note) => sum + note.total, 0), carretas: shown.reduce((sum, note) => sum + note.carretas, 0), recipients: recipients.size, byCfop: [...new Set(shown.map((note) => note.cfop))].sort().map((code) => ({ code, notes: shown.filter((note) => note.cfop === code).length, value: shown.filter((note) => note.cfop === code).reduce((sum, note) => sum + note.total, 0) })).sort((a, b) => b.value - a.value) }
   }, [shown])
 
   const models = useMemo(() => {
@@ -141,7 +141,7 @@ export function RemessasPanel() {
   return (
     <div className="space-y-4">
       <p className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-        Notas de <strong>remessa</strong> (CFOP <strong>5912</strong> dentro do estado e <strong>6912</strong> para outro estado, em geral remessa para demonstração). Elas <strong>não entram nas vendas</strong> da Contabilidade nem na página de Chassis: aparecem só aqui, de todas as empresas.
+        Notas de <strong>remessa e de retorno de remessa</strong>: demonstração (5912/6912 e retorno 5913/6913), industrialização por encomenda (5901/6901, retorno 5902/6902/5925/6925), conserto e brinde. Elas <strong>não entram nas vendas nem nas compras</strong> da Contabilidade nem na página de Chassis: aparecem só aqui, de todas as empresas.
       </p>
 
       <SectionCard title="Filtros">
@@ -171,8 +171,8 @@ export function RemessasPanel() {
       </SectionCard>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Card label="Notas de remessa" value={number(totals.notes)} hint={totals.byCfop.map((entry) => `${entry.code}: ${number(entry.notes)}`).join(" · ")} />
-        <Card label="Valor das remessas" value={brl(totals.value)} hint={totals.byCfop.map((entry) => `${entry.code}: ${brl(entry.value)}`).join(" · ")} />
+        <Card label="Notas de remessa" value={number(totals.notes)} hint={totals.byCfop.slice(0, 4).map((entry) => `${entry.code}: ${number(entry.notes)}`).join(" · ")} />
+        <Card label="Valor das remessas" value={brl(totals.value)} hint={totals.byCfop.slice(0, 3).map((entry) => `${entry.code}: ${brl(entry.value)}`).join(" · ")} />
         <Card label="Carretas remetidas" value={number(totals.carretas)} hint={models.slice(0, 3).map(([model, quantity]) => `${model}: ${number(quantity)}`).join(" · ")} />
         <Card label="Destinatários" value={number(totals.recipients)} hint="clientes, lojas e representantes que receberam" />
       </div>
@@ -231,6 +231,12 @@ export function RemessasPanel() {
               </BarChart>
             </ResponsiveContainer>
           </div>
+        </SectionCard>
+
+        <SectionCard title="Remessas por tipo (CFOP)" description="Cada CFOP de remessa ou retorno e o que ele representa.">
+          <DataTable headers={["CFOP", "Tipo", "Notas", "Valor"]} empty={!totals.byCfop.length && !loading}>
+            {totals.byCfop.map((entry) => <TableRow key={entry.code}><TableCell className="font-medium">{entry.code}</TableCell><TableCell className="max-w-[260px] truncate" title={cfopLabel(entry.code)}>{cfopLabel(entry.code).replace(/^\d+ · /, "")}</TableCell><TableCell className="text-right">{number(entry.notes)}</TableCell><TableCell className="whitespace-nowrap text-right">{brl(entry.value)}</TableCell></TableRow>)}
+          </DataTable>
         </SectionCard>
 
         <SectionCard title="Remessas por empresa" description="Valor e carretas remetidos por cada empresa do grupo.">
