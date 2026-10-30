@@ -89,14 +89,17 @@ export async function createAdvance(admin: Admin, input: CreateAdvanceInput, cre
   return { id: data.id, token: data.token, number: data.number ?? null }
 }
 
+/** Notinha como aparece na lista do financeiro (com a foto e o que o sistema leu). */
+type AdvanceReceipt = { id: string; amount: number; status: string; category: string; photo_url: string; establishment: string; occurred_at: string | null; review_note: string; created_at: string }
+
 async function withReceipts<T extends { id: string }>(admin: Admin, advances: T[]) {
-  if (!advances.length) return advances.map((advance) => ({ ...advance, receipts: [] as Array<{ id: string; amount: number; status: string; category: string }> }))
-  const { data, error } = await admin.from("travel_advance_receipts").select("id,advance_id,amount,status,category").in("advance_id", advances.map((advance) => advance.id))
+  if (!advances.length) return advances.map((advance) => ({ ...advance, receipts: [] as AdvanceReceipt[] }))
+  const { data, error } = await admin.from("travel_advance_receipts").select("id,advance_id,amount,status,category,photo_url,establishment,occurred_at,review_note,created_at").in("advance_id", advances.map((advance) => advance.id)).order("created_at")
   if (error) throw error
-  const byAdvance = new Map<string, Array<{ id: string; amount: number; status: string; category: string }>>()
+  const byAdvance = new Map<string, AdvanceReceipt[]>()
   for (const row of data || []) {
     const list = byAdvance.get(String(row.advance_id)) || []
-    list.push({ id: String(row.id), amount: Number(row.amount), status: String(row.status), category: String(row.category) })
+    list.push({ id: String(row.id), amount: Number(row.amount), status: String(row.status), category: String(row.category), photo_url: String(row.photo_url || ""), establishment: String(row.establishment || ""), occurred_at: row.occurred_at ? String(row.occurred_at) : null, review_note: String(row.review_note || ""), created_at: String(row.created_at || "") })
     byAdvance.set(String(row.advance_id), list)
   }
   return advances.map((advance) => ({ ...advance, receipts: byAdvance.get(advance.id) || [] }))

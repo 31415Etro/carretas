@@ -21,7 +21,7 @@ type Receipt = { id: string; photo_url: string; amount: number; establishment: s
 type CategorySummary = { category: string; budget: number; spent: number; remaining: number; overspent: boolean }
 type Advance = {
   id: string; token: string; number?: number | null; cancel_reason?: string | null; cancelled_by?: string | null; cancelled_at?: string | null; settlement_note?: string | null; employee_cpf?: string; company?: { name: string; cnpj: string }; employee_name: string; reason: string; amount: number; start_date: string; end_date: string; status: string
-  own_pocket_justification: string; settlement_action: string | null; settlement_resolved: boolean; receipts: Array<{ status: string }>
+  own_pocket_justification: string; settlement_action: string | null; settlement_resolved: boolean; receipts: Array<{ id: string; status: string; amount: number; category: string; photo_url: string; establishment: string; occurred_at: string | null; review_note: string; created_at: string }>
   summary: { budget: number; spent: number; remaining: number; overspent: boolean }; categories: CategorySummary[]
 }
 
@@ -83,6 +83,7 @@ export function TravelAdvancesPage() {
     }
   }, [])
   useEffect(() => { void load() }, [load])
+  useEffect(() => { setDetail((current) => (current ? advances.find((advance) => advance.id === current.id) || current : current)) }, [advances]) // a janela aberta acompanha a lista recarregada
 
   function pickEmployee(id: string) {
     const employee = employees.find((item) => item.id === id)
@@ -350,7 +351,20 @@ export function TravelAdvancesPage() {
                   ))}
                 </div>
               ) : null}
-              <p className="text-xs text-muted-foreground">{detail.receipts.length} notinha(s) enviada(s). Use a seção "Pendências" acima para aprovar/contestar uma a uma.</p>
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Notinhas enviadas ({detail.receipts.length})</p>
+                {detail.receipts.length === 0 ? <p className="text-sm text-muted-foreground">O funcionário ainda não enviou nenhuma notinha.</p> : detail.receipts.map((receipt) => (
+                  <div key={receipt.id} className="flex gap-3 rounded-md border p-2 text-sm">
+                    <a href={receipt.photo_url} target="_blank" rel="noreferrer" title="Abrir a foto original"><img src={receipt.photo_url} alt="Notinha" className="h-20 w-20 rounded object-cover" /></a>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2"><p className="truncate font-medium">{receipt.establishment || "(estabelecimento não identificado)"}</p><strong className="whitespace-nowrap">{brl(receipt.amount)}</strong></div>
+                      <p className="text-xs text-muted-foreground">{CATEGORY_LABEL[receipt.category] || receipt.category} · {receipt.occurred_at ? day(receipt.occurred_at.slice(0, 10)) : "sem data"} · enviada em {receipt.created_at ? new Date(receipt.created_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "-"}</p>
+                      <p className="mt-1 text-xs"><span className={receipt.status === "Aprovado" ? "text-green-700" : receipt.status === "Contestado" ? "text-destructive" : "text-muted-foreground"}>{receipt.status}</span>{receipt.review_note ? ` · ${receipt.review_note}` : ""}</p>
+                    </div>
+                  </div>
+                ))}
+                <p className="text-xs text-muted-foreground">Para aprovar ou contestar, use a seção "Pendências" acima (aparece quando o funcionário finaliza a prestação de contas).</p>
+              </div>
             </>
           ) : null}
         </DialogContent>
