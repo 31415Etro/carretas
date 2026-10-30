@@ -164,6 +164,24 @@ export function ChassisPage() {
   const valueByCell = useMemo(() => { const map = new Map<string, number>(); for (const row of rows) { const key = `${periodKey(row.issuedAt, granularity)}|${groupOf(row)}`; map.set(key, (map.get(key) || 0) + row.itemTotal) } return map }, [rows, granularity, groupOf])
   const ranking = useMemo(() => timeline.series.map((name) => ({ name, chassis: timeline.data.reduce((sum, row) => sum + Number(row[name] || 0), 0), total: Math.round((valueByGroup.get(name) || 0) * 100) / 100 })).sort((a, b) => b.chassis - a.chassis), [timeline, valueByGroup])
   const bySize = useMemo(() => chassisBySize(rows, sizeField), [rows, sizeField])
+  // vendedores (da fábrica e externos) por quantidade de chassis, do que mais vendeu para o que menos vendeu; o chassi com os dois vendedores conta para cada um
+  const bySeller = useMemo(() => {
+    const map = new Map<string, { name: string; chassis: number; total: number; fabrica: number; externo: number }>()
+    let without = 0
+    for (const row of rows) {
+      const units = rowUnits(row)
+      const names: Array<[string, "fabrica" | "externo"]> = []
+      if ((row as Row).seller) names.push([(row as Row).seller as string, "fabrica"])
+      if ((row as Row).externalSeller) names.push([(row as Row).externalSeller as string, "externo"])
+      if (!names.length) { without += units; continue }
+      for (const [name, kind] of names) {
+        const entry = map.get(name) || { name, chassis: 0, total: 0, fabrica: 0, externo: 0 }
+        entry.chassis += units; entry[kind] += units; entry.total += row.itemTotal
+        map.set(name, entry)
+      }
+    }
+    return { list: [...map.values()].sort((a, b) => b.chassis - a.chassis || a.name.localeCompare(b.name, "pt-BR")), without }
+  }, [rows])
   const chartData = timeline.data.map((row) => ({ ...row, label: periodLabel(String(row.period), granularity) }))
   const units = useMemo(() => trailerUnits(rows), [rows])
   const distinct = units.units
@@ -287,6 +305,24 @@ export function ChassisPage() {
             </BarChart>
           </ResponsiveContainer>
         </div>
+      </SectionCard>
+
+      <SectionCard title="Vendedores por quantidade de chassis" description={`Do que mais vendeu para o que menos vendeu, no período filtrado. Azul: vendedor da fábrica; verde: vendedor externo (loja ou representante). Clique em uma barra para filtrar por aquele vendedor. ${bySeller.without.toLocaleString("pt-BR")} chassi(s) sem vendedor informado não aparecem.`}>
+        {bySeller.list.length ? (
+          <div style={{ height: Math.max(180, Math.min(25, bySeller.list.length) * 28 + 40) }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={bySeller.list.slice(0, 25).map((entry) => ({ ...entry, label: `${entry.name.length > 20 ? `${entry.name.slice(0, 19)}…` : entry.name} · ${entry.chassis.toLocaleString("pt-BR")}` }))} layout="vertical" margin={{ top: 4, right: 36, left: 8, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
+                <YAxis type="category" dataKey="label" width={170} interval={0} tick={{ fontSize: 11 }} />
+                <Tooltip content={<SummaryTip />} cursor={{ fill: "rgba(30,58,138,0.08)" }} />
+                <Bar dataKey="fabrica" name="Vendedor da fábrica" stackId="seller" fill="#1e3a8a" cursor="pointer" onClick={(entry) => setSeller(clickedName(entry))} />
+                <Bar dataKey="externo" name="Vendedor externo" stackId="seller" fill="#0f766e" cursor="pointer" radius={[0, 3, 3, 0]} onClick={(entry) => setSeller(clickedName(entry))} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        ) : <p className="text-sm text-muted-foreground">{loading ? "Carregando..." : "Nenhum chassi com vendedor informado neste filtro."}</p>}
+        {bySeller.list.length > 25 ? <p className="mt-2 text-xs text-muted-foreground">Mostrando os 25 que mais venderam de {bySeller.list.length}. Use o filtro Vendedor para ver os outros.</p> : null}
       </SectionCard>
 
       <div className="grid gap-4 lg:grid-cols-2">
