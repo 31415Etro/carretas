@@ -1,4 +1,4 @@
-// Importação automática de notas (NFeMail -> ERP). Roda no computador da empresa (Agendador de Tarefas do Windows), 2x ao dia.
+// Importação automática de notas (NFeMail -> ERP). Roda na VPS (cron, 08h e 14h) e lança no Financeiro (entrada -> Contas a pagar; saída -> Contas a receber) e na Contabilidade (entrada e saída).
 //
 //   node scripts/nfemail/sincronizar.mjs                       últimos 15 dias, entrada e saída, todas as empresas do login
 //   node scripts/nfemail/sincronizar.mjs --desde 2026-01-01    carga inicial / reprocesso (notas já importadas são ignoradas)
@@ -36,8 +36,10 @@ const flag = (name) => args.includes(`--${name}`)
 const option = (name) => { const index = args.indexOf(`--${name}`); return index >= 0 ? args[index + 1] : "" }
 const iso = (date) => date.toISOString().slice(0, 10)
 const today = new Date()
-const from = option("desde") || iso(new Date(today.getTime() - 15 * 86_400_000))
-const to = option("ate") || iso(today)
+// a rotina diária busca as notas de HOJE e de ONTEM (horário de Brasília): a nota emitida depois da última execução do dia entra na do dia seguinte; o que já foi importado é ignorado
+const brDay = (date) => date.toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" })
+const from = option("desde") || brDay(new Date(today.getTime() - 86_400_000))
+const to = option("ate") || brDay(today)
 const accountingOnly = flag("contabil")
 const tipos = option("tipo") ? [option("tipo")] : accountingOnly ? ["entrada"] : ["entrada", "saida"]
 const dryRun = flag("simular")

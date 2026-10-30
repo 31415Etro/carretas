@@ -1,4 +1,10 @@
 export const SYSTEM_COMPANY_COOKIE = "system_company_id"
+
+/**
+ * Cookie com atributo Secure só quando o site é servido por HTTPS: em produção sim, exceto se o endereço do sistema (NEXT_PUBLIC_APP_URL) for http://
+ * (fase de teste pelo IP). O navegador descarta cookie Secure vindo de http:// e a escolha da empresa se perde ("Usuario sem perfil cadastrado").
+ */
+export const cookieSecure = () => process.env.NODE_ENV === "production" && !String(process.env.NEXT_PUBLIC_APP_URL || "").startsWith("http://")
 export const SYSTEM_COMPANY_HEADER = "x-system-company-id"
 export const DEFAULT_SYSTEM_COMPANY_ID = "00000000-0000-4000-8000-000000000001"
 

@@ -46,6 +46,24 @@ export async function syncXml(admin: Admin, companyId: string, companyCnpj: stri
   }
 }
 
+/**
+ * Importação completa da rotina diária: lança no Financeiro (entrada -> Contas a pagar, saída/venda -> Contas a receber) E guarda a nota na
+ * Contabilidade (entrada e saída, com todos os campos, impostos e itens). A nota que já estava só no Financeiro ganha o registro na Contabilidade.
+ */
+export async function syncXmlBoth(admin: Admin, companyId: string, companyCnpj: string, fileName: string, xml: string, dryRun = false): Promise<SyncResult> {
+  const financial = await syncXml(admin, companyId, companyCnpj, fileName, xml, dryRun)
+  let operation: "Entrada" | "Saída" | null = null
+  try {
+    const plan = planSync(parseInvoiceXml(xml), companyCnpj)
+    if (plan.action !== "ignorar") operation = plan.role === "destinatario" ? "Entrada" : "Saída"
+  } catch { /* o erro de leitura já veio no resultado do Financeiro */ }
+  if (!operation) return financial
+  const accounting = await syncXmlAccounting(admin, companyCnpj, fileName, xml, dryRun, operation)
+  if (accounting.status === "erro") return { ...financial, status: "erro", detail: `Contabilidade: ${accounting.detail || "erro"}${financial.status === "erro" ? ` | Financeiro: ${financial.detail || "erro"}` : ""}` }
+  if (financial.status === "duplicada" && accounting.status === "importada") return { ...financial, status: "importada", detail: "Contabilidade (já estava no Financeiro)" }
+  return financial
+}
+
 /** Só Contabilidade (aba Financeiro > Contabilidade): guarda a nota de ENTRADA com todos os campos e NÃO cria conta a pagar, fornecedor nem lançamento. */
 export async function syncXmlAccounting(admin: Admin, companyCnpj: string, fileName: string, xml: string, dryRun = false, operation: "Entrada" | "Saída" = "Entrada"): Promise<SyncResult> {
   try {

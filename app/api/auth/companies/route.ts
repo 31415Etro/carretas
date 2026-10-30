@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { currentUserRole } from "@/lib/server-authorization"
 import { listAuthorizedCompanies } from "@/lib/system-company-server"
-import { SYSTEM_COMPANY_COOKIE } from "@/lib/system-company"
+import { SYSTEM_COMPANY_COOKIE, cookieSecure } from "@/lib/system-company"
 
 export async function GET() {
   const supabase = await createClient()
@@ -27,7 +27,7 @@ export async function POST(request: Request) {
   response.cookies.set(SYSTEM_COMPANY_COOKIE, company.id, {
     httpOnly: false,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: cookieSecure(),
     path: "/",
     maxAge: 60 * 60 * 24 * 365,
   })

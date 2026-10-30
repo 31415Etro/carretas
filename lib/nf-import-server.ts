@@ -189,7 +189,8 @@ export async function importInvoice(admin: Admin, input: InvoiceInput, role: MyR
     } else if (!own) {
       const saved = await saveRegistry(admin, entity, {
         personType: counterpart.personType, status: "Ativo", document: counterpart.document, name: counterpart.name, tradeName: counterpart.tradeName === counterpart.name ? "" : counterpart.tradeName,
-        stateRegistration: counterpart.stateRegistration, icmsIndicator: counterpart.icmsIndicator, phone: counterpart.phone, email: counterpart.email,
+        // telefone sem DDD (ex.: "34273700" na nota de posto) não pode travar a importação automática: cadastra sem telefone e o aviso nas observações pede para completar
+        stateRegistration: counterpart.stateRegistration, icmsIndicator: counterpart.icmsIndicator, phone: (() => { const digits = String(counterpart.phone || "").replace(/\D/g, ""); return digits.length >= 10 && digits.length <= 13 ? counterpart.phone : "" })(), email: counterpart.email,
         zipCode: counterpart.zipCode, street: counterpart.street, number: counterpart.number, complement: counterpart.complement, district: counterpart.district,
         city: counterpart.city, state: counterpart.state, country: counterpart.country || "Brasil",
         notes: `Cadastrado pela importação da NF ${invoice.number || ""}${invoice.series ? `/${invoice.series}` : ""} (${role === "remetente" ? "destinatário" : "emitente"}). Complete telefone e demais dados.`,
