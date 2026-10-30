@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Download, Loader2, RefreshCw } from "lucide-react"
-import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+import { Bar, BarChart, CartesianGrid, Cell, Legend, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -164,24 +164,47 @@ export function ChassisPage() {
   const valueByCell = useMemo(() => { const map = new Map<string, number>(); for (const row of rows) { const key = `${periodKey(row.issuedAt, granularity)}|${groupOf(row)}`; map.set(key, (map.get(key) || 0) + row.itemTotal) } return map }, [rows, granularity, groupOf])
   const ranking = useMemo(() => timeline.series.map((name) => ({ name, chassis: timeline.data.reduce((sum, row) => sum + Number(row[name] || 0), 0), total: Math.round((valueByGroup.get(name) || 0) * 100) / 100 })).sort((a, b) => b.chassis - a.chassis), [timeline, valueByGroup])
   const bySize = useMemo(() => chassisBySize(rows, sizeField), [rows, sizeField])
-  // vendedores (da fábrica e externos) por quantidade de chassis, do que mais vendeu para o que menos vendeu; o chassi com os dois vendedores conta para cada um
-  const bySeller = useMemo(() => {
-    const map = new Map<string, { name: string; chassis: number; total: number; fabrica: number; externo: number }>()
-    let without = 0
-    for (const row of rows) {
-      const units = rowUnits(row)
-      const names: Array<[string, "fabrica" | "externo"]> = []
-      if ((row as Row).seller) names.push([(row as Row).seller as string, "fabrica"])
-      if ((row as Row).externalSeller) names.push([(row as Row).externalSeller as string, "externo"])
-      if (!names.length) { without += units; continue }
-      for (const [name, kind] of names) {
-        const entry = map.get(name) || { name, chassis: 0, total: 0, fabrica: 0, externo: 0 }
-        entry.chassis += units; entry[kind] += units; entry.total += row.itemTotal
-        map.set(name, entry)
-      }
+  // vendedores por mês: cada chassi conta uma vez, para o vendedor da fábrica (se tiver) ou, senão, para o vendedor externo.
+  // Sem período escolhido nos filtros, vale só o ano atual (de janeiro até o mês de hoje); com período (ano, mês ou De/Até), vale o escolhido.
+  const currentYear = String(new Date().getFullYear())
+  const sellerPeriod = de || ate ? `${de ? day(`${de}T12:00:00-03:00`) : "início"} a ${ate ? day(`${ate}T12:00:00-03:00`) : "hoje"}` : currentYear
+  const sellerMonthly = useMemo(() => {
+    const scoped = de || ate ? rows : rows.filter((item) => issuedDay(item.issuedAt).startsWith(currentYear))
+    const today = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" })
+    const dated = scoped.map((row) => issuedDay(row.issuedAt)).filter(Boolean).sort()
+    const first = de || dated[0] || `${currentYear}-01-01`
+    const last = [ate || dated[dated.length - 1] || today, today].sort()[0] // meses futuros não entram na média
+    const months: string[] = []
+    for (let year = Number(first.slice(0, 4)), month = Number(first.slice(5, 7)); `${year}-${String(month).padStart(2, "0")}` <= last.slice(0, 7) && months.length < 60; month++) {
+      if (month > 12) { month = 1; year++ }
+      months.push(`${year}-${String(month).padStart(2, "0")}`)
     }
-    return { list: [...map.values()].sort((a, b) => b.chassis - a.chassis || a.name.localeCompare(b.name, "pt-BR")), without }
-  }, [rows])
+    const perSeller = new Map<string, { name: string; kind: "fabrica" | "externo"; total: number; value: number; byMonth: Record<string, number> }>()
+    let without = 0
+    for (const row of scoped) {
+      const units = rowUnits(row), month = issuedDay(row.issuedAt).slice(0, 7)
+      const name = (row as Row).seller || (row as Row).externalSeller || ""
+      if (!name) { without += units; continue }
+      if (!months.includes(month)) continue
+      const entry = perSeller.get(name) || { name, kind: (row as Row).seller ? "fabrica" : "externo", total: 0, value: 0, byMonth: {} }
+      entry.total += units; entry.value += row.itemTotal; entry.byMonth[month] = (entry.byMonth[month] || 0) + units
+      perSeller.set(name, entry)
+    }
+    const ranked = [...perSeller.values()].sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "pt-BR"))
+    const shown = ranked.slice(0, 9), others = ranked.slice(9)
+    const series = [...shown.map((entry) => entry.name), ...(others.length ? ["Outros"] : [])]
+    const data = months.map((month) => {
+      const row: Record<string, number | string> = { period: month, label: `${month.slice(5)}/${month.slice(2, 4)}` }
+      let total = 0
+      for (const entry of shown) { row[entry.name] = entry.byMonth[month] || 0; total += entry.byMonth[month] || 0 }
+      if (others.length) { const sum = others.reduce((acc, entry) => acc + (entry.byMonth[month] || 0), 0); row.Outros = sum; total += sum }
+      row.total = total
+      return row
+    })
+    const grand = ranked.reduce((sum, entry) => sum + entry.total, 0)
+    const count = Math.max(1, months.length)
+    return { months: count, series, data, ranked: ranked.map((entry) => ({ ...entry, average: entry.total / count })), others: others.length, average: grand / count, total: grand, without }
+  }, [rows, de, ate, currentYear])
   const chartData = timeline.data.map((row) => ({ ...row, label: periodLabel(String(row.period), granularity) }))
   const units = useMemo(() => trailerUnits(rows), [rows])
   const distinct = units.units
@@ -307,22 +330,69 @@ export function ChassisPage() {
         </div>
       </SectionCard>
 
-      <SectionCard title="Vendedores por quantidade de chassis" description={`Do que mais vendeu para o que menos vendeu, no período filtrado. Azul: vendedor da fábrica; verde: vendedor externo (loja ou representante). Clique em uma barra para filtrar por aquele vendedor. ${bySeller.without.toLocaleString("pt-BR")} chassi(s) sem vendedor informado não aparecem.`}>
-        {bySeller.list.length ? (
-          <div style={{ height: Math.max(180, Math.min(25, bySeller.list.length) * 28 + 40) }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={bySeller.list.slice(0, 25).map((entry) => ({ ...entry, label: `${entry.name.length > 20 ? `${entry.name.slice(0, 19)}…` : entry.name} · ${entry.chassis.toLocaleString("pt-BR")}` }))} layout="vertical" margin={{ top: 4, right: 36, left: 8, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
-                <YAxis type="category" dataKey="label" width={170} interval={0} tick={{ fontSize: 11 }} />
-                <Tooltip content={<SummaryTip />} cursor={{ fill: "rgba(30,58,138,0.08)" }} />
-                <Bar dataKey="fabrica" name="Vendedor da fábrica" stackId="seller" fill="#1e3a8a" cursor="pointer" onClick={(entry) => setSeller(clickedName(entry))} />
-                <Bar dataKey="externo" name="Vendedor externo" stackId="seller" fill="#0f766e" cursor="pointer" radius={[0, 3, 3, 0]} onClick={(entry) => setSeller(clickedName(entry))} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        ) : <p className="text-sm text-muted-foreground">{loading ? "Carregando..." : "Nenhum chassi com vendedor informado neste filtro."}</p>}
-        {bySeller.list.length > 25 ? <p className="mt-2 text-xs text-muted-foreground">Mostrando os 25 que mais venderam de {bySeller.list.length}. Use o filtro Vendedor para ver os outros.</p> : null}
+      <SectionCard title={`Vendas por vendedor e mês · ${sellerPeriod}`} description={`${de || ate ? "Período escolhido nos filtros." : `Referente a ${currentYear} (ano atual, de janeiro até este mês); escolha Ano, Mês ou De/Até nos filtros para ver outro período.`} Cada coluna é um mês, empilhada por vendedor (chassis vendidos). A linha tracejada é a média mensal de vendas no período. Clique em uma cor para filtrar pelo vendedor. ${sellerMonthly.without.toLocaleString("pt-BR")} chassi(s) sem vendedor informado não aparecem.`}>
+        {sellerMonthly.series.length ? (
+          <>
+            <div className="mb-3 grid gap-3 sm:grid-cols-3">
+              <Card label="Vendas no período (com vendedor)" value={sellerMonthly.total.toLocaleString("pt-BR")} hint={`${sellerMonthly.months} mês(es) · ${sellerMonthly.ranked.length} vendedor(es)`} />
+              <Card label="Média mensal de vendas" value={sellerMonthly.average.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} hint="chassis por mês, somando todos os vendedores" />
+              <Card label="Melhor mês" value={String([...sellerMonthly.data].sort((a, b) => Number(b.total) - Number(a.total))[0]?.label || "-")} hint={`${Number([...sellerMonthly.data].sort((a, b) => Number(b.total) - Number(a.total))[0]?.total || 0).toLocaleString("pt-BR")} chassis`} />
+            </div>
+            <div className="h-96">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={sellerMonthly.data} margin={{ top: 16, right: 16, left: -8, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                  <Tooltip content={({ active, payload }) => {
+                    if (!active || !payload?.length) return null
+                    const row = payload[0].payload as Record<string, number | string>
+                    const lines = sellerMonthly.series.map((name, index) => ({ name, value: Number(row[name] || 0), color: COLORS[index % COLORS.length] })).filter((line) => line.value > 0).sort((a, b) => b.value - a.value)
+                    return (
+                      <div className="rounded-md border bg-background p-3 text-sm shadow-md">
+                        <div className="font-semibold">{String(row.label)}</div>
+                        <div className="mb-2 mt-0.5 rounded bg-muted px-2 py-1 font-semibold">Total: {Number(row.total).toLocaleString("pt-BR")} chassi(s)</div>
+                        {lines.map((line) => <div key={line.name} className="flex items-center justify-between gap-4"><span><span className="mr-1.5 inline-block h-2.5 w-2.5 rounded-sm" style={{ background: line.color }} />{line.name}</span><span className="font-medium">{line.value}</span></div>)}
+                      </div>
+                    )
+                  }} />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <ReferenceLine y={sellerMonthly.average} stroke="#b91c1c" strokeDasharray="6 4" label={{ value: `média ${sellerMonthly.average.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}/mês`, position: "insideTopRight", fill: "#b91c1c", fontSize: 12 }} />
+                  {sellerMonthly.series.map((name, index) => <Bar key={name} dataKey={name} stackId="seller" fill={name === "Outros" ? "#94a3b8" : COLORS[index % COLORS.length]} cursor={name === "Outros" ? "default" : "pointer"} onClick={() => { if (name !== "Outros") setSeller(name) }} />)}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            {sellerMonthly.others ? <p className="mt-1 text-xs text-muted-foreground">Os 9 que mais venderam aparecem separados; os outros {sellerMonthly.others} estão em "Outros" (use o filtro Vendedor para ver cada um).</p> : null}
+
+            <p className="mb-1 mt-5 text-sm font-semibold">Média mensal de cada vendedor</p>
+            <div className="h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={sellerMonthly.ranked.slice(0, 20)} margin={{ top: 20, right: 16, left: -8, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="name" interval={0} angle={-35} textAnchor="end" height={80} tick={{ fontSize: 11 }} tickFormatter={(value: string) => (value.length > 16 ? `${value.slice(0, 15)}…` : value)} />
+                  <YAxis tick={{ fontSize: 11 }} />
+                  <Tooltip content={({ active, payload }) => {
+                    if (!active || !payload?.length) return null
+                    const entry = payload[0].payload as { name: string; total: number; average: number; value: number; kind: string }
+                    return (
+                      <div className="rounded-md border bg-background p-3 text-sm shadow-md">
+                        <div className="font-semibold">{entry.name}</div>
+                        <div className="text-muted-foreground">{entry.kind === "fabrica" ? "Vendedor da fábrica" : "Vendedor externo"}</div>
+                        <div className="mt-1 text-muted-foreground">Média mensal: <span className="font-medium text-foreground">{entry.average.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} chassis/mês</span></div>
+                        <div className="text-muted-foreground">Total no período: <span className="font-medium text-foreground">{entry.total.toLocaleString("pt-BR")} em {sellerMonthly.months} mês(es)</span></div>
+                        <div className="text-muted-foreground">Valor total: <span className="font-medium text-foreground">{brl(entry.value)}</span></div>
+                      </div>
+                    )
+                  }} cursor={{ fill: "rgba(30,58,138,0.08)" }} />
+                  <Bar dataKey="average" radius={[3, 3, 0, 0]} cursor="pointer" onClick={(entry) => setSeller(clickedName(entry))} label={{ position: "top", fontSize: 11, formatter: (value: number) => Number(value).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) }}>
+                    {sellerMonthly.ranked.slice(0, 20).map((entry) => <Cell key={entry.name} fill={entry.kind === "fabrica" ? "#1e3a8a" : "#0f766e"} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">Azul: vendedor da fábrica; verde: vendedor externo (loja ou representante). Média = chassis vendidos ÷ {sellerMonthly.months} mês(es) do período. {sellerMonthly.ranked.length > 20 ? `Mostrando os 20 maiores de ${sellerMonthly.ranked.length}.` : ""}</p>
+          </>
+        ) : <p className="text-sm text-muted-foreground">{loading ? "Carregando..." : "Nenhum chassi com vendedor informado neste período."}</p>}
       </SectionCard>
 
       <div className="grid gap-4 lg:grid-cols-2">

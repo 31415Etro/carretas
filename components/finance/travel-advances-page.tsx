@@ -237,6 +237,7 @@ export function TravelAdvancesPage() {
               <TableCell onClick={(event) => event.stopPropagation()}><Button size="sm" variant="outline" onClick={() => void copyLink(advance.token)}><Copy className="h-4 w-4" />Copiar link</Button></TableCell>
               <TableCell onClick={(event) => event.stopPropagation()}>
                 <div className="flex gap-1">
+                  {advance.settlement_action === "desconto_folha" && advance.summary.remaining > 0.004 ? <Button size="sm" variant="outline" title="Baixar o termo de desconto em folha (para o funcionário assinar)" onClick={() => void downloadTerm(advance)}><FileText className="h-4 w-4" />Termo</Button> : null}
                   {canCancelAdvance(advance.status) ? <Button size="sm" variant="ghost" title="Cancelar antecipação" onClick={() => askCancel(advance)}><Ban className="h-4 w-4" /></Button> : null}
                   {mayDelete ? <Button size="sm" variant="ghost" title="Excluir antecipação" className="text-destructive hover:text-destructive" onClick={() => setDeleteTarget(advance)}><Trash2 className="h-4 w-4" /></Button> : null}
                 </div>

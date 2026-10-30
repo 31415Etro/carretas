@@ -11,7 +11,7 @@ import { AppFooter } from "@/components/shell/app-footer"
 import { ocrReceiptImage } from "@/lib/ocr-client"
 import { compressPhoto } from "@/lib/image-compress"
 import { CATEGORY_LABEL } from "@/lib/travel-advance"
-import { advanceNumber, buildAdvanceTermPdf } from "@/lib/travel-advance-term"
+import { advanceNumber } from "@/lib/travel-advance-term"
 
 type PortalReceipt = { id: string; photoUrl: string; amount: number; establishment: string; category: string; occurredAt: string | null; status: string; reviewNote: string }
 type CategorySummary = { category: string; budget: number; spent: number; remaining: number; overspent: boolean }
@@ -71,21 +71,8 @@ export function TravelAdvancePortal({ token }: { token: string }) {
   const [editingId, setEditingId] = useState("")
   const [editDraft, setEditDraft] = useState({ amount: "", establishment: "", occurredAt: "", category: "" })
   const [finalizing, setFinalizing] = useState(false)
-  const [termError, setTermError] = useState("")
   const input = useRef<HTMLInputElement>(null)
   const gallery = useRef<HTMLInputElement>(null)
-
-  async function downloadTerm() {
-    if (!state) return
-    setTermError("")
-    try {
-      const { blob, fileName } = await buildAdvanceTermPdf({ employeeName: state.employeeName, employeeCpf: state.employeeCpf, companyName: state.company.name, companyCnpj: state.company.cnpj, amount: state.summary.remaining, number: state.number })
-      const url = URL.createObjectURL(blob)
-      const anchor = document.createElement("a")
-      anchor.href = url; anchor.download = fileName; anchor.click()
-      URL.revokeObjectURL(url)
-    } catch (reason) { setTermError(reason instanceof Error ? reason.message : "Não foi possível gerar o termo.") }
-  }
 
   const load = useCallback(async () => {
     try {
@@ -326,9 +313,7 @@ export function TravelAdvancePortal({ token }: { token: string }) {
               </div>
               {settlement === "desconto_folha" ? (
                 <div className="mt-3 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm">
-                  <p>O valor de {brl(state.summary.remaining)} será descontado do seu salário. Gere o termo, imprima e assine para entregar ao financeiro.</p>
-                  <Button type="button" variant="outline" className="mt-2 w-full sm:w-auto" onClick={() => void downloadTerm()}><Receipt className="h-4 w-4" />Solicitação de adiantamento</Button>
-                  {termError ? <p className="mt-2 text-xs text-red-600">{termError}</p> : null}
+                  <p>O valor de {brl(state.summary.remaining)} será descontado do seu salário. Ao finalizar, o financeiro emite o termo de autorização de desconto em folha e te entrega para assinar.</p>
                 </div>
               ) : null}
             </div>
