@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { isActionHeader, parseDate, parseNumber, sortRows } from "./table-auto-sort.ts"
+import { isActionHeader, vinTail, parseDate, parseNumber, sortRows } from "./table-auto-sort.ts"
 
 const rows = (...cells: string[][]) => cells
 const col = (data: string[][], index: number, dir: "asc" | "desc") => sortRows(data, (row) => row, index, dir).map((row) => row[index])
@@ -35,4 +35,11 @@ test("texto com número dentro ordena em ordem natural", () => {
 test("colunas de ação não ordenam", () => {
   for (const header of ["Ações", "Acoes", "", "Detalhes"]) assert.equal(isActionHeader(header), true, header)
   assert.equal(isActionHeader("Valor"), false)
+})
+
+test("coluna de chassi ordena só pelos 4 últimos caracteres", () => {
+  const rows = ["980NDFZ1ETD001347", "980NDBC1ETD000262", "980NDFZ2ETD000149", "(lote sem nº de chassi)"]
+  assert.equal(vinTail("980NDBC1ETD000262"), "0262")
+  assert.deepEqual(sortRows(rows, (row) => [row], 0, "asc").slice(0, 3), ["980NDFZ2ETD000149", "980NDBC1ETD000262", "980NDFZ1ETD001347"])
+  assert.deepEqual(sortRows(rows, (row) => [row], 0, "desc")[0], "980NDFZ1ETD001347")
 })

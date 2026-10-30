@@ -52,7 +52,8 @@ function loadChassis(de: string, ate: string) {
   })
 }
 
-const REGISTRY_COLUMNS = "vin,group_name,model,family,axles,description,year_manufacture,year_model,pbt_kg,capacity_kg,tare_kg,axle_capacity_kg,color,client_hint,first_mention,last_mention,mentions,alerts,system_company_id"
+const REGISTRY_BASE_COLUMNS = "vin,group_name,model,family,axles,description,year_manufacture,year_model,pbt_kg,capacity_kg,tare_kg,axle_capacity_kg,color,client_hint,first_mention,last_mention,mentions,alerts,system_company_id"
+const REGISTRY_COLUMNS = `${REGISTRY_BASE_COLUMNS},seller,external_seller,sale_value,external_value,paid_value,sale_date,sale_invoice,consumer,payment_note`
 const REGISTRY_HINT = "O cadastro de chassis ainda não está instalado no banco. Rode o script 242 no SQL Editor do Supabase."
 const num = (value: unknown) => Number(value || 0) || 0
 
@@ -60,12 +61,18 @@ const num = (value: unknown) => Number(value || 0) || 0
 function loadRegistry() {
   return memoize("chassis|cadastro", CACHE_MS, async (): Promise<{ rows: RegistryRow[]; missing: boolean }> => {
     const admin = createAdminClient({ bypassCompanyScope: true })
+    const read = (columns: string) => fetchAllPages<Record<string, unknown>>((from, to) => admin.from("chassis_registry").select(columns).order("vin").range(from, to) as unknown as PromiseLike<{ data: Record<string, unknown>[] | null; error: { message: string } | null }>)
     try {
-      const data = await fetchAllPages<Record<string, unknown>>((from, to) => admin.from("chassis_registry").select(REGISTRY_COLUMNS).order("vin").range(from, to) as unknown as PromiseLike<{ data: Record<string, unknown>[] | null; error: { message: string } | null }>)
+      let data: Record<string, unknown>[]
+      try { data = await read(REGISTRY_COLUMNS) } catch (error) {
+        if (/column .*(seller|sale_|paid_value|consumer|payment_note)/i.test((error as { message?: string })?.message || "")) data = await read(REGISTRY_BASE_COLUMNS) // script 243 ainda não rodou: segue sem vendedor/valor
+        else throw error
+      }
       return { missing: false, rows: data.map((row) => ({
         vin: String(row.vin), groupName: String(row.group_name || ""), model: String(row.model || ""), family: String(row.family || ""), axles: num(row.axles), description: String(row.description || ""),
         yearManufacture: String(row.year_manufacture || ""), yearModel: String(row.year_model || ""), pbtKg: num(row.pbt_kg), capacityKg: num(row.capacity_kg), tareKg: num(row.tare_kg), axleCapacityKg: num(row.axle_capacity_kg),
         color: String(row.color || ""), clientHint: String(row.client_hint || ""), firstMention: (row.first_mention as string) || null, lastMention: (row.last_mention as string) || null, mentions: num(row.mentions), alerts: String(row.alerts || ""), companyId: String(row.system_company_id || ""),
+        seller: String(row.seller || ""), externalSeller: String(row.external_seller || ""), saleValue: num(row.sale_value), externalValue: num(row.external_value), paidValue: num(row.paid_value), saleDate: String(row.sale_date || ""), saleInvoice: String(row.sale_invoice || ""), consumer: String(row.consumer || ""), paymentNote: String(row.payment_note || ""),
       })) }
     } catch (error) {
       const message = (error as { message?: string })?.message || ""
@@ -130,11 +137,11 @@ export async function GET(request: Request) {
     if (view === "cadastro") {
       const registry = await loadRegistry()
       const all = viewRegistry(registry.rows, notesByVin(loaded.rows), {})
-      const filtered = viewRegistry(registry.rows, notesByVin(loaded.rows), { q: params.get("q") || "", model: params.get("modelo") || "", note: params.get("nota") === "com" ? "com" : params.get("nota") === "sem" ? "sem" : "" })
+      const filtered = viewRegistry(registry.rows, notesByVin(loaded.rows), { q: params.get("q") || "", model: params.get("modelo") || "", note: params.get("nota") === "com" ? "com" : params.get("nota") === "sem" ? "sem" : "", seller: params.get("vendedor") || "", sort: params.get("ordem") === "chassi-asc" ? "chassi-asc" : params.get("ordem") === "chassi-desc" ? "chassi-desc" : "" })
       const pageSize = 100, page = Math.max(1, Number(params.get("pagina")) || 1)
       const inRegistry = new Set(registry.rows.map((row) => row.vin))
       const noteChassis = new Set(loaded.rows.filter((row) => row.chassis).map((row) => row.chassis))
-      return NextResponse.json({ missing: registry.missing, hint: registry.missing ? REGISTRY_HINT : "", summary: registrySummary(all), noteChassisNotRegistered: [...noteChassis].filter((vin) => !inRegistry.has(vin)).length, found: filtered.length, page, pageSize, items: filtered.slice((page - 1) * pageSize, page * pageSize) })
+      return NextResponse.json({ missing: registry.missing, hint: registry.missing ? REGISTRY_HINT : "", summary: registrySummary(all), sellers: [...new Set(registry.rows.flatMap((row) => [row.seller, row.externalSeller]).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR")), noteChassisNotRegistered: [...noteChassis].filter((vin) => !inRegistry.has(vin)).length, found: filtered.length, page, pageSize, items: filtered.slice((page - 1) * pageSize, page * pageSize) })
     }
     if (view === "todos") {
       // descrição/tamanho do cadastro nos chassis das notas; PBT e capacidade só entram quando a nota não trouxe
@@ -147,12 +154,12 @@ export async function GET(request: Request) {
       // chassis do cadastro sem nota de venda também entram (a página é de chassis): datados pela primeira menção na conversa, sem valor
       const withoutNote = registryRows.filter((row) => !withNote.has(row.vin) && (row.firstMention || row.lastMention)).map((row) => ({
         chassis: row.vin, model: row.model, family: row.family, axles: row.axles, pbt: kgToTons(row.pbtKg), capacity: kgToTons(row.capacityKg), color: row.color, year: row.yearModel || row.yearManufacture, productCode: "",
-        invoiceId: `cadastro:${row.vin}`, number: "", series: "", issuedAt: row.firstMention || row.lastMention, clientName: "", clientDocument: "", quantity: 1, unitPrice: 0, itemTotal: 0, invoiceTotal: 0,
-        companyId: row.companyId, companyName: companyNames.get(row.companyId) || "ND Carretas", intercompany: false, sizeNote: row.description, semNota: true,
+        invoiceId: `cadastro:${row.vin}`, number: row.saleInvoice, series: "", issuedAt: row.saleDate ? `${row.saleDate}T12:00:00-03:00` : row.firstMention || row.lastMention, clientName: "", clientDocument: "", quantity: 1, unitPrice: row.saleValue || row.externalValue, itemTotal: row.saleValue || row.externalValue, invoiceTotal: 0,
+        companyId: row.companyId, companyName: companyNames.get(row.companyId) || "ND Carretas", intercompany: false, sizeNote: row.description, semNota: true, seller: row.seller, externalSeller: row.externalSeller, consumer: row.consumer,
       }))
       return NextResponse.json({ notes: loaded.notes, others: loaded.others, excluded: loaded.excluded, rows: [...loaded.rows.map(({ description, accessKey, nature, ...slim }) => {
         const known = slim.chassis ? registry.get(slim.chassis) : undefined
-        return known ? { ...slim, sizeNote: known.description, pbt: slim.pbt || kgToTons(known.pbtKg), capacity: slim.capacity || kgToTons(known.capacityKg), color: slim.color || known.color } : slim
+        return known ? { ...slim, seller: known.seller, externalSeller: known.externalSeller, consumer: known.consumer, saleValue: known.saleValue || known.externalValue, sizeNote: known.description, pbt: slim.pbt || kgToTons(known.pbtKg), capacity: slim.capacity || kgToTons(known.capacityKg), color: slim.color || known.color } : slim
       }), ...withoutNote] }) // página Chassis: gráficos e filtros são feitos no navegador
     }
     if (view === "chassi") return NextResponse.json({ found: rows.length, notes: loaded.notes, client, perChassis: chassisPerChassis(rows) })

@@ -9,11 +9,12 @@ import { DataTable, SectionCard } from "@/components/operations/shared"
 import type { RegistryView } from "@/lib/chassis-registry"
 
 type Payload = {
-  missing: boolean; hint: string; found: number; page: number; pageSize: number; items: RegistryView[]; noteChassisNotRegistered: number
+  missing: boolean; hint: string; sellers: string[]; found: number; page: number; pageSize: number; items: RegistryView[]; noteChassisNotRegistered: number
   summary: { total: number; withNote: number; withoutNote: number; withDescription: number; byModel: Array<{ model: string; total: number; withNote: number }> }
 }
 
 const day = (value?: string | null) => (value ? new Date(value).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "-")
+const brl = (value: number) => (value ? value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "-")
 const kg = (value: number) => (value ? `${value.toLocaleString("pt-BR")} kg` : "-")
 
 function Card({ label, value, hint }: { label: string; value: string; hint?: string }) {
@@ -34,21 +35,23 @@ export function RegistrySection() {
   const [q, setQ] = useState("")
   const [term, setTerm] = useState("")
   const [model, setModel] = useState("")
+  const [seller, setSeller] = useState("")
   const [note, setNote] = useState<"" | "com" | "sem">("sem")
   const [page, setPage] = useState(1)
+  const [order, setOrder] = useState<"" | "chassi-asc" | "chassi-desc">("")
 
   useEffect(() => { const timer = setTimeout(() => { setTerm(q); setPage(1) }, 350); return () => clearTimeout(timer) }, [q])
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const query = new URLSearchParams({ visao: "cadastro", q: term, modelo: model, nota: note, pagina: String(page) })
+      const query = new URLSearchParams({ visao: "cadastro", q: term, modelo: model, nota: note, pagina: String(page), ordem: order, vendedor: seller })
       const response = await fetch(`/api/contabilidade/chassis?${query}`, { cache: "no-store" })
       const payload = await response.json().catch(() => null)
       if (!response.ok) throw new Error(payload?.error || `Erro ${response.status}`)
       setData(payload as Payload); setError("")
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível carregar o cadastro.") } finally { setLoading(false) }
-  }, [term, model, note, page])
+  }, [term, model, note, page, order, seller])
   useEffect(() => { void load() }, [load])
 
   const pages = data ? Math.max(1, Math.ceil(data.found / data.pageSize)) : 1
@@ -72,13 +75,18 @@ export function RegistrySection() {
                 <option value="">Todos</option>{data.summary.byModel.map((entry) => <option key={entry.model} value={entry.model}>{entry.model} ({entry.total.toLocaleString("pt-BR")})</option>)}
               </select>
             </label>
+            <label className="text-xs text-muted-foreground">Vendedor
+              <select value={seller} onChange={(event) => { setSeller(event.target.value); setPage(1) }} className="mt-1 block h-9 rounded-md border bg-background px-2 text-sm text-foreground">
+                <option value="">Todos</option>{data.sellers.map((name) => <option key={name} value={name}>{name}</option>)}
+              </select>
+            </label>
             <div className="text-xs text-muted-foreground">Nota de venda
               <div className="mt-1 flex rounded-md border p-0.5 text-sm">{([["sem", "Sem nota"], ["com", "Com nota"], ["", "Todos"]] as const).map(([value, label]) => <button key={label} type="button" onClick={() => { setNote(value); setPage(1) }} className={`rounded px-3 py-1 ${note === value ? "bg-primary text-primary-foreground" : "text-foreground"}`}>{label}</button>)}</div>
             </div>
             {loading ? <Loader2 className="mb-2 h-4 w-4 animate-spin text-muted-foreground" /> : null}
           </div>
           <div className="mt-3">
-            <DataTable headers={["Chassi", "Modelo", "Descrição / tamanho", "Ano", "PBT", "Capacidade", "Tara", "Revenda / cliente (conversa)", "Última menção", "Nota de venda"]} empty={!data.items.length && !loading} stickyHeader viewportClassName="max-h-[60vh]">
+            <DataTable headers={["Chassi", "Modelo", "Descrição / tamanho", "Ano", "PBT", "Capacidade", "Tara", "Vendedor", "Valor", "Consumidor", "Revenda / cliente (conversa)", "Última menção", "Nota de venda"]} sort={{ keys: ["chassi", null, null, null, null, null, null, null, null, null, null, null, null], active: order ? "chassi" : "", dir: order === "chassi-desc" ? "desc" : "asc", onSort: () => { setOrder((current) => (current === "" ? "chassi-asc" : current === "chassi-asc" ? "chassi-desc" : "")); setPage(1) } }} empty={!data.items.length && !loading} stickyHeader viewportClassName="max-h-[60vh]">
               {data.items.map((row) => (
                 <TableRow key={`${row.companyId}-${row.vin}`}>
                   <TableCell className="whitespace-nowrap font-mono text-xs font-medium">{row.vin}</TableCell>
@@ -88,6 +96,9 @@ export function RegistrySection() {
                   <TableCell className="whitespace-nowrap text-right">{kg(row.pbtKg)}</TableCell>
                   <TableCell className="whitespace-nowrap text-right">{kg(row.capacityKg)}</TableCell>
                   <TableCell className="whitespace-nowrap text-right">{kg(row.tareKg)}</TableCell>
+                  <TableCell className="whitespace-nowrap">{row.seller || row.externalSeller ? <>{row.seller || "-"}{row.externalSeller ? <div className="text-xs text-muted-foreground">{row.externalSeller}</div> : null}</> : "-"}</TableCell>
+                  <TableCell className="whitespace-nowrap text-right">{brl(row.saleValue || row.externalValue)}</TableCell>
+                  <TableCell className="max-w-[160px] truncate" title={row.consumer}>{row.consumer || "-"}</TableCell>
                   <TableCell className="max-w-[200px] truncate" title={row.clientHint}>{row.clientHint || "-"}</TableCell>
                   <TableCell className="whitespace-nowrap">{day(row.lastMention)}</TableCell>
                   <TableCell className="whitespace-nowrap">{row.hasNote ? <span title={row.noteClient}>NF {row.noteNumber} · {day(row.noteIssuedAt)}</span> : <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">sem nota</span>}</TableCell>

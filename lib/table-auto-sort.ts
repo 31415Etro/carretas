@@ -25,6 +25,10 @@ export function parseDate(value: string): number | null {
   return null
 }
 
+/** Número de chassi (VIN): 17 letras/números. Colunas de chassi ordenam só pelos 4 últimos caracteres. */
+export const isVin = (value: string) => /^[A-Z0-9]{17}$/i.test(norm(value))
+export const vinTail = (value: string) => norm(value).slice(-4)
+
 export const isEmptyCell = (value: string) => EMPTY.has(norm(value).toLowerCase())
 
 /** Ordena as linhas (cada uma com o texto das suas células) pela coluna: data, número ou texto, conforme o conteúdo da coluna. Vazios ficam no fim. */
@@ -33,13 +37,15 @@ export function sortRows<T>(rows: T[], cellsOf: (row: T) => string[], column: nu
   const filled = values.filter((value) => !isEmptyCell(value))
   const allDates = filled.length > 0 && filled.every((value) => parseDate(value) !== null)
   const allNumbers = !allDates && filled.length > 0 && filled.every((value) => parseNumber(value) !== null)
-  const key = (value: string): number | string => (allDates ? (parseDate(value) as number) : allNumbers ? (parseNumber(value) as number) : value)
+  const allVins = !allDates && !allNumbers && filled.length > 0 && filled.filter(isVin).length / filled.length >= 0.5
+  const key = (value: string): number | string => (allVins && isVin(value) ? vinTail(value) : allDates ? (parseDate(value) as number) : allNumbers ? (parseNumber(value) as number) : value)
   const sign = dir === "asc" ? 1 : -1
   return rows
     .map((row, index) => ({ row, index, value: values[index] }))
     .sort((left, right) => {
       const leftEmpty = isEmptyCell(left.value), rightEmpty = isEmptyCell(right.value)
       if (leftEmpty || rightEmpty) return leftEmpty && rightEmpty ? left.index - right.index : leftEmpty ? 1 : -1
+      if (allVins && isVin(left.value) !== isVin(right.value)) return isVin(left.value) ? -1 : 1 // "lote sem chassi" e afins ficam depois dos chassis
       const a = key(left.value), b = key(right.value)
       const result = typeof a === "number" && typeof b === "number" ? a - b : String(a).localeCompare(String(b), "pt-BR", { sensitivity: "base", numeric: true })
       return result === 0 ? left.index - right.index : result * sign

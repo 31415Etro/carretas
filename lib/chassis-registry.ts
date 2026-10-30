@@ -5,6 +5,8 @@ export type RegistryRow = {
   vin: string; groupName: string; model: string; family: string; axles: number; description: string
   yearManufacture: string; yearModel: string; pbtKg: number; capacityKg: number; tareKg: number; axleCapacityKg: number
   color: string; clientHint: string; firstMention: string | null; lastMention: string | null; mentions: number; alerts: string; companyId: string
+  // planilha "Controle de pgtos" (script 243); 0 / vazio = não informado
+  seller: string; externalSeller: string; saleValue: number; externalValue: number; paidValue: number; saleDate: string; saleInvoice: string; consumer: string; paymentNote: string
 }
 
 /** "CHASSI  BC 1E (1)" -> "BC 1E"; "CHASSI CA 1E ( MOTO . )" -> "CA 1E"; "Fort- chassi 1 eixo" -> "FORT 1E"; "Chassi BC 2E 3 toneladas (1)" -> "BC 2E". */
@@ -35,7 +37,7 @@ export const FORT_COMPANY_ID = "8a52a1db-00b1-4d4d-bdf4-731dcecc2057"
 export const ND_COMPANY_ID = "00000000-0000-4000-8000-000000000001"
 export const companyForGroup = (group: string) => (/^\s*fort/i.test(group) ? FORT_COMPANY_ID : ND_COMPANY_ID)
 
-export type RegistryFilters = { q?: string; model?: string; note?: "" | "com" | "sem"; company?: string }
+export type RegistryFilters = { q?: string; model?: string; note?: "" | "com" | "sem"; company?: string; seller?: string; sort?: "" | "chassi-asc" | "chassi-desc" }
 export type RegistryView = RegistryRow & { hasNote: boolean; noteNumber: string; noteClient: string; noteIssuedAt: string | null }
 
 const normalize = (value: string) => String(value || "").toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
@@ -49,11 +51,18 @@ export function viewRegistry(rows: RegistryRow[], notes: Map<string, { number: s
   }).filter((row) => {
     if (filters.model && row.model !== filters.model) return false
     if (filters.company && row.companyId !== filters.company) return false
+    if (filters.seller && row.seller !== filters.seller && row.externalSeller !== filters.seller) return false
     if (filters.note === "com" && !row.hasNote) return false
     if (filters.note === "sem" && row.hasNote) return false
-    if (term && !normalize([row.vin, row.model, row.description, row.clientHint, row.noteClient, row.noteNumber].join(" ")).includes(term)) return false
+    if (term && !normalize([row.vin, row.model, row.description, row.clientHint, row.noteClient, row.noteNumber, row.seller, row.externalSeller, row.consumer].join(" ")).includes(term)) return false
     return true
-  }).sort((a, b) => String(b.lastMention || "").localeCompare(String(a.lastMention || "")) || a.vin.localeCompare(b.vin))
+  }).sort((a, b) => {
+    if (filters.sort) { // só os 4 últimos caracteres do chassi contam
+      const byTail = a.vin.slice(-4).localeCompare(b.vin.slice(-4), "pt-BR", { numeric: true })
+      if (byTail) return filters.sort === "chassi-asc" ? byTail : -byTail
+    }
+    return String(b.lastMention || "").localeCompare(String(a.lastMention || "")) || a.vin.localeCompare(b.vin)
+  })
 }
 
 /** Resumo do cadastro: quantos já têm nota no sistema, quantos não, e por modelo. */

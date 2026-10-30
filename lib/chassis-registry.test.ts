@@ -26,7 +26,7 @@ test("chassis Fort vão para a Fort Com de Ferro e Aço", () => {
   assert.notEqual(companyForGroup("CHASSI FZ 1E"), FORT_COMPANY_ID)
 })
 
-const row = (vin: string, patch: Partial<RegistryRow> = {}): RegistryRow => ({ vin, groupName: "CHASSI FZ 1E", model: "FZ 1E", family: "FZ", axles: 1, description: "", yearManufacture: "", yearModel: "", pbtKg: 0, capacityKg: 0, tareKg: 0, axleCapacityKg: 0, color: "", clientHint: "", firstMention: null, lastMention: null, mentions: 1, alerts: "", companyId: "c1", ...patch })
+const row = (vin: string, patch: Partial<RegistryRow> = {}): RegistryRow => ({ vin, groupName: "CHASSI FZ 1E", model: "FZ 1E", family: "FZ", axles: 1, description: "", yearManufacture: "", yearModel: "", pbtKg: 0, capacityKg: 0, tareKg: 0, axleCapacityKg: 0, color: "", clientHint: "", firstMention: null, lastMention: null, mentions: 1, alerts: "", companyId: "c1", seller: "", externalSeller: "", saleValue: 0, externalValue: 0, paidValue: 0, saleDate: "", saleInvoice: "", consumer: "", paymentNote: "", ...patch })
 
 test("cadastro cruzado com as notas: com nota, sem nota e busca", () => {
   const notes = new Map([["980NDFZ1ETD000001", { number: "14180", clientName: "JOÃO LUIZ", issuedAt: "2026-01-05T12:00:00Z" }]])
