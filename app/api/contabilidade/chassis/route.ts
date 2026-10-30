@@ -4,6 +4,7 @@ import { ACCOUNTING_MIGRATION_HINT } from "@/lib/accounting-server"
 import { chassisByModel, chassisByModelMonth, chassisChart, chassisFromInvoice, chassisPerChassis, digits, filterChassis, isSaleNature, otherNoteFromInvoice, type ChassisRow, type OtherNote } from "@/lib/chassis"
 import { FORT_COMPANY_ID, ND_COMPANY_ID, registrySummary, viewRegistry, kgToTons, type RegistryRow } from "@/lib/chassis-registry"
 import { fetchAllPages, memoize } from "@/lib/paged-fetch"
+import { withoutRemessas } from "@/lib/remessas"
 import { createAdminClient } from "@/lib/supabase/server"
 
 export const runtime = "nodejs"
@@ -22,7 +23,7 @@ function loadChassis(de: string, ate: string) {
     const perCompany = await Promise.all((companies.data || []).map(async (company) => {
       const admin = createAdminClient({ companyId: company.id })
       const invoices = await fetchAllPages<Record<string, unknown>>((from, to) => {
-        let query = admin.from("accounting_invoices").select(COLUMNS).eq("operation", "Saída")
+        let query = withoutRemessas(admin.from("accounting_invoices").select(COLUMNS)).eq("operation", "Saída") // remessas (CFOP 5912/6912) não são venda: ficam na visão "Remessas"
         if (de) query = query.gte("issued_at", `${de}T00:00:00-03:00`)
         if (ate) query = query.lte("issued_at", `${ate}T23:59:59-03:00`)
         return query.order("issued_at", { ascending: false }).order("id").range(from, to) as unknown as PromiseLike<{ data: Record<string, unknown>[] | null; error: { message: string } | null }>

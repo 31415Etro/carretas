@@ -3,6 +3,7 @@ import { stockContext } from "@/lib/stock-api"
 import { analyzeInvoices } from "@/lib/accounting-analysis"
 import { ACCOUNTING_MIGRATION_HINT } from "@/lib/accounting-server"
 import { fetchAllPages, memoize } from "@/lib/paged-fetch"
+import { withoutRemessas } from "@/lib/remessas"
 import { createAdminClient } from "@/lib/supabase/server"
 
 export const runtime = "nodejs"
@@ -27,7 +28,7 @@ export async function GET(request: Request) {
       const perCompany = await Promise.all((companies.data || []).map(async (company) => {
         const admin = createAdminClient({ companyId: company.id })
         const read = await fetchAllPages<any>((from, to) => {
-          let query = admin.from("accounting_invoices").select(COLUMNS)
+          let query = withoutRemessas(admin.from("accounting_invoices").select(COLUMNS)) // remessas (CFOP 5912/6912) ficam na visão "Remessas"
           if (operation === "Entrada" || operation === "Saída") query = query.eq("operation", operation)
           if (de) query = query.gte("issued_at", `${de}T00:00:00-03:00`)
           if (ate) query = query.lte("issued_at", `${ate}T23:59:59-03:00`)

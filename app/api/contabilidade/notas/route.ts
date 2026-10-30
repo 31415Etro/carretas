@@ -3,6 +3,7 @@ import { stockContext } from "@/lib/stock-api"
 import { analyzeInvoices } from "@/lib/accounting-analysis"
 import { ACCOUNTING_MIGRATION_HINT, importAccountingXml } from "@/lib/accounting-server"
 import { fetchAllPages, forgetCache, memoize } from "@/lib/paged-fetch"
+import { withoutRemessas } from "@/lib/remessas"
 import { getSelectedSystemCompanyId } from "@/lib/supabase/server"
 
 export const runtime = "nodejs"
@@ -31,7 +32,7 @@ export async function GET(request: Request) {
     const term = (params.get("q") || "").replace(/[%,()*]/g, " ").trim()
     const operation = params.get("operacao")
     const filtered = (query: any) => {
-      let next = query
+      let next = withoutRemessas(query) // remessas (CFOP 5912/6912) não são venda nem compra: ficam na visão "Remessas"
       if (operation === "Entrada" || operation === "Saída") next = next.eq("operation", operation)
       if (term) next = next.or(["issuer_name", "recipient_name", "issuer_document", "recipient_document", "number", "access_key", "nature"].map((column) => `${column}.ilike.%${term}%`).join(","))
       if (isDay(params.get("de"))) next = next.gte("issued_at", `${params.get("de")}T00:00:00-03:00`)
