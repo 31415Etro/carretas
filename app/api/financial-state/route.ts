@@ -172,7 +172,8 @@ const financeTables = [
 
 
 const financialCacheTtlMs = 30_000
-const financialStateCache = new Map<string, { state: FinancialState; expiresAt: number }>()
+const financialStaleMs = 60 * 60_000
+const financialStateCache = new Map<string, { state: FinancialState; expiresAt: number; staleUntil: number }>()
 const financialStateLoads = new Map<string, Promise<FinancialState>>()
 
 function fromDb(rows: Record<string, any[]>): FinancialState {
@@ -236,10 +237,18 @@ export async function GET(request: Request) {
     if (!forceRefresh && cached && cached.expiresAt > Date.now()) {
       return NextResponse.json({ state: cached.state, source: "supabase-cache" })
     }
-    if (!financialStateLoads.has(companyId)) financialStateLoads.set(companyId, loadFinancialState(companyId))
-    const state = await financialStateLoads.get(companyId)!
-    financialStateCache.set(companyId, { state, expiresAt: Date.now() + financialCacheTtlMs })
-    financialStateLoads.delete(companyId)
+    const refresh = () => {
+      if (!financialStateLoads.has(companyId)) {
+        financialStateLoads.set(companyId, loadFinancialState(companyId).then((state) => { financialStateCache.set(companyId, { state, expiresAt: Date.now() + financialCacheTtlMs, staleUntil: Date.now() + financialStaleMs }); return state }).finally(() => financialStateLoads.delete(companyId)))
+      }
+      return financialStateLoads.get(companyId)!
+    }
+    // vencido (30 s) mas ainda guardado (1 h): responde na hora com o que já tem e atualiza por trás; quem pede atualização (tempo real) espera o dado novo
+    if (!forceRefresh && cached && cached.staleUntil > Date.now()) {
+      void refresh().catch(() => {})
+      return NextResponse.json({ state: cached.state, source: "supabase-cache-stale" })
+    }
+    const state = await refresh()
     return NextResponse.json({ state, source: "supabase" })
   } catch (error) {
     financialStateLoads.delete(await getSelectedSystemCompanyId())
@@ -260,7 +269,7 @@ export async function PUT(request: Request) {
     for (const name of financeTables) {
       await upsertRows(supabase, name, rows[name])
     }
-    financialStateCache.set(companyId, { state: normalizedState, expiresAt: Date.now() + financialCacheTtlMs })
+    financialStateCache.set(companyId, { state: normalizedState, expiresAt: Date.now() + financialCacheTtlMs, staleUntil: Date.now() + financialStaleMs })
     return NextResponse.json({ ok: true })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Erro ao salvar financeiro no Supabase" }, { status: 500 })

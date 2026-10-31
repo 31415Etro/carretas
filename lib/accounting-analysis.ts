@@ -1,5 +1,6 @@
 // Indicadores de análise da Contabilidade (cards e quebras) a partir das notas importadas. Funções puras.
 import type { AccountingInvoice } from "./accounting-invoice.ts"
+import { spDay } from "./sp-day.ts"
 
 export type AnalysisRow = {
   operation: string; number: string | null; issued_at: string | null; issuer_name: string | null; issuer_document: string | null; issuer_state: string | null
@@ -32,7 +33,7 @@ export function analyzeInvoices(rows: AnalysisRow[]) {
     sum.total += n(row.total_invoice); sum.products += n(row.total_products); sum.freight += n(row.total_freight); sum.discount += n(row.total_discount)
     sum.icms += n(row.total_icms); sum.icmsSt += n(row.total_icms_st); sum.ipi += n(row.total_ipi); sum.pis += n(row.total_pis); sum.cofins += n(row.total_cofins); sum.iss += n(row.total_iss)
     sum.importTax += n(row.data?.totals?.importTax); sum.approxTaxes += n(row.total_taxes)
-    const month = row.issued_at ? new Date(row.issued_at).toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }).slice(0, 7) : "sem-data"
+    const month = row.issued_at ? spDay(row.issued_at).slice(0, 7) : "sem-data"
     bump(months, month, month, 1, n(row.total_invoice), taxes, n(row.total_icms))
     const supplier = row.issuer_document || row.issuer_name || "-"
     bump(suppliers, supplier, row.issuer_name || supplier, 1, n(row.total_invoice), taxes, n(row.total_icms))

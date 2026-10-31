@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
+import { staleCache } from "@/lib/paged-fetch"
 import { companyByCnpj, lancarSaidas, syncXmlAccounting, syncXmlBoth, validSyncSecret } from "@/lib/nf-sync-server"
 import { summarize } from "@/lib/nf-sync"
 
@@ -31,6 +32,7 @@ export async function POST(request: Request) {
     const accountingOnly = String(form.get("destino") || "") === "contabilidade"
     const accountingOperation = String(form.get("operacao") || "") === "saida" ? "Saída" : "Entrada"
     for (const file of files) results.push(accountingOnly ? await syncXmlAccounting(admin, String(company.cnpj), file.name, await file.text(), dryRun, accountingOperation) : await syncXmlBoth(admin, String(company.id), String(company.cnpj), file.name, await file.text(), dryRun))
+    if (!dryRun) { staleCache("notas|"); staleCache("chassis|"); staleCache("consolidado|"); staleCache("remessas|") } // notas novas aparecem nas telas sem esperar o cache
     return NextResponse.json({ company: company.name, summary: summarize(results), results })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Erro na importação automática." }, { status: 500 })

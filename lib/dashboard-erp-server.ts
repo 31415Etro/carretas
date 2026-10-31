@@ -1,3 +1,4 @@
+import { cachedLookup, cachedUser } from "@/lib/auth-cache"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { readAllPages } from "@/lib/supabase-pagination"
 import type { DashboardData, DashboardSection } from "@/lib/dashboard-erp"
@@ -15,10 +16,10 @@ export const sectionPermissions: Record<DashboardSection, string> = {
 
 export async function dashboardViewer() {
   const session = await createClient()
-  const { data: { user } } = await session.auth.getUser()
+  const user = await cachedUser(session)
   if (!user) return null
   const admin = createAdminClient()
-  const { data: profile } = await admin.from("profiles").select("role,page_permissions,active").eq("id", user.id).maybeSingle()
+  const profile = await cachedLookup(`dash|${user.id}`, async () => (await admin.from("profiles").select("role,page_permissions,active").eq("id", user.id).maybeSingle()).data)
   if (!profile || profile.active === false || profile.role === "client") return null
   const permissions: string[] = Array.isArray(profile.page_permissions) ? profile.page_permissions : []
   const pendingSections = new Set<DashboardSection>()

@@ -1,4 +1,5 @@
 // Cadastro de chassis fora das notas (tabela chassis_registry, script 242): vem da planilha de controle do WhatsApp e guarda a descrição/tamanho.
+import { spDay } from "./sp-day.ts"
 // Funções puras (testáveis): o nome do grupo da planilha vira modelo/linha/eixos e o cadastro é cruzado com os chassis das notas.
 
 export type RegistryRow = {
@@ -49,7 +50,7 @@ export type RegistryView = RegistryRow & {
   date: string; effectiveColor: string; effectiveCapacity: number; clientKey: string; noteIntercompany: boolean // data (aaaa-mm-dd), cor e capacidade (t) valendo, chave do cliente da nota
 }
 
-const saoPauloDay = (value?: string | null) => (value ? new Date(value).toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }) : "")
+const saoPauloDay = (value?: string | null) => spDay(value)
 /** Chave do cliente como na parte de cima da página: documento, ou "nome:NOME" sem documento. */
 export const clientKeyOf = (document: string | undefined, name: string) => document || `nome:${name}`
 

@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { DataTable, SectionCard } from "@/components/operations/shared"
 import { cfopLabel } from "@/lib/remessas"
+import { spDay } from "@/lib/sp-day"
 
 type Note = {
   id: string; companyId: string; companyName: string; operation: string; number: string; series: string; issuedAt: string | null; nature: string; cfop: string
@@ -20,7 +21,7 @@ const MONTHS = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "jul
 const brl = (value: unknown) => Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
 const number = (value: number) => Number(value || 0).toLocaleString("pt-BR")
 const day = (value?: string | null) => (value ? new Date(value).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "-")
-const dayKey = (value?: string | null) => (value ? new Date(value).toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }) : "")
+const dayKey = (value?: string | null) => spDay(value)
 const monthLabel = (key: string) => (/^\d{4}-\d{2}$/.test(key) ? `${key.slice(5)}/${key.slice(2, 4)}` : "sem data")
 const formatDoc = (value: string) => (value.length === 14 ? value.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5") : value.length === 11 ? value.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : value)
 const sense = (operation: string) => (operation === "Saída" ? "Enviada" : "Recebida")

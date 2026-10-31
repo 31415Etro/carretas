@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { forgetLookups } from "@/lib/auth-cache"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { systemPagePermissions } from "@/lib/types"
 
@@ -110,6 +111,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: "Failed to save user data" }, { status: 500 })
     }
 
+    forgetLookups() // permissões e empresas guardadas por 30 s no servidor valem já com a alteração
     return NextResponse.json({ success: true, user: data })
   } catch (error: any) {
     console.error("[v0] Error updating user:", error.message)

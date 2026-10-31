@@ -52,3 +52,6 @@ NotasFiscais_*.zip
 CamScanner*.pdf
 scripts/nfemail/logs/
 notas-baixadas/
+
+# monitor de lentidão (gerado no servidor)
+.perf-monitor.json

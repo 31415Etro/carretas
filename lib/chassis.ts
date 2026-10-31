@@ -8,6 +8,8 @@ export type ChassisRow = {
   companyId: string; companyName: string; intercompany: boolean
 }
 
+import { spDay } from "./sp-day.ts"
+
 /** Só letras e números, em maiúsculas. */
 const clean = (value: string) => String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "")
 export const digits = (value: string) => String(value || "").replace(/\D/g, "")
@@ -110,7 +112,7 @@ export function filterChassis(rows: ChassisRow[], filters: Filters) {
   })
 }
 
-const month = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }).slice(0, 7) : "sem-data")
+const month = (iso: string | null) => (iso ? spDay(iso).slice(0, 7) : "sem-data")
 type Count = { label: string; chassis: number; total: number }
 function bump(map: Map<string, Count>, key: string, row: ChassisRow) {
   const entry = map.get(key) || { label: key, chassis: 0, total: 0 }
@@ -138,7 +140,7 @@ export function chassisChart(rows: ChassisRow[]) {
 
 const money = (value: number) => Math.round(value * 100) / 100
 export const issuedDay = (iso: string | null) => dayOf(iso)
-const dayOf = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }) : "")
+const dayOf = (iso: string | null) => spDay(iso)
 
 /** Quantidade emitida e valor por modelo: chassis distintos, notas, valor total, médio, menor e maior. */
 export function chassisByModel(rows: ChassisRow[]) {

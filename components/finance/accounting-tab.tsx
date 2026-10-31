@@ -310,9 +310,13 @@ export function AccountingTab({ emitir }: { emitir?: React.ReactNode }) {
   const [de, setDe] = useState("")
   const [ate, setAte] = useState("")
   const [rows, setRows] = useState<Row[]>([])
+  const [shownNotes, setShownNotes] = useState(100) // milhares de linhas de uma vez travam o navegador: a lista cresce de 100 em 100 (as planilhas levam todas)
+  const [shownMaterials, setShownMaterials] = useState(100)
   const [analysis, setAnalysis] = useState<AccountingAnalysis | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  useEffect(() => setShownNotes(100), [rows])
+  useEffect(() => setShownMaterials(100), [analysis])
   const [progress, setProgress] = useState("")
   const [report, setReport] = useState<string[]>([])
   const [open, setOpen] = useState<string | null>(null)
@@ -411,7 +415,7 @@ export function AccountingTab({ emitir }: { emitir?: React.ReactNode }) {
         <TabsContent value="notas" className="mt-3">
           <div className="mb-2 flex gap-2"><Button type="button" variant="outline" size="sm" onClick={exportNotes} disabled={!rows.length}><Download className="h-4 w-4" />Planilha das notas</Button><Button type="button" variant="outline" size="sm" onClick={() => void exportItems()} disabled={!rows.length}><Download className="h-4 w-4" />Planilha dos itens com impostos</Button></div>
           <DataTable stickyHeader viewportClassName="max-h-[36rem] overflow-auto overscroll-contain rounded-md border [scrollbar-gutter:stable]" headers={["Emissão", "Op.", "NF", "Emitente", "Destinatário", "Produtos", "ICMS", "ICMS ST", "IPI", "PIS", "COFINS", "ISS", "Total"]} empty={!rows.length && !loading}>
-            {rows.map((row) => (
+            {rows.slice(0, shownNotes).map((row) => (
               <TableRow key={row.id} className="cursor-pointer" onClick={() => setOpen(row.id)}>
                 <TableCell className="whitespace-nowrap">{day(row.issued_at)}</TableCell><TableCell>{row.operation}</TableCell><TableCell className="whitespace-nowrap">{row.kind} {row.number || "-"}{row.series ? `/${row.series}` : ""}</TableCell>
                 <TableCell>{row.issuer_name || "-"}<div className="text-xs text-muted-foreground">{row.issuer_document}</div></TableCell><TableCell>{row.recipient_name || "-"}<div className="text-xs text-muted-foreground">{row.recipient_document}</div></TableCell>
@@ -420,6 +424,7 @@ export function AccountingTab({ emitir }: { emitir?: React.ReactNode }) {
               </TableRow>
             ))}
           </DataTable>
+          {rows.length > shownNotes ? <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">Mostrando {shownNotes.toLocaleString("pt-BR")} de {rows.length.toLocaleString("pt-BR")} notas<Button type="button" variant="outline" size="sm" onClick={() => setShownNotes((count) => count + 200)}>Mostrar mais 200</Button><Button type="button" variant="outline" size="sm" onClick={() => setShownNotes(rows.length)}>Mostrar todas</Button></div> : null}
         </TabsContent>
 
         <TabsContent value="emitir" className="mt-3">{emitir}</TabsContent>
@@ -428,7 +433,7 @@ export function AccountingTab({ emitir }: { emitir?: React.ReactNode }) {
         <TabsContent value="materiais" className="mt-3">
           <p className="mb-2 text-sm text-muted-foreground">Tudo o que aparece nas notas filtradas acima, somado por produto (código e descrição). Use o filtro de Entradas para ver só o que foi comprado.</p>
           <DataTable stickyHeader viewportClassName="max-h-[36rem] overflow-auto overscroll-contain rounded-md border [scrollbar-gutter:stable]" headers={["Código", "Descrição", "NCM", "Un.", "Quantidade", "Preço médio", "Total", "ICMS", "IPI", "PIS", "COFINS", "Notas", "Fornecedores"]} empty={!materials.length && !loading}>
-            {materials.map((item) => (
+            {materials.slice(0, shownMaterials).map((item) => (
               <TableRow key={`${item.code}|${item.description}`}>
                 <TableCell>{item.code}</TableCell><TableCell className="min-w-[220px]">{item.description}</TableCell><TableCell>{item.ncm}</TableCell><TableCell>{item.unit}</TableCell>
                 <TableCell className="text-right">{qty(item.quantity)}</TableCell><TableCell className="text-right">{brl(item.averagePrice)}</TableCell><TableCell className="text-right font-medium">{brl(item.total)}</TableCell>
@@ -437,6 +442,7 @@ export function AccountingTab({ emitir }: { emitir?: React.ReactNode }) {
               </TableRow>
             ))}
           </DataTable>
+          {materials.length > shownMaterials ? <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">Mostrando {shownMaterials.toLocaleString("pt-BR")} de {materials.length.toLocaleString("pt-BR")} materiais<Button type="button" variant="outline" size="sm" onClick={() => setShownMaterials((count) => count + 200)}>Mostrar mais 200</Button><Button type="button" variant="outline" size="sm" onClick={() => setShownMaterials(materials.length)}>Mostrar todos</Button></div> : null}
           <div className="mt-2"><Button type="button" variant="outline" size="sm" disabled={!materials.length} onClick={() => downloadCsv("contabilidade-materiais.csv", ["Código", "Descrição", "NCM", "Un.", "Quantidade", "Preço médio", "Total", "ICMS", "IPI", "PIS", "COFINS", "Notas", "Fornecedores"], materials.map((item) => [item.code, item.description, item.ncm, item.unit, item.quantity, item.averagePrice, item.total, item.icms, item.ipi, item.pis, item.cofins, item.notes, item.suppliers.join(", ")]))}><Download className="h-4 w-4" />Planilha dos materiais</Button></div>
         </TabsContent>
 

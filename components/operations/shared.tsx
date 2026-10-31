@@ -227,7 +227,9 @@ function readRows(children: React.ReactNode, columns: number) {
     if (element.type !== TableRow && element.type !== "tr") return null
     const cells = flattenNodes((element.props as { children?: React.ReactNode }).children)
     if (cells.length !== columns || cells.some((cell) => cell.type !== TableCell && cell.type !== "td")) return null
-    rows.push({ element, cells: cells.map((cell) => nodeText((cell.props as { children?: React.ReactNode }).children)) })
+    // o texto das células só é extraído quando a tabela é ordenada (antes era refeito a cada renderização, para milhares de linhas)
+    let text: string[] | null = null
+    rows.push({ element, get cells() { return (text ||= cells.map((cell) => nodeText((cell.props as { children?: React.ReactNode }).children))) } })
   }
   return rows
 }

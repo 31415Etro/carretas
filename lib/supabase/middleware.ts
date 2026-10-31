@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 import { demoApiPayload, demoSession, isDemoMode } from "@/lib/demo-mode"
+import { cachedLookup, cachedUser } from "@/lib/auth-cache"
 import { clientIp, logAuditEdge, originFor, sessionIdFromToken, withAuditHeaders } from "@/lib/audit-edge"
 
 const publicPaths = [
@@ -98,9 +99,7 @@ export async function updateSession(request: NextRequest) {
     },
   )
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await cachedUser(supabase)
 
   const pathname = request.nextUrl.pathname
 
@@ -130,11 +129,11 @@ export async function updateSession(request: NextRequest) {
     return redirectWithCookies(request, "/login", supabaseResponse, true)
   }
 
-  const { data: profile } = await supabase
+  const profile = await cachedLookup(`profile|${user.id}`, async () => (await supabase
     .from("profiles")
     .select("role,page_permissions,active")
     .eq("id", user.id)
-    .maybeSingle()
+    .maybeSingle()).data)
 
   if (!profile || profile.active === false) {
     await supabase.auth.signOut()
@@ -144,7 +143,7 @@ export async function updateSession(request: NextRequest) {
 
   // empresa do cookie precisa estar entre as autorizadas (perfil sem vínculos mantém todas)
   if (profile.role !== "admin" && hasSelectedCompany) {
-    const { data: links } = await supabase.from("profile_companies").select("company_id").eq("profile_id", user.id)
+    const links = await cachedLookup(`links|${user.id}`, async () => (await supabase.from("profile_companies").select("company_id").eq("profile_id", user.id)).data)
     if (links && links.length && !links.some((link) => link.company_id === request.cookies.get("system_company_id")?.value)) {
       await logAuditEdge({ companyId: request.cookies.get("system_company_id")?.value, actorId: audit.actorId, actorEmail: audit.actorEmail, module: "acesso", action: "Acesso negado", description: "Tentativa de usar uma empresa sem autorização.", result: "Negado", ip: audit.ip, session: audit.session, request: audit.request })
       if (pathname.startsWith("/api/")) return NextResponse.json({ error: "Empresa nao autorizada para este usuario" }, { status: 403 })

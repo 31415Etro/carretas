@@ -1,4 +1,5 @@
 import { invoiceTitles } from "./nfe-parser.ts"
+import { spDay } from "./sp-day.ts"
 
 export type StoredInvoice = {
   dedupe_key: string
@@ -13,7 +14,7 @@ export type StoredInvoice = {
 }
 
 /** Dia no horário de Brasília (yyyy-mm-dd) de um instante ISO. */
-export const brazilDay = (iso: string) => new Date(iso).toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" })
+export const brazilDay = (iso: string) => spDay(iso)
 
 /**
  * Lançamentos de SAÍDA (Entradas e Saídas) para uma nota recebida: um por parcela, no dia do vencimento.

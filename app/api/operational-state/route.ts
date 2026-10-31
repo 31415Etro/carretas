@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server"
 import { createHash } from "node:crypto"
+import { cachedLookup, cachedUser } from "@/lib/auth-cache"
 import { createAdminClient, createClient, getSelectedSystemCompanyId } from "@/lib/supabase/server"
 import { defaultOperationalState, type OperationalState } from "@/lib/operational-storage"
 import { materialErpFields } from "@/lib/material-fields"
+import { forgetCache, memoize } from "@/lib/paged-fetch"
 import { readAllPages } from "@/lib/supabase-pagination"
 
 export const dynamic = "force-dynamic"
@@ -105,10 +107,10 @@ const writeOrder = ["providers", "audit_logs"] as const
 
 async function internalUser() {
   const session = await createClient()
-  const { data: { user } } = await session.auth.getUser()
+  const user = await cachedUser(session)
   if (!user) return { error: NextResponse.json({ error: "Nao autenticado" }, { status: 401 }) } as const
   const admin = createAdminClient()
-  const { data: profile } = await admin.from("profiles").select("role,active").eq("id", user.id).maybeSingle()
+  const profile = await cachedLookup(`role|${user.id}`, async () => (await admin.from("profiles").select("role,active").eq("id", user.id).maybeSingle()).data)
   if (!profile || profile.active === false || profile.role === "client") return { error: NextResponse.json({ error: "Sem permissao para acessar estes cadastros" }, { status: 403 }) } as const
   return { admin } as const
 }
@@ -118,6 +120,9 @@ export async function GET() {
     const access = await internalUser()
     if ("error" in access) return access.error
     const supabase = access.admin
+    const companyId = await getSelectedSystemCompanyId()
+    // guardado por 20 s e, vencido, ainda servido na hora (por mais 60 s) enquanto atualiza; qualquer gravação (PUT) limpa
+    const state = await memoize(`opstate|${companyId}`, 20_000, async () => {
     const [clients, suppliers, providers, vehicles, vehicleMaintenance, materials, orders, profiles, systemUsers, auditLogs] = await Promise.all([
       load(supabase, "clients"),
       load(supabase, "suppliers", "*", true),
@@ -130,7 +135,8 @@ export async function GET() {
       load(supabase, "system_users", "*", true),
       load(supabase, "audit_logs"),
     ])
-    const state = fromDb({ clients, suppliers, providers, vehicles, vehicle_maintenance: vehicleMaintenance, materials, service_orders: orders, profiles, system_users: systemUsers, audit_logs: auditLogs })
+    return fromDb({ clients, suppliers, providers, vehicles, vehicle_maintenance: vehicleMaintenance, materials, service_orders: orders, profiles, system_users: systemUsers, audit_logs: auditLogs })
+    }, 60_000)
     return NextResponse.json({ state, source: "supabase" })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Erro ao carregar Supabase" }, { status: 500 })
@@ -145,6 +151,7 @@ export async function PUT(request: Request) {
     const { state } = await request.json() as { state: OperationalState }
     const rows = toDb(normalizeOperationalStateIds(state, companyId))
     for (const name of writeOrder) await upsertRows(access.admin, name, rows[name])
+    forgetCache("opstate|")
     return NextResponse.json({ ok: true })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Erro ao salvar Supabase" }, { status: 500 })

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { cachedLookup, cachedUser } from "@/lib/auth-cache"
 import { createClient } from "@/lib/supabase/server"
 import { listAuthorizedCompanies, getSelectedSystemCompany } from "@/lib/system-company-server"
 import { SYSTEM_COMPANY_COOKIE, cookieSecure } from "@/lib/system-company"
@@ -9,10 +10,8 @@ export async function GET() {
     console.log("[v0] GET /api/auth/user called")
     const supabase = await createClient()
 
-    const {
-      data: { user: authUser },
-      error: authError,
-    } = await supabase.auth.getUser()
+    const authUser = await cachedUser(supabase)
+    const authError = null as { message?: string } | null
 
     console.log("[v0] Auth user check:", {
       hasUser: !!authUser,
@@ -26,11 +25,11 @@ export async function GET() {
     }
 
     console.log("[v0] Fetching profile for user:", authUser.id)
-    const { data: profile, error: profileError } = await supabase
+    const { data: profile, error: profileError } = await cachedLookup(`authprofile|${authUser.id}`, async () => await supabase
       .from("profiles")
       .select("*")
       .eq("id", authUser.id)
-      .single()
+      .single())
 
     console.log("[v0] Profile fetch result:", {
       hasProfile: !!profile,
@@ -58,7 +57,7 @@ export async function GET() {
       clientId: profile.client_id || null,
     }
 
-    const companies = await listAuthorizedCompanies(authUser.id, String(user.role || "user"))
+    const companies = await cachedLookup(`companies|${authUser.id}|${user.role || "user"}`, () => listAuthorizedCompanies(authUser.id, String(user.role || "user")))
     const selectedCookie = (await cookies()).get(SYSTEM_COMPANY_COOKIE)?.value
     if (!selectedCookie || !companies.some((item) => item.id === selectedCookie)) {
       return NextResponse.json({ user: null, authenticated: true, requiresCompanySelection: true, companies })

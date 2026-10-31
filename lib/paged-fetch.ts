@@ -19,17 +19,33 @@ export async function fetchAllPages<T>(build: (from: number, to: number) => Prom
   }
 }
 
-const store = new Map<string, { expires: number; value: Promise<unknown> }>()
+const store = new Map<string, { expires: number; stale: number; value: Promise<unknown>; refreshing?: boolean }>()
+const STALE_MS = 60 * 60_000
 
-/** Guarda o resultado de `load` por `ttlMs` (e junta pedidos iguais que chegam ao mesmo tempo). Falha não fica guardada. */
-export function memoize<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
+/**
+ * Guarda o resultado de `load` por `ttlMs` (e junta pedidos iguais que chegam ao mesmo tempo). Falha não fica guardada.
+ * Passado o prazo, ainda devolve o resultado anterior NA HORA (por até 1 hora) e atualiza por baixo dos panos: a tela abre sem esperar a leitura completa do banco.
+ */
+export function memoize<T>(key: string, ttlMs: number, load: () => Promise<T>, staleMs = STALE_MS): Promise<T> {
   const now = Date.now()
   const hit = store.get(key)
   if (hit && hit.expires > now) return hit.value as Promise<T>
+  if (hit && hit.stale > now) {
+    if (!hit.refreshing) {
+      hit.refreshing = true
+      load().then((fresh) => store.set(key, { expires: Date.now() + ttlMs, stale: Date.now() + staleMs, value: Promise.resolve(fresh) }), () => { hit.refreshing = false })
+    }
+    return hit.value as Promise<T>
+  }
   const value = load().catch((error) => { store.delete(key); throw error })
-  store.set(key, { expires: now + ttlMs, value })
-  if (store.size > 200) for (const [name, entry] of store) if (entry.expires <= now) store.delete(name)
+  store.set(key, { expires: now + ttlMs, stale: now + staleMs, value })
+  if (store.size > 200) for (const [name, entry] of store) if (entry.stale <= now) store.delete(name)
   return value
+}
+
+/** Marca o que foi guardado com o prefixo como vencido: o próximo pedido ainda recebe o resultado anterior na hora e dispara a atualização (usado quando o robô importa notas). */
+export function staleCache(prefix = "") {
+  for (const [name, entry] of store) if (name.startsWith(prefix)) entry.expires = 0
 }
 
 /** Esquece o que foi guardado (ex.: depois de importar ou excluir notas). */

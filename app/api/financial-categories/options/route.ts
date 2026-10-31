@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { cachedLookup, cachedUser } from "@/lib/auth-cache"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 
 export const dynamic = "force-dynamic"
@@ -6,11 +7,11 @@ export const dynamic = "force-dynamic"
 export async function GET() {
   try {
     const session = await createClient()
-    const { data: { user } } = await session.auth.getUser()
+    const user = await cachedUser(session)
     if (!user) return NextResponse.json({ error: "Nao autenticado." }, { status: 401 })
 
     const supabase = createAdminClient()
-    const { data: profile } = await supabase.from("profiles").select("role,active").eq("id", user.id).maybeSingle()
+    const profile = await cachedLookup(`role|${user.id}`, async () => (await supabase.from("profiles").select("role,active").eq("id", user.id).maybeSingle()).data)
     if (!profile || profile.active === false || profile.role === "client") {
       return NextResponse.json({ error: "Acesso restrito as categorias de fornecedores." }, { status: 403 })
     }
