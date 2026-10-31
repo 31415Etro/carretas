@@ -20,6 +20,8 @@ const publicPaths = [
   "/api/documentacao/cron",
   // Importação automática de NF (agendador local): autenticada por NF_SYNC_SECRET dentro da própria rota.
   "/api/financeiro/nf/sync",
+  // Robô de emissão de NF-e (servidor): autenticado por NF_SYNC_SECRET dentro da própria rota.
+  "/api/financeiro/nf/emissao/worker",
   // Portal de antecipação de reembolso para viagem (link enviado ao funcionário): sem login; o token da URL é a autorização, validado dentro da rota.
   "/portal-viagem",
   "/api/viagem/portal",

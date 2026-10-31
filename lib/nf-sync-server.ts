@@ -37,7 +37,7 @@ export async function syncXml(admin: Admin, companyId: string, companyCnpj: stri
     if (plan.action === "ignorar") return { ...base, status: "ignorada", detail: plan.reason }
     if (dryRun) return { ...base, status: "importada", detail: "simulação", kind: plan.role === "destinatario" ? "pagar" : "receber" }
     const file = new File([xml], fileName, { type: "text/xml" })
-    const result = await importInvoice(admin, { file, fileName }, plan.role, companyId, plan.registerAs, SYNC_RESPONSIBLE, plan.launch, `${new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }).slice(0, 7)}-01`)
+    const result = await importInvoice(admin, { file, fileName }, plan.role, companyId, plan.registerAs, SYNC_RESPONSIBLE, plan.launch) // sem baixa automática: a nota fica ABERTA em Contas a pagar/receber e só entra em Entradas e Saídas quando alguém marca pago/recebido
     return { ...base, status: "importada", kind: plan.launch ? (plan.role === "destinatario" ? "pagar" : "receber") : undefined, counterpart: result.counterpartName, detail: result.titles ? `${result.titles.count} título(s)` : plan.note || result.titlesNote }
   } catch (error) {
     const message = error instanceof Error ? error.message : (error as { message?: string })?.message || "Erro ao importar."

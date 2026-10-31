@@ -1,0 +1,9 @@
+{
+  "header": { "cfop": "5102", "nature": "Venda de mercadoria", "purpose": "1", "finalConsumer": "0", "presence": "" },
+  "recipient": { "source": "manual", "personType": "PJ", "document": "81744534000124", "name": "3 ACAO TERCEIRIZACAO LTDA", "stateRegistration": "9069126941", "ieIndicator": "1", "zip": "85601030", "street": "R OCTAVIANO TEIXEIRA", "number": "228", "complement": "", "district": "CENTRO", "state": "PR", "city": "FRANCISCO BELTRAO", "email": "", "phone": "", "operationDestination": "1" },
+  "items": [ { "code": "T1", "description": "ITEM DE ENSAIO (NAO EMITIR)", "ncm": "87164000", "quantity": "1", "unitPrice": "100,00", "unit": "UN", "gtin": "SEM GTIN", "cfop": "5102", "origin": "0",
+    "icms": { "cst": "102", "aliquota": "", "base": "", "valor": "" }, "pis": { "cst": "49", "aliquota": "0", "base": "", "valor": "" }, "cofins": { "cst": "49", "aliquota": "0", "base": "", "valor": "" }, "ipi": { "cst": "", "aliquota": "", "base": "", "valor": "" } } ],
+  "payment": { "indicator": "0", "form": "17", "value": "100,00" },
+  "transport": { "mode": "9" },
+  "additionalInfo": "ENSAIO - NAO EMITIR"
+}
