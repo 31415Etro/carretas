@@ -3,7 +3,7 @@
 import { brStates, cleanDocument, formatDocument, isValidCnpj, isValidDocument } from "./commercial.ts"
 
 export type Entity = "client" | "supplier"
-export type FieldType = "text" | "number" | "date" | "area" | "select" | "phone" | "zip" | "state" | "email"
+export type FieldType = "text" | "number" | "date" | "area" | "select" | "phone" | "zip" | "state" | "email" | "file"
 export type Section = "ident" | "cnpj" | "contato" | "endereco" | "comercial" | "bancario" | "obs"
 
 export type Field = {
@@ -45,6 +45,7 @@ export const fields: Field[] = [
   { key: "name", label: "Razão social / Nome completo", section: "ident", required: true },
   { key: "tradeName", label: "Nome fantasia", section: "ident" },
   { key: "status", label: "Status", section: "ident", type: "select", required: true },
+  { key: "cnhFileUrl", label: "CNH / documento de identidade (foto ou PDF)", section: "ident", type: "file", only: "client" },
   // Receita Federal (automático)
   { key: "cnpjStatus", label: "Situação cadastral", section: "cnpj", auto: true },
   { key: "cnpjStatusDate", label: "Data da situação", section: "cnpj", type: "date", auto: true },
@@ -73,6 +74,7 @@ export const fields: Field[] = [
   { key: "city", label: "Cidade", section: "endereco", required: true },
   { key: "state", label: "UF", section: "endereco", type: "state", required: true },
   { key: "country", label: "País", section: "endereco", required: true },
+  { key: "residenceProofUrl", label: "Comprovante de residência (foto ou PDF)", section: "endereco", type: "file", only: "client" },
   { key: "billingAddress", label: "Endereço de cobrança (se diferente)", section: "endereco", type: "area", only: "client" },
   { key: "deliveryAddress", label: "Endereço de entrega (se diferente)", section: "endereco", type: "area", only: "client" },
   // Comercial — cliente

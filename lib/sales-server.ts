@@ -14,6 +14,7 @@ export class SalesError extends Error {
 export function salesError(error: unknown, fallback = "Erro ao processar a solicitação.") {
   if (error instanceof SalesError) return error
   const message = error instanceof Error ? error.message : (error as { message?: string })?.message || fallback
+  console.error("[vendas] erro original:", message, (error as { code?: string; details?: string; hint?: string })?.code || "", (error as { details?: string })?.details || "", (error as { hint?: string })?.hint || "")
   if (/production_order_create_manual|vehicle_documentation_create_manual/.test(message) && /Could not find|does not exist|schema cache/i.test(message)) return new SalesError("A abertura de ordem de produção sem pedido ainda não está instalada no banco. Rode o script 228 no SQL Editor do Supabase (depois do 227).", 503)
   if (isSalesStructureMissing(message)) return new SalesError(SALES_MIGRATION_HINT, 503)
   if (/não encontrad/i.test(message)) return new SalesError(message, 404)

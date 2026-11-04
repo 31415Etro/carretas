@@ -418,7 +418,7 @@ export function QuotesPage({ opportunityId, onChanged, onOrderCreated }: { oppor
               <TextField label="Emissão" type="date" value={form.issueDate} onChange={() => undefined} />
               <TextField label="Validade *" type="date" value={form.validUntil} onChange={(value) => !readOnly && setForm({ ...form, validUntil: value })} />
               <Opts label="Condição de pagamento *" value={form.paymentConditionId} onChange={(value) => setForm({ ...form, paymentConditionId: value })} items={(options?.paymentConditions || []).map((item) => ({ value: item.id, label: item.name }))} disabled={readOnly} />
-              <TextField label="Prazo de entrega / execução" value={form.deliveryText} onChange={(value) => !readOnly && setForm({ ...form, deliveryText: value })} />
+              <TextField label="Prazo de entrega" value={form.deliveryText} onChange={(value) => !readOnly && setForm({ ...form, deliveryText: value })} />
               <TextField label="Garantia (dias)" type="number" value={form.warrantyDays} onChange={(value) => !readOnly && setForm({ ...form, warrantyDays: value })} />
             </div>
             {!detail && options && options.templates.length > 0 && (

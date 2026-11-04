@@ -138,7 +138,7 @@ export function CommercialPanel() {
                 <Opts label="Condição de pagamento" value={template.paymentConditionId} onChange={(value) => setTemplate({ ...template, paymentConditionId: value })} items={catalog.paymentConditions.map((condition) => ({ value: condition.id, label: condition.name }))} placeholder="Nenhuma" />
                 <TextField label="Garantia (dias)" type="number" value={template.warrantyDays} onChange={(value) => setTemplate({ ...template, warrantyDays: value })} />
               </div>
-              <TextField label="Prazo de entrega / execução" value={template.deliveryText} onChange={(value) => setTemplate({ ...template, deliveryText: value })} />
+              <TextField label="Prazo de entrega" value={template.deliveryText} onChange={(value) => setTemplate({ ...template, deliveryText: value })} />
               <TextAreaField label="Observações e condições comerciais" value={template.notes} onChange={(value) => setTemplate({ ...template, notes: value })} />
               <div className="flex items-center gap-2"><Checkbox id="tpl-active" checked={template.active} onCheckedChange={(value) => setTemplate({ ...template, active: value === true })} /><Label htmlFor="tpl-active">Modelo ativo</Label></div>
               <Button onClick={() => void saveTemplate()}>Salvar modelo</Button>

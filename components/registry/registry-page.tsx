@@ -11,8 +11,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { DataTable, FormSheet, PageShell, SaveButton, SectionCard, SelectField, StatusBadge, useCrudFeedback } from "@/components/operations/shared"
 import { brStates, icmsIndicators } from "@/lib/commercial"
-import { IdDocumentCapture } from "@/components/registry/id-capture"
-import { idDocumentNotes, type ParsedIdDocument } from "@/lib/id-document"
+import { ClientFileField } from "@/components/registry/client-file-field"
+import { idDocumentNotes, parseIdDocument, type ParsedIdDocument } from "@/lib/id-document"
+import { mergeResidence, parseResidenceProof, type ZipData } from "@/lib/residence-proof"
 import { applyCompany, cleanDocument, companyToForm, fieldsFor, formatDocument, formatPhone, formatZip, isLookupReady, sectionTitles, supplyCategories, type Entity, type Field, type Section } from "@/lib/registry"
 
 type Item = Record<string, any>
@@ -59,6 +60,7 @@ function valueLabel(entity: Entity, field: Field, item: Item, options: Options) 
   const value = String(item[field.key] ?? "")
   if (!value) return ""
   if (field.key === "document" || field.key === "holderDocument") return formatDocument(value)
+  if (field.type === "file") return value ? "Documento salvo" : ""
   if (field.type === "date") return day(value)
   if (field.key === "creditLimit" || field.key === "minOrder") return Number(value) ? brl(value) : ""
   if (field.key === "defaultDiscount") return Number(value) ? `${value}%` : ""
@@ -187,6 +189,32 @@ function RegistryTab({ entity, items, otherItems, options, loading, onReload, mo
     })
   }
 
+  /** CNH / documento de identidade lido do arquivo guardado: preenche nome e CPF (pessoa física) e anota o resto. */
+  function readIdText(text: string) {
+    const parsed = parseIdDocument(text)
+    if (!parsed.name && !parsed.cpf) return "Documento guardado, mas não achei nome nem CPF nele. Preencha à mão."
+    if (formRef.current?.personType === "PF") { fillFromId(parsed); return `Documento guardado e lido (${parsed.kind}): nome e CPF preenchidos.${parsed.warnings.length ? ` ${parsed.warnings.join(" ")}` : ""} Confira antes de salvar.` }
+    return "Documento guardado no cadastro. Como o cliente é pessoa jurídica, os dados dele não foram copiados para o cadastro."
+  }
+
+  /** Comprovante de residência (qualquer layout): acha o CEP, confere numa base oficial e preenche o endereço. */
+  async function readResidenceText(text: string) {
+    const parsed = parseResidenceProof(text)
+    let zip = parsed.zipCandidates[0] || ""
+    let data: ZipData | null = null
+    for (const candidate of parsed.zipCandidates) {
+      const found = await api<{ zip: ZipData | null }>(`/api/cadastros/cep?cep=${candidate}`).catch(() => ({ zip: null }))
+      if (found.zip?.city) { zip = candidate; data = found.zip; break }
+    }
+    const fields = mergeResidence(parsed, zip, data)
+    if (!fields.street && !fields.zipCode) return "Documento guardado, mas não consegui identificar o endereço nele. Preencha à mão."
+    for (const key of Object.keys(fields)) touched.current.add(key)
+    setForm((current) => current && { ...current, ...Object.fromEntries(Object.entries(fields).filter(([, value]) => value)), country: current.country || "Brasil" })
+    const holder = parsed.holder ? ` Titular do comprovante: ${parsed.holder}.` : ""
+    const missing = [!fields.number && "número", !fields.district && "bairro", !fields.city && "cidade"].filter(Boolean)
+    return `Endereço preenchido${data ? " e conferido pelo CEP" : " (CEP não confirmado numa base oficial)"}.${holder}${missing.length ? ` Falta: ${missing.join(", ")}.` : ""} Confira antes de salvar.`
+  }
+
   const own = entity === "client" ? existing.client : existing.supplier
   const other = entity === "client" ? existing.supplier : existing.client
   const duplicate = Boolean(form && own && own.id !== form.id)
@@ -286,13 +314,15 @@ function RegistryTab({ entity, items, otherItems, options, loading, onReload, mo
             return (
               <div key={section} className="space-y-3">
                 <h3 className="text-sm font-semibold">{sectionTitles[section]}</h3>
-                {section === "ident" && form.personType === "PF" ? <IdDocumentCapture onRead={fillFromId} /> : null}
                 {section === "ident" ? <div className="flex flex-wrap items-center gap-2">
                   <Button size="sm" variant="outline" disabled={!isLookupReady(form.personType, form.document) || lookup.state === "loading"} onClick={() => { lastDocument.current = cleanDocument(form.document); void runLookup(form.document) }}><RefreshCw className="h-4 w-4" />Consultar CNPJ novamente</Button>
                   {lastQuery ? <span className="text-xs text-muted-foreground">Última consulta: {lastQuery}</span> : null}
                 </div> : null}
                 <div className="grid gap-3 md:grid-cols-2">
-                  {list.map((field) => <FieldInput key={field.key} entity={entity} field={field} form={form} options={options} onChange={change} />)}
+                  {list.filter((field) => field.type !== "file").map((field) => <FieldInput key={field.key} entity={entity} field={field} form={form} options={options} onChange={change} />)}
+                  {list.filter((field) => field.type === "file").map((field) => field.key === "cnhFileUrl"
+                    ? <ClientFileField key={field.key} kind="cnh" label={field.label} hint="Fica salva no cadastro. Se for pessoa física, o nome e o CPF são lidos do documento." value={String(form[field.key] || "")} onChange={(path) => change(field.key, path)} onText={readIdText} />
+                    : <ClientFileField key={field.key} kind="residencia" label={field.label} hint="Fica salvo no cadastro e o endereço é preenchido sozinho, qualquer que seja o layout (conta de luz, água, telefone, extrato...)." value={String(form[field.key] || "")} onChange={(path) => change(field.key, path)} onText={readResidenceText} />)}
                 </div>
                 {section === "cnpj" && Array.isArray(form.partners) && form.partners.length ? <div className="rounded-md border p-3 text-sm"><div className="mb-1 font-medium">Quadro societário</div>{form.partners.map((partner: any, index: number) => <div key={index} className="text-muted-foreground">{partner.name}{partner.role ? ` — ${partner.role}` : ""}</div>)}</div> : null}
               </div>
