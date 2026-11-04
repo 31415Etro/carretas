@@ -183,7 +183,8 @@ export function TravelAdvancesPage() {
     await load()
   }
 
-  const employeeOptions = employees.map((item) => ({ value: item.id, label: item.name }))
+  const payrollTerms = advances.filter((advance) => advance.settlement_action === "desconto_folha" && !advance.settlement_resolved && advance.summary.remaining > 0.004)
+  const employeeOptions =employees.map((item) => ({ value: item.id, label: item.name }))
 
   return (
     <PageShell title="Antecipação de Reembolso para Viagem" description="Valor adiantado ao funcionário para viagem ou visita (a saída já entra em Entradas e Saídas), com prestação de contas por um link público." actions={<>
@@ -193,7 +194,21 @@ export function TravelAdvancesPage() {
       {error ? <p className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{error}</p> : null}
 
       <SectionCard title="Pendências de aprovação" description="Notinhas de antecipações de reembolso para viagem já finalizadas pelo funcionário.">
-        {pending.length === 0 ? <p className="text-sm text-muted-foreground">{loading ? "Carregando..." : "Nada pendente no momento."}</p> : (
+        {payrollTerms.length ? (
+          <div className="mb-4 space-y-2">
+            <p className="text-sm font-medium">Termos de desconto em folha para baixar</p>
+            {payrollTerms.map((advance) => (
+              <div key={advance.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm">
+                <span>{advanceNumber(advance.number) ? `${advanceNumber(advance.number)} · ` : ""}<strong>{advance.employee_name}</strong> optou por descontar <strong>{brl(advance.summary.remaining)}</strong> do salário.</span>
+                <span className="flex gap-2">
+                  <Button size="sm" onClick={() => void downloadTerm(advance)}><FileText className="h-4 w-4" />Baixar termo</Button>
+                  <Button size="sm" variant="outline" onClick={() => void resolveSettlement(advance.id)}>Termo entregue / descontado</Button>
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {pending.length === 0 ? (payrollTerms.length ? null : <p className="text-sm text-muted-foreground">{loading ? "Carregando..." : "Nada pendente no momento."}</p>) : (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {pending.map((receipt) => (
               <div key={receipt.id} className="rounded-md border p-3 text-sm">

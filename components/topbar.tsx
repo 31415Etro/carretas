@@ -29,7 +29,7 @@ export function Topbar() {
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="flex h-14 items-center justify-between gap-3 px-3 md:h-16 md:px-6">
         <div className="flex min-w-0 items-center gap-3 md:gap-6">
-          <BrandMark className="text-xl md:text-2xl" />
+          <BrandMark className="h-9 md:h-10" />
         </div>
 
         <div className="flex items-center gap-1 md:gap-3">

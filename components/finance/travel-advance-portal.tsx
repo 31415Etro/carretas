@@ -178,7 +178,7 @@ export function TravelAdvancePortal({ token }: { token: string }) {
   const shell = (content: React.ReactNode) => (
     <div className="min-h-screen bg-[var(--brand-softer)]">
       <div className="mx-auto w-full max-w-2xl px-4 py-8 md:py-12">
-        <div className="mb-6 flex justify-center"><BrandMark className="text-3xl" /></div>
+        <div className="mb-6 flex justify-center"><BrandMark className="h-16" /></div>
         {content}
         <AppFooter className="mt-8" />
       </div>

@@ -9,9 +9,12 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
-import { ArrowLeft, Building2, ChevronRight, Lock, Mail, ShieldCheck } from "lucide-react"
+import { ArrowLeft, Building2, ChevronRight, Lock, Mail } from "lucide-react"
 import { AppFooter } from "@/components/shell/app-footer"
 import { useAuth } from "@/lib/auth-context"
+import { GradientWave } from "@/components/ui/gradient-wave"
+
+const WAVE_COLORS = ["#1d4ed8", "#93c5fd", "#2563eb", "#dbeafe", "#3b82f6", "#ffffff"]
 
 export default function LoginPage() {
   return (
@@ -77,28 +80,14 @@ function LoginForm() {
   const choosing = availableCompanies.length > 0
 
   return (
-    <div className="grid min-h-screen bg-[var(--brand-softer)] lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
-      <aside className="relative hidden overflow-hidden bg-gradient-to-br from-[var(--brand-dark)] via-[#1d4ed8] to-[var(--brand)] p-12 text-white lg:flex lg:flex-col lg:justify-between">
-        <div className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-white/10 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-32 -left-16 h-96 w-96 rounded-full bg-blue-300/20 blur-3xl" />
-        <div className="relative self-start rounded-xl bg-white/95 px-5 py-3 shadow-lg">
-          <BrandMark className="text-3xl" />
-        </div>
-        <div className="relative max-w-md space-y-4">
-          <h1 className="text-4xl font-semibold leading-tight">Gestão completa da sua empresa.</h1>
-          <p className="text-base text-blue-100">Financeiro, estoque, compras, ordens de serviço, frota e comercial em um só lugar, para todas as suas empresas.</p>
-        </div>
-        <p className="relative flex items-center gap-2 text-sm text-blue-100">
-          <ShieldCheck className="h-4 w-4" /> Acesso protegido e auditado
-        </p>
-      </aside>
-
-      <main className="flex items-center justify-center px-4 py-10 md:px-8">
+    <div className="relative min-h-screen overflow-hidden bg-[var(--brand-softer)]">
+      <GradientWave colors={WAVE_COLORS} />
+      <main className="relative z-10 flex min-h-screen items-center justify-center px-4 py-10 md:px-8">
         <div className="w-full max-w-md">
-          <div className="mb-6 flex justify-center lg:hidden">
-            <BrandMark className="text-4xl" />
+          <div className="mb-6 flex justify-center">
+            <BrandMark className="h-20" />
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xl shadow-blue-900/5 md:p-9">
+          <div className="rounded-2xl border border-white/60 bg-white/95 p-6 backdrop-blur shadow-xl shadow-blue-900/5 md:p-9">
             <div className="mb-7">
               <h2 className="text-2xl font-semibold text-slate-900">{choosing ? "Escolha a empresa" : "Bem-vindo de volta"}</h2>
               <p className="mt-1 text-sm text-slate-500">

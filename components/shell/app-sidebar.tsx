@@ -208,7 +208,7 @@ export function DesktopSidebar({ collapsed, toggle }: { collapsed: boolean; togg
       className={cn("app-sidebar fixed inset-y-0 left-0 z-40 hidden flex-col gap-4 border-r border-border bg-sidebar px-3 py-4 transition-[width] duration-200 ease-out md:flex", collapsed ? "w-[var(--sidebar-width-collapsed)]" : "w-[var(--sidebar-width)]")}
     >
       <div className={cn("flex items-center px-1", collapsed ? "flex-col gap-3" : "justify-between")}>
-        {collapsed ? <span className="grid h-9 w-9 place-items-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">ND</span> : <BrandMark className="text-xl" />}
+        {collapsed ? <span className="grid h-9 w-9 place-items-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">ND</span> : <BrandMark className="h-10" />}
         <button type="button" onClick={toggle} aria-label={collapsed ? "Expandir menu" : "Recolher menu"} title={collapsed ? "Expandir menu" : "Recolher menu"} className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-foreground">
           {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
         </button>
@@ -228,7 +228,7 @@ export function MobileBar() {
   return (
     <>
       <header className="app-mobilebar sticky top-0 z-40 flex h-14 items-center justify-between border-b border-border bg-sidebar px-4 md:hidden">
-        <BrandMark className="text-lg" />
+        <BrandMark className="h-9" />
         <button type="button" onClick={() => setOpen(true)} aria-label="Abrir menu" className="grid h-9 w-9 place-items-center rounded-lg text-slate-600 hover:bg-slate-100"><Menu className="h-5 w-5" /></button>
       </header>
       {open && (
@@ -236,7 +236,7 @@ export function MobileBar() {
           <button type="button" aria-label="Fechar menu" className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]" onClick={() => setOpen(false)} />
           <aside className="absolute inset-y-0 left-0 flex w-[17.5rem] max-w-[85vw] flex-col gap-4 bg-sidebar px-3 py-4 shadow-2xl">
             <div className="flex items-center justify-between px-1">
-              <BrandMark className="text-xl" />
+              <BrandMark className="h-10" />
               <button type="button" onClick={() => setOpen(false)} aria-label="Fechar menu" className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100"><X className="h-4 w-4" /></button>
             </div>
             <CompanySwitcher collapsed={false} />

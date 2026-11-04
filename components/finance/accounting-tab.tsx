@@ -389,7 +389,7 @@ export function AccountingTab({ emitir }: { emitir?: React.ReactNode }) {
 
       <Tabs value={sub} onValueChange={setSub}>
         <div className="flex flex-wrap items-end gap-3">
-          <TabsList><TabsTrigger value="analise">Análise</TabsTrigger><TabsTrigger value="consolidado">Todas as empresas</TabsTrigger><TabsTrigger value="chassis">Chassis (notas de venda)</TabsTrigger><TabsTrigger value="remessas">Remessas</TabsTrigger><TabsTrigger value="notas">Notas</TabsTrigger><TabsTrigger value="materiais">Materiais comprados</TabsTrigger><TabsTrigger value="emitir">Emitir NF</TabsTrigger><TabsTrigger value="importar">Importar NF (clientes e fornecedores)</TabsTrigger></TabsList>
+          <TabsList className="h-auto w-full flex-wrap justify-start"><TabsTrigger value="analise">Análise</TabsTrigger><TabsTrigger value="consolidado">Todas as empresas</TabsTrigger><TabsTrigger value="chassis">Chassis (notas de venda)</TabsTrigger><TabsTrigger value="remessas">Remessas</TabsTrigger><TabsTrigger value="notas">Notas</TabsTrigger><TabsTrigger value="materiais">Materiais comprados</TabsTrigger><TabsTrigger value="emitir">Emitir NF</TabsTrigger><TabsTrigger value="importar">Importar NF (clientes e fornecedores)</TabsTrigger></TabsList>
           <div className={`${off}flex rounded-md border p-0.5 text-sm`}>
             {([["", "Todas"], ["Entrada", "Entradas"], ["Saída", "Saídas"]] as Array<["" | Operation, string]>).map(([value, label]) => (
               <button key={value || "todas"} type="button" onClick={() => setFilter(value)} className={`rounded px-3 py-1.5 ${filter === value ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>{label}</button>
