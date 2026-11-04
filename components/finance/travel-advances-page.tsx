@@ -252,7 +252,7 @@ export function TravelAdvancesPage() {
               <TableCell onClick={(event) => event.stopPropagation()}><Button size="sm" variant="outline" onClick={() => void copyLink(advance.token)}><Copy className="h-4 w-4" />Copiar link</Button></TableCell>
               <TableCell onClick={(event) => event.stopPropagation()}>
                 <div className="flex gap-1">
-                  {advance.settlement_action === "desconto_folha" && advance.summary.remaining > 0.004 ? <Button size="sm" variant="outline" title="Baixar o termo de desconto em folha (para o funcionário assinar)" onClick={() => void downloadTerm(advance)}><FileText className="h-4 w-4" />Termo</Button> : null}
+                  {advance.settlement_action && advance.summary.remaining > 0.004 ? <Button size="sm" variant="outline" title="Baixar o termo de desconto em folha (para o funcionário assinar)" onClick={() => void downloadTerm(advance)}><FileText className="h-4 w-4" />Termo</Button> : null}
                   {canCancelAdvance(advance.status) ? <Button size="sm" variant="ghost" title="Cancelar antecipação" onClick={() => askCancel(advance)}><Ban className="h-4 w-4" /></Button> : null}
                   {mayDelete ? <Button size="sm" variant="ghost" title="Excluir antecipação" className="text-destructive hover:text-destructive" onClick={() => setDeleteTarget(advance)}><Trash2 className="h-4 w-4" /></Button> : null}
                 </div>
@@ -352,7 +352,8 @@ export function TravelAdvancesPage() {
               {detail.own_pocket_justification ? <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">Gastou do próprio bolso: {detail.own_pocket_justification}</p> : null}
               {detail.settlement_action === "devolver" ? (
                 <p className="flex items-center justify-between rounded-md border border-blue-200 bg-blue-50 p-3 text-sm">
-                  Funcionário pediu para devolver {brl(detail.summary.remaining)}.
+                  <span>Funcionário pediu para devolver {brl(detail.summary.remaining)}.</span>
+                  {detail.summary.remaining > 0.004 ? <Button size="sm" variant="outline" onClick={() => void downloadTerm(detail)}><FileText className="h-4 w-4" />Termo de desconto em folha</Button> : null}
                   {detail.settlement_resolved ? <StatusBadge status="Concluida" /> : <Button size="sm" onClick={() => void resolveSettlement(detail.id)}>Marcar como resolvido</Button>}
                 </p>
               ) : null}
