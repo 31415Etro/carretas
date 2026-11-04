@@ -12,7 +12,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { DataTable, FormSheet, PageShell, SaveButton, SearchableSelectField, SectionCard, SelectField, StatusBadge, TextAreaField, TextField, useCrudFeedback } from "@/components/operations/shared"
 import { accountTypes } from "@/lib/registry"
 import { BUDGETABLE_CATEGORIES, CATEGORY_LABEL, canCancelAdvance, canDeleteAdvance, statusLabel, validateCategoryBudgets } from "@/lib/travel-advance"
-import { advanceNumber, buildAdvanceTermPdf } from "@/lib/travel-advance-term"
+import { buildMealReceiptPdf } from "@/lib/meal-receipt"
+import { advanceNumber } from "@/lib/travel-advance-term"
 import { useAuth } from "@/lib/auth-context"
 
 type Bank = { bankName: string; bankAgency: string; bankAccount: string; bankAccountType: string; pixKey: string }
@@ -120,7 +121,7 @@ export function TravelAdvancesPage() {
 
   async function downloadTerm(advance: Advance) {
     try {
-      const { blob, fileName } = await buildAdvanceTermPdf({ employeeName: advance.employee_name, employeeCpf: advance.employee_cpf || "", companyName: advance.company?.name || "", companyCnpj: advance.company?.cnpj || "", amount: advance.summary.remaining, number: advance.number ?? null })
+      const { blob, fileName } = await buildMealReceiptPdf({ employeeName: advance.employee_name, employeeCpf: advance.employee_cpf || "", companyName: advance.company?.name || "", companyCnpj: advance.company?.cnpj || "", amount: advance.summary.remaining, number: advance.number ?? null })
       const url = URL.createObjectURL(blob)
       const anchor = document.createElement("a")
       anchor.href = url; anchor.download = fileName; anchor.click()
@@ -196,13 +197,13 @@ export function TravelAdvancesPage() {
       <SectionCard title="Pendências de aprovação" description="Notinhas de antecipações de reembolso para viagem já finalizadas pelo funcionário.">
         {payrollTerms.length ? (
           <div className="mb-4 space-y-2">
-            <p className="text-sm font-medium">Termos de desconto em folha para baixar</p>
+            <p className="text-sm font-medium">Recibos de quem ficou com o saldo, para baixar</p>
             {payrollTerms.map((advance) => (
               <div key={advance.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm">
-                <span>{advanceNumber(advance.number) ? `${advanceNumber(advance.number)} · ` : ""}<strong>{advance.employee_name}</strong> optou por descontar <strong>{brl(advance.summary.remaining)}</strong> do salário.</span>
+                <span>{advanceNumber(advance.number) ? `${advanceNumber(advance.number)} · ` : ""}<strong>{advance.employee_name}</strong> pediu para ficar com o saldo de <strong>{brl(advance.summary.remaining)}</strong>.</span>
                 <span className="flex gap-2">
-                  <Button size="sm" onClick={() => void downloadTerm(advance)}><FileText className="h-4 w-4" />Baixar termo</Button>
-                  <Button size="sm" variant="outline" onClick={() => void resolveSettlement(advance.id)}>Termo entregue / descontado</Button>
+                  <Button size="sm" onClick={() => void downloadTerm(advance)}><FileText className="h-4 w-4" />Baixar recibo</Button>
+                  <Button size="sm" variant="outline" onClick={() => void resolveSettlement(advance.id)}>Recibo entregue / assinado</Button>
                 </span>
               </div>
             ))}
@@ -252,7 +253,7 @@ export function TravelAdvancesPage() {
               <TableCell onClick={(event) => event.stopPropagation()}><Button size="sm" variant="outline" onClick={() => void copyLink(advance.token)}><Copy className="h-4 w-4" />Copiar link</Button></TableCell>
               <TableCell onClick={(event) => event.stopPropagation()}>
                 <div className="flex gap-1">
-                  {advance.settlement_action && advance.summary.remaining > 0.004 ? <Button size="sm" variant="outline" title="Baixar o termo de desconto em folha (para o funcionário assinar)" onClick={() => void downloadTerm(advance)}><FileText className="h-4 w-4" />Termo</Button> : null}
+                  {advance.settlement_action === "desconto_folha" && advance.summary.remaining > 0.004 ? <Button size="sm" variant="outline" title="Baixar o recibo (funcionário ficou com o saldo; ele assina)" onClick={() => void downloadTerm(advance)}><FileText className="h-4 w-4" />Recibo</Button> : null}
                   {canCancelAdvance(advance.status) ? <Button size="sm" variant="ghost" title="Cancelar antecipação" onClick={() => askCancel(advance)}><Ban className="h-4 w-4" /></Button> : null}
                   {mayDelete ? <Button size="sm" variant="ghost" title="Excluir antecipação" className="text-destructive hover:text-destructive" onClick={() => setDeleteTarget(advance)}><Trash2 className="h-4 w-4" /></Button> : null}
                 </div>
@@ -352,15 +353,14 @@ export function TravelAdvancesPage() {
               {detail.own_pocket_justification ? <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">Gastou do próprio bolso: {detail.own_pocket_justification}</p> : null}
               {detail.settlement_action === "devolver" ? (
                 <p className="flex items-center justify-between rounded-md border border-blue-200 bg-blue-50 p-3 text-sm">
-                  <span>Funcionário pediu para devolver {brl(detail.summary.remaining)}.</span>
-                  {detail.summary.remaining > 0.004 ? <Button size="sm" variant="outline" onClick={() => void downloadTerm(detail)}><FileText className="h-4 w-4" />Termo de desconto em folha</Button> : null}
+                  Funcionário pediu para devolver {brl(detail.summary.remaining)}.
                   {detail.settlement_resolved ? <StatusBadge status="Concluida" /> : <Button size="sm" onClick={() => void resolveSettlement(detail.id)}>Marcar como resolvido</Button>}
                 </p>
               ) : null}
               {detail.settlement_action === "desconto_folha" ? (
                 <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm">
-                  <span>Funcionário optou por descontar {brl(detail.summary.remaining)} do salário.</span>
-                  <Button size="sm" variant="outline" onClick={() => void downloadTerm(detail)}><FileText className="h-4 w-4" />Solicitação de adiantamento (termo)</Button>
+                  <span>Funcionário pediu para ficar com o saldo de {brl(detail.summary.remaining)}.</span>
+                  <Button size="sm" variant="outline" onClick={() => void downloadTerm(detail)}><FileText className="h-4 w-4" />Recibo do saldo (funcionário assina)</Button>
                 </div>
               ) : null}
               {detail.categories.length ? (
