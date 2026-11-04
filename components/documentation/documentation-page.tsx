@@ -9,6 +9,8 @@ import { DataTable, MetricCard, PageShell, SectionCard } from "@/components/oper
 import { api, dateBr, SearchBox } from "@/components/catalog/catalog-fields"
 import { DocumentationSheet } from "@/components/documentation/documentation-sheet"
 import { ManualDocumentationSheet } from "@/components/documentation/manual-documentation-sheet"
+import { RenaverBadge, RenaverRunLine, useRenaver } from "@/components/documentation/renaver-status"
+import { useAuth } from "@/lib/auth-context"
 import { docStatusLabel, docStatusTone } from "@/lib/vehicle-documentation"
 
 type Row = {
@@ -29,6 +31,8 @@ export function DocumentationPage() {
   const [error, setError] = useState("")
   const [selected, setSelected] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
+  const { user } = useAuth()
+  const renaver = useRenaver(rows.map((row) => row.vin || ""))
 
   const load = useCallback(async () => {
     setLoading(true); setError("")
@@ -52,6 +56,8 @@ export function DocumentationPage() {
       </div>
       {Number(dashboard.stale || 0) > 0 ? <p className="flex items-center gap-2 rounded-md border border-red-300 bg-red-50 p-3 text-sm"><AlertTriangle className="h-4 w-4 shrink-0" />{dashboard.stale} solicitação(ões) sem retorno do portal há mais que o prazo da empresa: consulte o andamento.</p> : null}
 
+      <RenaverRunLine run={renaver.run} canOperate={user?.role === "admin" || user?.role === "manager"} onChanged={() => void renaver.reload()} />
+
       <SectionCard title="Unidades">
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <SearchBox value={query} onChange={(value) => { setQuery(value); setPage(1) }} placeholder="Buscar por pedido, cliente, chassi, protocolo ou produto" />
@@ -59,7 +65,7 @@ export function DocumentationPage() {
             {filters.map(([value, label]) => <option key={label} value={value}>{label}</option>)}
           </select>
         </div>
-        <DataTable headers={["Pedido", "Cliente", "Produto", "Unidade", "Chassi / VIN", "Protocolo", "Situação", "Enviado", "Última consulta", "Responsável", "Pendências"]} empty={!rows.length && !loading}>
+        <DataTable headers={["Pedido", "Cliente", "Produto", "Unidade", "Chassi / VIN", "Protocolo", "Situação", "Renaver", "Enviado", "Última consulta", "Responsável", "Pendências"]} empty={!rows.length && !loading}>
           {rows.map((row) => (
             <TableRow key={row.id} className="cursor-pointer" onClick={() => setSelected(row.id)}>
               <TableCell className="whitespace-nowrap font-mono text-xs"><Link href={`/vendas/${row.sales_order_id}`} className="text-primary underline-offset-2 hover:underline" onClick={(event) => event.stopPropagation()}>{row.order_number}</Link></TableCell>
@@ -69,6 +75,7 @@ export function DocumentationPage() {
               <TableCell className="font-mono text-xs">{row.vin || <span className="text-muted-foreground">a informar</span>}</TableCell>
               <TableCell className="font-mono text-xs">{row.protocol || "-"}</TableCell>
               <TableCell><span className={`rounded px-2 py-0.5 text-xs font-medium ${docStatusTone(row.status)}`}>{docStatusLabel(row.status)}</span>{row.stale ? <span className="ml-1 text-xs text-red-700">atrasada</span> : null}</TableCell>
+              <TableCell>{row.vin ? <RenaverBadge item={renaver.items[row.vin.toUpperCase()]} /> : <span className="text-xs text-muted-foreground">-</span>}</TableCell>
               <TableCell className="whitespace-nowrap">{dateBr(row.submitted_at)}</TableCell>
               <TableCell className="whitespace-nowrap">{dateBr(row.last_checked_at)}</TableCell>
               <TableCell>{row.responsible || "-"}</TableCell>

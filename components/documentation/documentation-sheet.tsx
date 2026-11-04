@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { FormSheet } from "@/components/operations/shared"
 import { UploadField } from "@/components/catalog/upload-field"
 import { api, dateBr, Field } from "@/components/catalog/catalog-fields"
+import { RenaverPanel } from "@/components/documentation/renaver-status"
 import { useAuth } from "@/lib/auth-context"
 import { docStatusLabel, docStatusTone, documentationActions, finalStageLabels, normalizeVin, releaseLabel, vinProblem } from "@/lib/vehicle-documentation"
 
@@ -95,6 +96,8 @@ export function DocumentationSheet({ id, onClose, onChanged }: { id: string | nu
             <div>Portal: {doc.portal}</div><div>Enviado: {dateBr(doc.submitted_at)}</div><div>Última consulta: {dateBr(doc.last_checked_at)}</div>
             <div>Pedido: <Link className="text-primary underline" href={`/vendas/${doc.sales_order_id}`}>{doc.order_number}</Link></div><div>Estrutura: {doc.bom_version ? `v${doc.bom_version}` : "-"}</div><div>Aprovado: {dateBr(doc.approved_at)}</div>
           </dl>
+
+          <RenaverPanel vin={doc.vin || ""} canOperate={role === "admin" || role === "manager"} />
 
           <div className="flex flex-wrap items-center gap-2">
             {actions.edit ? <Button variant="outline" disabled={Boolean(busy) || Boolean(vinError)} onClick={() => void act("update", { vin: form.vin, catNumber: form.catNumber, brandModelVersionCode: form.brandModelVersionCode, productModel: form.productModel, responsible: form.responsible, notes: form.notes }, actions.correct ? "Correção salva: a unidade volta para envio." : "Dados conferidos e salvos.")}>{busy === "update" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}{actions.correct ? "Salvar correção" : "Conferir e salvar dados"}</Button> : null}

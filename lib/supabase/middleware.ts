@@ -22,6 +22,8 @@ const publicPaths = [
   "/api/financeiro/nf/sync",
   // Robô de emissão de NF-e (servidor): autenticado por NF_SYNC_SECRET dentro da própria rota.
   "/api/financeiro/nf/emissao/worker",
+  // Robô do Renaver (servidor): autenticado por NF_SYNC_SECRET dentro da própria rota.
+  "/api/documentacao/renaver/worker",
   // Portal de antecipação de reembolso para viagem (link enviado ao funcionário): sem login; o token da URL é a autorização, validado dentro da rota.
   "/portal-viagem",
   "/api/viagem/portal",
